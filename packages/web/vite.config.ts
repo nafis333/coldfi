@@ -5,6 +5,7 @@ import path from 'path';
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
+    preserveSymlinks: true,
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
