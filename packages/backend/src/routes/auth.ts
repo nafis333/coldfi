@@ -21,7 +21,9 @@ import {
   refreshRateLimiter,
 } from '../middleware/rateLimiter';
 
-const REFRESH_MAX_AGE = 7 * 24 * 60 * 60;
+const match = config.JWT_REFRESH_EXPIRY.match(/^(\d+)([smhd])$/);
+const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+const REFRESH_MAX_AGE = match ? parseInt(match[1]!, 10) * (multipliers[match[2]!] || 86400) : 30 * 86400;
 
 function setRefreshCookie(reply: FastifyReply, token: string) {
   reply.setCookie('refreshToken', token, {

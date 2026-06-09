@@ -196,8 +196,10 @@ export async function generateTokens(userId: string): Promise<TokenPair> {
   const refreshToken = crypto.randomBytes(64).toString('hex');
   const refreshTokenHash = hashToken(refreshToken);
 
+  const match = config.JWT_REFRESH_EXPIRY.match(/^(\d+)([smhd])$/);
+  const days = match ? parseInt(match[1]!, 10) : 30;
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+  expiresAt.setDate(expiresAt.getDate() + days);
 
   await query(
     `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)

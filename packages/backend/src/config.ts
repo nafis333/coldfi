@@ -12,7 +12,7 @@ const envSchema = z.object({
   COOKIE_SECRET: z.string().min(32),
   SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().positive().default(500),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
-  JWT_REFRESH_EXPIRY: z.string().default('7d'),
+  JWT_REFRESH_EXPIRY: z.string().default('30d'),
 
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
 

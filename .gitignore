@@ -12,3 +12,16 @@ playwright-report/
 .expo/
 *.apk
 *.aab
+
+# Development process docs (not needed in public repo)
+docs/PHASES/
+docs/TRACKING/
+docs/SKILLS/
+docs/PLANS/
+
+# Tool-specific config
+opencode.json
+
+# OS artifacts
+Thumbs.db
+Desktop.ini
