@@ -10,7 +10,7 @@ const envSchema = z.object({
 
   JWT_SECRET: z.string().min(32),
   COOKIE_SECRET: z.string().min(32),
-  SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().positive().default(500),
+  SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().positive().default(2000),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('30d'),
 
