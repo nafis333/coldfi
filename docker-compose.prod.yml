@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${DB_NAME:-coldfi}
+      POSTGRES_USER: ${DB_USER:-coldfi}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-coldfi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      DATABASE_URL: postgres://${DB_USER:-coldfi}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-coldfi}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@coldfi.app}
+      MAX_RECEIPT_SIZE_MB: 5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/templates/default.conf.template
+      - certs:/etc/letsencrypt
+      - certs-data:/data/letsencrypt
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      NGINX_ENVSUBST_TEMPLATE_SUFFIX: ".conf.template"
+    depends_on:
+      - web
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  certs:
+  certs-data:

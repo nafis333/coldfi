@@ -1,0 +1,137 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "coldfi-main",
+    "title": "ColdFi - API Overview",
+    "tags": ["coldfi", "api"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Status",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+        "targets": [
+          { "expr": "ft_service_status{service=\"database\"}", "legendFormat": "Database" },
+          { "expr": "ft_service_status{service=\"redis\"}", "legendFormat": "Redis" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+            ],
+            "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Uptime",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+        "targets": [{ "expr": "ft_uptime_seconds", "legendFormat": "Uptime" }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 3600 }, { "color": "green", "value": 86400 }] }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Request Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+        "targets": [
+          { "expr": "rate(ft_requests_total[1m])", "legendFormat": "Requests/sec" },
+          { "expr": "ft_requests_per_second", "legendFormat": "Avg RPS" }
+        ],
+        "fieldConfig": { "defaults": { "unit": "reqps" } }
+      },
+      {
+        "id": 4,
+        "title": "Error Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+        "targets": [
+          { "expr": "ft_error_rate_percent", "legendFormat": "Error %" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] },
+            "custom": { "fillOpacity": 20 }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Request Duration (Avg)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+        "targets": [
+          { "expr": "ft_request_duration_avg_seconds", "legendFormat": "Avg Duration" }
+        ],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      },
+      {
+        "id": 6,
+        "title": "Database Connections",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+        "targets": [
+          { "expr": "ft_db_pool_total", "legendFormat": "Total" },
+          { "expr": "ft_db_pool_active", "legendFormat": "Active" },
+          { "expr": "ft_db_pool_idle", "legendFormat": "Idle" },
+          { "expr": "ft_db_pool_waiting", "legendFormat": "Waiting" }
+        ],
+        "fieldConfig": { "defaults": { "unit": "short" } }
+      },
+      {
+        "id": 7,
+        "title": "Memory Usage",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+        "targets": [
+          { "expr": "ft_memory_heap_used_bytes", "legendFormat": "Heap Used" },
+          { "expr": "ft_memory_heap_total_bytes", "legendFormat": "Heap Total" },
+          { "expr": "ft_memory_rss_bytes", "legendFormat": "RSS" }
+        ],
+        "fieldConfig": { "defaults": { "unit": "bytes" } }
+      },
+      {
+        "id": 8,
+        "title": "CPU Load Average",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+        "targets": [
+          { "expr": "ft_cpu_load_average{period=\"1m\"}", "legendFormat": "1 min" },
+          { "expr": "ft_cpu_load_average{period=\"5m\"}", "legendFormat": "5 min" },
+          { "expr": "ft_cpu_load_average{period=\"15m\"}", "legendFormat": "15 min" }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Database Latency",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+        "targets": [
+          { "expr": "ft_db_latency_ms", "legendFormat": "DB" },
+          { "expr": "ft_redis_latency_ms", "legendFormat": "Redis" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] }
+          }
+        }
+      }
+    ],
+    "schemaVersion": 39
+  }
+}

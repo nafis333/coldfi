@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS group_sync (
+  group_id UUID PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
+  encrypted_blob TEXT NOT NULL,
+  vector_clock JSONB NOT NULL DEFAULT '{}',
+  updated_by UUID NOT NULL REFERENCES users(id),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);

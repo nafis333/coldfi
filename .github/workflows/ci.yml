@@ -1,0 +1,65 @@
+name: CI
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: coldfi_test
+          POSTGRES_USER: coldfi
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm -w packages/backend run lint
+
+      - name: Build shared
+        run: npm -w packages/shared run build
+
+      - name: Build backend
+        run: npm -w packages/backend run build
+
+      - name: Build web
+        run: npm -w packages/web run build
+
+      - name: Test shared
+        run: npm -w packages/shared run test
+
+      - name: Test backend
+        run: npm -w packages/backend run test
+        env:
+          DATABASE_URL: postgres://coldfi:test@localhost:5432/coldfi_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-for-ci-at-least-32-chars!!
+
+      - name: Test web
+        run: npm -w packages/web run test
+        env:
+          JWT_SECRET: test-jwt-secret-for-ci-at-least-32-chars!!

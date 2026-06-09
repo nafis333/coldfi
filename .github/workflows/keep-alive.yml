@@ -1,0 +1,23 @@
+name: Keep Backend Awake
+
+on:
+  schedule:
+    - cron: "*/1 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call health endpoint
+        run: |
+          curl -sf --max-time 10 "${{ secrets.BACKEND_URL }}/health/live" \
+            && echo "Backend is awake" \
+            || echo "Backend unreachable"
+
+      - name: Call readiness endpoint
+        run: |
+          curl -sf --max-time 10 "${{ secrets.BACKEND_URL }}/health/ready" \
+            && echo "Backend ready" \
+            || echo "Backend not ready"

@@ -1,0 +1,27 @@
+{
+  "name": "coldfi",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["packages/backend", "packages/shared", "packages/web"],
+  "scripts": {
+    "dev": "npm run dev:backend",
+    "dev:backend": "npm -w packages/backend run dev",
+    "dev:web": "npm -w packages/web run dev",
+    "dev:all": "concurrently -n be,web -c cyan,green \"npm run dev:backend\" \"npm run dev:web\"",
+    "build": "npm -w packages/shared run build && npm -w packages/backend run build && npm -w packages/web run build",
+    "build:shared": "npm -w packages/shared run build",
+    "build:backend": "npm -w packages/backend run build",
+    "build:web": "npm -w packages/web run build",
+    "lint": "npm -w packages/backend run lint && npm -w packages/web run lint",
+    "test": "npm -w packages/shared run test && npm -w packages/backend run test && npm -w packages/web run test",
+    "test:backend": "npm -w packages/backend run test",
+    "test:web": "npm -w packages/web run test",
+    "migrate": "npm -w packages/backend run migrate",
+    "seed": "npm -w packages/backend run seed",
+    "generate-vapid": "npm -w packages/web run generate-vapid"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "typescript": "^5.4.0"
+  }
+}

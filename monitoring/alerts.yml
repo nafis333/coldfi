@@ -1,0 +1,54 @@
+groups:
+  - name: coldfi-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: ft_error_rate_percent > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }}% (threshold: 5%)"
+
+      - alert: HighLatency
+        expr: ft_db_latency_ms > 500
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High database latency"
+          description: "DB latency is {{ $value }}ms (threshold: 500ms)"
+
+      - alert: HighMemoryUsage
+        expr: (ft_memory_system_total_bytes - ft_memory_system_free_bytes) / ft_memory_system_total_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}%"
+
+      - alert: DatabaseDown
+        expr: ft_service_status{service="database"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database is down"
+
+      - alert: RedisDown
+        expr: ft_service_status{service="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+
+      - alert: PoolExhausted
+        expr: ft_db_pool_waiting > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database pool exhausted"
+          description: "{{ $value }} requests waiting for connections"
