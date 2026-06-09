@@ -86,11 +86,18 @@ async function migrate(): Promise<void> {
   logger.info(`Applied ${pending.length} migration(s)`, { module: 'migrate' });
 }
 
-migrate()
-  .catch((err) => {
-    logger.fatal('Migration failed', { module: 'migrate', error: String(err) });
-    process.exit(1);
-  })
-  .finally(() => {
-    pool.end();
-  });
+export async function runMigrations(): Promise<void> {
+  await migrate();
+}
+
+// Allow running as standalone script
+if (require.main === module) {
+  migrate()
+    .catch((err) => {
+      logger.fatal('Migration failed', { module: 'migrate', error: String(err) });
+      process.exit(1);
+    })
+    .finally(() => {
+      pool.end();
+    });
+}

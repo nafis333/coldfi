@@ -33,6 +33,14 @@ async function main() {
     process.exit(1);
   }
 
+  try {
+    const { runMigrations } = await import('./db/migrate');
+    await runMigrations();
+  } catch (err) {
+    logger.fatal('Migration failed', { module: 'startup', error: String(err) });
+    process.exit(1);
+  }
+
   const app = await buildApp();
   try {
     await app.listen({ port: config.PORT, host: config.HOST });
