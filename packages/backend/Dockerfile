@@ -20,6 +20,7 @@ COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/backend/package.json ./packages/backend/package.json
 COPY --from=builder /app/packages/backend/node_modules ./packages/backend/node_modules
+COPY --from=builder /app/packages/backend/src ./packages/backend/src
 COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
 EXPOSE 3001
 HEALTHCHECK --interval=15s --timeout=10s --retries=3 --start-period=30s \
