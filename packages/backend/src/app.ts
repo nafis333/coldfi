@@ -77,6 +77,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.setErrorHandler((error: FastifyError | AppError, request: FastifyRequest, reply: FastifyReply) => {
     const requestId = request.requestId || 'unknown';
     const userId = request.user?.userId;
+    const origin = request.headers.origin;
+    if (origin && config.CORS_ORIGIN.split(',').some(o => o.trim() === origin)) {
+      reply.header('Access-Control-Allow-Origin', origin);
+      reply.header('Access-Control-Allow-Credentials', 'true');
+    }
 
     if (error instanceof AppError) {
       if (!error.isOperational) {
@@ -109,9 +114,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     return reply.status(error.statusCode ?? 500).send({
       error: 'ERR_INTERNAL',
-      message: process.env.NODE_ENV === 'production'
-        ? 'Internal server error'
-        : error.message,
+      message: error.message,
     });
   });
 
