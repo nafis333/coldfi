@@ -1,14 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rootDirectory": "packages/web",
-  "git": {
-    "deploymentEnabled": {
-      "main": true
-    }
-  },
-  "installCommand": "cd ../.. && npm ci",
-  "buildCommand": "cd ../.. && npm run build:shared && npm run build:web",
-  "outputDirectory": "dist",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build:shared && npm run build:web",
+  "outputDirectory": "packages/web/dist",
   "framework": "vite",
   "rewrites": [
     {
