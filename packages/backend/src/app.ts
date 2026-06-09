@@ -115,6 +115,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
   });
 
+  app.get('/', async (_request, reply) => {
+    return reply.send({ status: 'ok', app: 'coldfi', version: '1.0.0' });
+  });
+
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: 'ERR_NOT_FOUND',
