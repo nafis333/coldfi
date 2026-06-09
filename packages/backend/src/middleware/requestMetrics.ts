@@ -66,12 +66,12 @@ export async function requestMetrics(request: FastifyRequest, reply: FastifyRepl
     const dur = Math.round(duration);
     query(`
       INSERT INTO api_metrics_hourly (endpoint, method, status_group, count, total_duration_ms, max_duration_ms, hour_bucket)
-      VALUES ($1, $2, $3, 1, $4::bigint, $4::int, date_trunc('hour', NOW()))
+      VALUES ($1, $2, $3, 1, $4, $5, date_trunc('hour', NOW()))
       ON CONFLICT (endpoint, method, status_group, hour_bucket)
       DO UPDATE SET count = api_metrics_hourly.count + 1,
-                    total_duration_ms = api_metrics_hourly.total_duration_ms + $4::bigint,
-                    max_duration_ms = GREATEST(api_metrics_hourly.max_duration_ms, $4::int)
-    `, [endpoint, request.method, `${Math.floor(statusCode / 100)}xx`, dur]).catch((err) => {
+                    total_duration_ms = api_metrics_hourly.total_duration_ms + $4,
+                    max_duration_ms = GREATEST(api_metrics_hourly.max_duration_ms, $5)
+    `, [endpoint, request.method, `${Math.floor(statusCode / 100)}xx`, dur, dur]).catch((err) => {
       logger.error('Failed to write API metrics', { module: 'metrics', error: (err as Error).message });
     });
 
