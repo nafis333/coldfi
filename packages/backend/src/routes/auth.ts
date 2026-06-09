@@ -29,8 +29,8 @@ function setRefreshCookie(reply: FastifyReply, token: string) {
   reply.setCookie('refreshToken', token, {
     httpOnly: true,
     secure: config.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/auth',
+    sameSite: 'none',
+    path: '/api/auth',
     maxAge: REFRESH_MAX_AGE,
   });
 }
