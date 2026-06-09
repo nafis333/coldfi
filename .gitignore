@@ -14,10 +14,7 @@ playwright-report/
 *.aab
 
 # Development process docs (not needed in public repo)
-docs/PHASES/
-docs/TRACKING/
-docs/SKILLS/
-docs/PLANS/
+docs/
 
 # Tool-specific config
 opencode.json
