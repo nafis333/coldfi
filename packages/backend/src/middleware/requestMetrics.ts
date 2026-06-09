@@ -63,6 +63,7 @@ export async function requestMetrics(request: FastifyRequest, reply: FastifyRepl
 
     incrementRequestCount(statusCode >= 400, duration);
 
+    const dur = Math.round(duration);
     query(`
       INSERT INTO api_metrics_hourly (endpoint, method, status_group, count, total_duration_ms, max_duration_ms, hour_bucket)
       VALUES ($1, $2, $3, 1, $4, $4, date_trunc('hour', NOW()))
@@ -70,7 +71,7 @@ export async function requestMetrics(request: FastifyRequest, reply: FastifyRepl
       DO UPDATE SET count = api_metrics_hourly.count + 1,
                     total_duration_ms = api_metrics_hourly.total_duration_ms + $4,
                     max_duration_ms = GREATEST(api_metrics_hourly.max_duration_ms, $4)
-    `, [endpoint, request.method, `${Math.floor(statusCode / 100)}xx`, duration]).catch((err) => {
+    `, [endpoint, request.method, `${Math.floor(statusCode / 100)}xx`, dur]).catch((err) => {
       logger.error('Failed to write API metrics', { module: 'metrics', error: (err as Error).message });
     });
 
