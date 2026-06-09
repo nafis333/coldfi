@@ -130,12 +130,12 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(healthRoutes);
   await app.register(healthEnhancedRoutes);
-  await app.register(authRoutes, { prefix: '/auth' });
-  await app.register(personalRoutes, { prefix: '/personal' });
-  await app.register(recoveryRoutes, { prefix: '/personal' });
-  await app.register(groupRoutes, { prefix: '/group' });
-  await app.register(notificationRoutes, { prefix: '/notifications' });
-  await app.register(adminRoutes);
+  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(personalRoutes, { prefix: '/api/personal' });
+  await app.register(recoveryRoutes, { prefix: '/api/personal' });
+  await app.register(groupRoutes, { prefix: '/api/group' });
+  await app.register(notificationRoutes, { prefix: '/api/notifications' });
+  await app.register(adminRoutes, { prefix: '/api' });
 
   return app;
 }
