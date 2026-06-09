@@ -196,8 +196,8 @@ export async function generateTokens(userId: string): Promise<TokenPair> {
   const refreshToken = crypto.randomBytes(64).toString('hex');
   const refreshTokenHash = hashToken(refreshToken);
 
-  const match = config.JWT_REFRESH_EXPIRY.match(/^(\d+)([smhd])$/);
-  const days = match ? parseInt(match[1]!, 10) : 30;
+  const refreshMatch = config.JWT_REFRESH_EXPIRY.match(/^(\d+)([smhd])$/);
+  const days = refreshMatch ? parseInt(refreshMatch[1]!, 10) : 30;
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + days);
 
@@ -207,11 +207,11 @@ export async function generateTokens(userId: string): Promise<TokenPair> {
     [userId, refreshTokenHash, expiresAt]
   );
 
-  const match = config.JWT_ACCESS_EXPIRY.match(/^(\d+)([smhd])$/);
+  const accessMatch = config.JWT_ACCESS_EXPIRY.match(/^(\d+)([smhd])$/);
   let expiresIn = 900;
-  if (match) {
-    const num = parseInt(match[1]!, 10);
-    const unit = match[2]!;
+  if (accessMatch) {
+    const num = parseInt(accessMatch[1]!, 10);
+    const unit = accessMatch[2]!;
     const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
     expiresIn = num * (multipliers[unit] || 60);
   } else {
