@@ -724,8 +724,8 @@ describe('Scenario: Minimal transfers algorithm', () => {
 
   it('settles single debtor and single creditor', () => {
     const balances: DetailedBalance[] = [
-      { userId: alice, net: 100, owesTo: {}, owedBy: { [bob]: 100 } },
-      { userId: bob, net: -100, owesTo: { [alice]: 100 }, owedBy: {} },
+      { userId: alice, net: 100, owesTo: {} as Record<string, number>, owedBy: { [bob]: 100 } },
+      { userId: bob, net: -100, owesTo: { [alice]: 100 }, owedBy: {} as Record<string, number> },
     ];
     const result = generateMinimalTransfers(balances, 'USD');
     expect(result.transfers).toHaveLength(1);
@@ -736,9 +736,9 @@ describe('Scenario: Minimal transfers algorithm', () => {
 
   it('minimizes number of transfers for complex debts', () => {
     const balances: DetailedBalance[] = [
-      { userId: alice, net: 150, owesTo: {}, owedBy: { [bob]: 80, [charlie]: 70 } },
-      { userId: bob, net: -80, owesTo: { [alice]: 80 }, owedBy: {} },
-      { userId: charlie, net: -70, owesTo: { [alice]: 70 }, owedBy: {} },
+      { userId: alice, net: 150, owesTo: {} as Record<string, number>, owedBy: { [bob]: 80, [charlie]: 70 } },
+      { userId: bob, net: -80, owesTo: { [alice]: 80 }, owedBy: {} as Record<string, number> },
+      { userId: charlie, net: -70, owesTo: { [alice]: 70 }, owedBy: {} as Record<string, number> },
     ];
     const result = generateMinimalTransfers(balances, 'USD');
     expect(result.transfers).toHaveLength(2);
@@ -747,10 +747,10 @@ describe('Scenario: Minimal transfers algorithm', () => {
 
   it('handles complex multi-person debts', () => {
     const balances: DetailedBalance[] = [
-      { userId: alice, net: 200, owesTo: {}, owedBy: { [bob]: 120, [charlie]: 80 } },
-      { userId: bob, net: -120, owesTo: { [alice]: 120 }, owedBy: {} },
-      { userId: charlie, net: 50, owesTo: {}, owedBy: { [dave]: 50 } },
-      { userId: dave, net: -130, owesTo: { [charlie]: 50, [alice]: 80 }, owedBy: {} },
+      { userId: alice, net: 200, owesTo: {} as Record<string, number>, owedBy: { [bob]: 120, [charlie]: 80 } },
+      { userId: bob, net: -120, owesTo: { [alice]: 120 }, owedBy: {} as Record<string, number> },
+      { userId: charlie, net: 50, owesTo: {} as Record<string, number>, owedBy: { [dave]: 50 } },
+      { userId: dave, net: -130, owesTo: { [charlie]: 50, [alice]: 80 }, owedBy: {} as Record<string, number> },
     ];
     const result = generateMinimalTransfers(balances, 'USD');
     const totalFrom = result.transfers.reduce((s, t) => s + t.amount, 0);
@@ -862,7 +862,7 @@ describe('Scenario: Edge cases and error states', () => {
   });
 
   it('getTotalOwed and getTotalDebt work correctly', () => {
-    const balances: DetailedBalance[] = [{ userId: alice, net: 50, owesTo: {}, owedBy: { [bob]: 50 } }];
+    const balances: DetailedBalance[] = [{ userId: alice, net: 50, owesTo: {} as Record<string, number>, owedBy: { [bob]: 50 } }];
     expect(getTotalOwed(balances, alice)).toBe(50);
     expect(getTotalDebt(balances, alice)).toBe(0);
   });
