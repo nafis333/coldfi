@@ -35,6 +35,8 @@ services:
         value: 15
       - key: REMINDER_POLL_INTERVAL
         value: '300000'
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: SERVER_ENCRYPTION_KEY
         sync: false
       - key: VAPID_SUBJECT
