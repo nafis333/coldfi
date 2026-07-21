@@ -4,6 +4,7 @@ dist/
 .env.*
 !.env.example
 !.env.backup.example
+!packages/web/env/.env.production
 *.log
 .DS_Store
 coverage/
