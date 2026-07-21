@@ -13,6 +13,7 @@ import { SplitMode, ExpenseStatus, SettlementStatus, PaymentMethod, BudgetType, 
 import type { GroupExpense } from '../../types/group';
 import type { SettlementProposal } from '../../types/settlement';
 import type { PersonalExpense, PersonalBudget, PersonalCategory, IncomeLog } from '../../types/personal';
+import type { DetailedBalance } from '../balanceCalculator';
 
 function makeExpense(overrides: Partial<GroupExpense> = {}): GroupExpense {
   return {
@@ -46,9 +47,10 @@ function makePersonalExpense(overrides: Partial<PersonalExpense> = {}): Personal
   return {
     id: 'p-exp-1', amount: 50, currency: 'USD', categoryId: 'cat-food',
     date: '2026-01-15', description: 'Groceries', tags: [],
+    paymentMethod: 'card', isRecurring: false,
     createdAt: '2026-01-15T00:00:00Z', updatedAt: '2026-01-15T00:00:00Z',
     ...overrides,
-  };
+  } as PersonalExpense;
 }
 
 describe('Scenario: 3-person group equal splits', () => {
@@ -130,7 +132,7 @@ describe('Scenario: 3-person group ratio splits', () => {
     });
     expect(splits.every(s => s.amount === 100)).toBe(true);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('ratio_normalized');
+    expect(warnings[0]!.type).toBe('ratio_normalized');
   });
 });
 
@@ -157,7 +159,7 @@ describe('Scenario: Fixed amount splits', () => {
     expect(splits.find(s => s.memberId === alice)!.amount).toBe(25);
     expect(splits.find(s => s.memberId === bob)!.amount).toBe(25);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('fixed_scaled');
+    expect(warnings[0]!.type).toBe('fixed_scaled');
   });
 });
 
@@ -341,7 +343,7 @@ describe('Scenario: Settlement overlap detection', () => {
     });
     const warnings = detectSettlementOverlap([expense], [settlement]);
     expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0].type).toBe('settlement_overlap');
+    expect(warnings[0]!.type).toBe('settlement_overlap');
   });
 });
 
@@ -435,7 +437,7 @@ describe('Scenario: Budget tracking', () => {
 
 describe('Scenario: Spending anomaly detection', () => {
   it('detects unusually high spending', () => {
-    const today = '2026-06-15';
+    const today = new Date('2026-06-15');
     const catId = 'cat-food';
     const expenses: PersonalExpense[] = [];
 
@@ -462,7 +464,7 @@ describe('Scenario: Spending anomaly detection', () => {
   });
 
   it('handles categories with no history gracefully', () => {
-    const today = '2026-06-15';
+    const today = new Date('2026-06-15');
     const catId = 'cat-new';
     const expenses = [
       makePersonalExpense({ id: 'e1', amount: 500, categoryId: catId, date: '2026-06-10' }),
@@ -519,12 +521,12 @@ describe('Scenario: Analytics calculations', () => {
     ];
     const result = computeSpendingByCategory(expenses, categories);
     expect(result).toHaveLength(2);
-    expect(result[0].categoryId).toBe(catFood);
-    expect(result[0].totalAmount).toBe(500);
-    expect(result[0].transactionCount).toBe(2);
-    expect(result[0].percentOfTotal).toBeCloseTo(83.33, 1);
-    expect(result[1].totalAmount).toBe(100);
-    expect(result[1].percentOfTotal).toBeCloseTo(16.67, 1);
+    expect(result[0]!.categoryId).toBe(catFood);
+    expect(result[0]!.totalAmount).toBe(500);
+    expect(result[0]!.transactionCount).toBe(2);
+    expect(result[0]!.percentOfTotal).toBeCloseTo(83.33, 1);
+    expect(result[1]!.totalAmount).toBe(100);
+    expect(result[1]!.percentOfTotal).toBeCloseTo(16.67, 1);
   });
 
   it('filters by date range in category spending', () => {
@@ -536,7 +538,7 @@ describe('Scenario: Analytics calculations', () => {
       makePersonalExpense({ id: 'e2', amount: 200, categoryId: catFood, date: '2026-02-15' }),
     ];
     const result = computeSpendingByCategory(expenses, categories, '2026-01-01', '2026-01-31');
-    expect(result[0].totalAmount).toBe(100);
+    expect(result[0]!.totalAmount).toBe(100);
   });
 
   it('computes daily spending correctly', () => {
@@ -547,11 +549,11 @@ describe('Scenario: Analytics calculations', () => {
     ];
     const daily = computeDailySpending(expenses, '2026-01-01', '2026-01-03');
     expect(daily).toHaveLength(3);
-    expect(daily[0].totalAmount).toBe(150);
-    expect(daily[0].transactionCount).toBe(2);
-    expect(daily[1].totalAmount).toBe(200);
-    expect(daily[1].transactionCount).toBe(1);
-    expect(daily[2].totalAmount).toBe(0);
+    expect(daily[0]!.totalAmount).toBe(150);
+    expect(daily[0]!.transactionCount).toBe(2);
+    expect(daily[1]!.totalAmount).toBe(200);
+    expect(daily[1]!.transactionCount).toBe(1);
+    expect(daily[2]!.totalAmount).toBe(0);
   });
 
   it('computes savings correctly', () => {
@@ -580,7 +582,7 @@ describe('Scenario: Analytics calculations', () => {
     const trends = computeSpendingTrend(expenses, 3);
     expect(trends.length).toBeLessThanOrEqual(3);
     if (trends.length >= 2) {
-      expect(trends[0].totalSpent).toBeGreaterThan(0);
+      expect(trends[0]!.totalSpent).toBeGreaterThan(0);
     }
   });
 
@@ -595,8 +597,8 @@ describe('Scenario: Analytics calculations', () => {
     ];
     const top = computeTopExpenses(expenses, categories, 2);
     expect(top).toHaveLength(2);
-    expect(top[0].amount).toBe(500);
-    expect(top[1].amount).toBe(200);
+    expect(top[0]!.amount).toBe(500);
+    expect(top[1]!.amount).toBe(200);
   });
 
   it('date range filters top expenses', () => {
@@ -609,7 +611,7 @@ describe('Scenario: Analytics calculations', () => {
     ];
     const top = computeTopExpenses(expenses, categories, 10, '2026-01-01', '2026-01-31');
     expect(top).toHaveLength(1);
-    expect(top[0].amount).toBe(500);
+    expect(top[0]!.amount).toBe(500);
   });
 });
 
@@ -721,19 +723,19 @@ describe('Scenario: Minimal transfers algorithm', () => {
   const alice = 'alice', bob = 'bob', charlie = 'charlie', dave = 'dave';
 
   it('settles single debtor and single creditor', () => {
-    const balances = [
+    const balances: DetailedBalance[] = [
       { userId: alice, net: 100, owesTo: {}, owedBy: { [bob]: 100 } },
       { userId: bob, net: -100, owesTo: { [alice]: 100 }, owedBy: {} },
     ];
     const result = generateMinimalTransfers(balances, 'USD');
     expect(result.transfers).toHaveLength(1);
-    expect(result.transfers[0].fromUserId).toBe(bob);
-    expect(result.transfers[0].toUserId).toBe(alice);
-    expect(result.transfers[0].amount).toBe(100);
+    expect(result.transfers[0]!.fromUserId).toBe(bob);
+    expect(result.transfers[0]!.toUserId).toBe(alice);
+    expect(result.transfers[0]!.amount).toBe(100);
   });
 
   it('minimizes number of transfers for complex debts', () => {
-    const balances = [
+    const balances: DetailedBalance[] = [
       { userId: alice, net: 150, owesTo: {}, owedBy: { [bob]: 80, [charlie]: 70 } },
       { userId: bob, net: -80, owesTo: { [alice]: 80 }, owedBy: {} },
       { userId: charlie, net: -70, owesTo: { [alice]: 70 }, owedBy: {} },
@@ -744,7 +746,7 @@ describe('Scenario: Minimal transfers algorithm', () => {
   });
 
   it('handles complex multi-person debts', () => {
-    const balances = [
+    const balances: DetailedBalance[] = [
       { userId: alice, net: 200, owesTo: {}, owedBy: { [bob]: 120, [charlie]: 80 } },
       { userId: bob, net: -120, owesTo: { [alice]: 120 }, owedBy: {} },
       { userId: charlie, net: 50, owesTo: {}, owedBy: { [dave]: 50 } },
@@ -815,13 +817,13 @@ describe('Scenario: Edge cases and error states', () => {
     expect(balances.every(b => b.net === 0)).toBe(true);
   });
 
-  it('handles zero-amount expense', () => {
+    it('handles zero-amount expense', () => {
     const expense = makeExpense({
       id: 'exp-zero', amount: 0, paidBy: alice,
       splits: [{ memberId: alice, ratio: 1, isPaid: false }],
     });
     const balances = computeNetBalances([expense], [], [alice]);
-    expect(balances[0].net).toBe(0);
+    expect(balances[0]!.net).toBe(0);
   });
 
   it('single user group has zero balances', () => {
@@ -830,7 +832,7 @@ describe('Scenario: Edge cases and error states', () => {
       splits: [{ memberId: alice, ratio: 1, isPaid: false }],
     });
     const balances = computeNetBalances([expense], [], [alice]);
-    expect(balances[0].net).toBe(0);
+    expect(balances[0]!.net).toBe(0);
   });
 
   it('getSplitAmount computes correctly for ratio mode', () => {
@@ -838,7 +840,7 @@ describe('Scenario: Edge cases and error states', () => {
       id: 'exp-ratio', amount: 200, splitMode: SplitMode.RATIO,
       splits: [{ memberId: bob, ratio: 0.3, isPaid: false }],
     });
-    const amount = getSplitAmount(expense, expense.splits[0]);
+    const amount = getSplitAmount(expense, expense.splits[0]!);
     expect(amount).toBe(60);
   });
 
@@ -847,7 +849,7 @@ describe('Scenario: Edge cases and error states', () => {
       id: 'exp-fixed', amount: 200, splitMode: SplitMode.FIXED,
       splits: [{ memberId: bob, ratio: 0.5, fixedAmount: 80, isPaid: false }],
     });
-    const amount = getSplitAmount(expense, expense.splits[0]);
+    const amount = getSplitAmount(expense, expense.splits[0]!);
     expect(amount).toBe(80);
   });
 
@@ -860,7 +862,7 @@ describe('Scenario: Edge cases and error states', () => {
   });
 
   it('getTotalOwed and getTotalDebt work correctly', () => {
-    const balances = [{ userId: alice, net: 50, owesTo: {}, owedBy: { [bob]: 50 } }];
+    const balances: DetailedBalance[] = [{ userId: alice, net: 50, owesTo: {}, owedBy: { [bob]: 50 } }];
     expect(getTotalOwed(balances, alice)).toBe(50);
     expect(getTotalDebt(balances, alice)).toBe(0);
   });
