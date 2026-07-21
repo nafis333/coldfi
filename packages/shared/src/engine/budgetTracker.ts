@@ -14,21 +14,13 @@ export interface BudgetStatusResult {
   projectedStatus: BudgetStatus;
 }
 
-export interface BudgetAlert {
-  budgetId: string;
-  categoryId: string;
-  type: 'threshold_exceeded' | 'budget_exceeded' | 'projection_warning';
-  message: string;
-  percentUsed: number;
-  threshold: number;
-}
-
 export function computeBudgetStatus(
   budget: PersonalBudget,
   expenses: PersonalExpense[]
 ): BudgetStatusResult {
   const periodExpenses = expenses.filter((e) => {
     if (e.categoryId !== budget.categoryId) return false;
+    if (e.currency !== budget.currency) return false;
     const expenseDate = new Date(e.date);
     const periodStart = new Date(budget.periodStart);
     const periodEnd = new Date(budget.periodEnd);
@@ -78,58 +70,6 @@ export function computeBudgetStatus(
   };
 }
 
-export function checkBudgetAlerts(
-  budgets: PersonalBudget[],
-  expenses: PersonalExpense[]
-): BudgetAlert[] {
-  const alerts: BudgetAlert[] = [];
-
-  for (const budget of budgets) {
-    const statusResult = computeBudgetStatus(budget, expenses);
-
-    if (
-      statusResult.percentUsed >= budget.alertThreshold &&
-      statusResult.percentUsed < 100
-    ) {
-      alerts.push({
-        budgetId: budget.id,
-        categoryId: budget.categoryId,
-        type: 'threshold_exceeded',
-        message: `Budget is ${statusResult.percentUsed.toFixed(1)}% used (threshold: ${budget.alertThreshold}%)`,
-        percentUsed: statusResult.percentUsed,
-        threshold: budget.alertThreshold,
-      });
-    }
-
-    if (statusResult.percentUsed >= 100) {
-      alerts.push({
-        budgetId: budget.id,
-        categoryId: budget.categoryId,
-        type: 'budget_exceeded',
-        message: `Budget exceeded! Spent ${statusResult.spent} of ${budget.amount}`,
-        percentUsed: statusResult.percentUsed,
-        threshold: 100,
-      });
-    }
-
-    if (
-      statusResult.projectedPercent > 100 &&
-      statusResult.percentUsed < 100
-    ) {
-      alerts.push({
-        budgetId: budget.id,
-        categoryId: budget.categoryId,
-        type: 'projection_warning',
-        message: `At current rate, projected spending is ${statusResult.projectedTotal.toFixed(2)} (${statusResult.projectedPercent.toFixed(1)}% of budget)`,
-        percentUsed: statusResult.projectedPercent,
-        threshold: 100,
-      });
-    }
-  }
-
-  return alerts;
-}
-
 export function computeBudgetSummary(
   budgets: PersonalBudget[],
   expenses: PersonalExpense[]
@@ -170,6 +110,6 @@ export function computeBudgetSummary(
 
 function determineStatus(percentUsed: number): BudgetStatus {
   if (percentUsed >= 100) return BudgetStatus.RED;
-  if (percentUsed >= 75) return BudgetStatus.YELLOW;
+  if (percentUsed >= 80) return BudgetStatus.YELLOW;
   return BudgetStatus.GREEN;
 }

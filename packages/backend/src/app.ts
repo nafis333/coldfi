@@ -11,21 +11,34 @@ import { captureError } from './services/errorCapture';
 import { requestMetrics } from './middleware/requestMetrics';
 import { ipBlocker } from './middleware/ipBlocker';
 import websocketPlugin from './plugins/websocket';
+import { setupAdminWebSocket } from './plugins/admin-websocket';
 import { healthRoutes } from './routes/health';
 import { healthEnhancedRoutes } from './routes/health-enhanced';
 import { authRoutes } from './routes/auth';
-import { personalRoutes, recoveryRoutes } from './routes/personal';
+import { personalRoutes } from './routes/personal';
 import { groupRoutes } from './routes/group';
 import { notificationRoutes } from './routes/notifications';
 import { adminRoutes } from './routes/admin';
+import { syncRoutes } from './routes/sync';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: config.NODE_ENV !== 'test',
     ajv: { customOptions: { coerceTypes: 'array' } },
+    bodyLimit: 1048576,
+    trustProxy: true,
   });
 
-  await app.register(helmet, { contentSecurityPolicy: false });
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    strictTransportSecurity: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    xFrameOptions: { action: 'deny' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  });
 
   await app.register(cors, {
     origin: config.CORS_ORIGIN.split(','),
@@ -52,6 +65,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       fileSize: config.MAX_RECEIPT_SIZE_MB * 1024 * 1024,
       files: 5,
     },
+    throwFileSizeLimit: false,
   });
 
   await app.register(jwt, {
@@ -114,12 +128,12 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     return reply.status(error.statusCode ?? 500).send({
       error: 'ERR_INTERNAL',
-      message: error.message,
+      message: config.NODE_ENV === 'production' ? 'An internal error occurred' : error.message,
     });
   });
 
   app.get('/', async (_request, reply) => {
-    return reply.send({ status: 'ok', app: 'coldfi', version: '1.0.0' });
+    return reply.send({ status: 'ok' });
   });
 
   app.setNotFoundHandler((request, reply) => {
@@ -131,13 +145,19 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(websocketPlugin);
 
+  try {
+    await setupAdminWebSocket(app);
+  } catch (err) {
+    app.log.warn({ err }, 'Admin WebSocket setup skipped');
+  }
+
   await app.register(healthRoutes);
   await app.register(healthEnhancedRoutes);
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(personalRoutes, { prefix: '/api/personal' });
-  await app.register(recoveryRoutes, { prefix: '/api/personal' });
   await app.register(groupRoutes, { prefix: '/api/group' });
   await app.register(notificationRoutes, { prefix: '/api/notifications' });
+  await app.register(syncRoutes, { prefix: '/api' });
   await app.register(adminRoutes, { prefix: '/api' });
 
   return app;

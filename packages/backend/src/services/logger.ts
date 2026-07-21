@@ -27,6 +27,7 @@ class Logger {
   private readonly MAX_BUFFER_SIZE = 1000;
 
   init() {
+    if (this.flushInterval) return;
     this.flushInterval = setInterval(() => this.flush(), 5000);
   }
 
@@ -133,7 +134,6 @@ class Logger {
       'password_hash',
       'auth_key_hash',
       'two_factor_secret',
-      'recovery_key_enc',
     ];
     const sanitized = { ...obj };
     for (const key of Object.keys(sanitized)) {

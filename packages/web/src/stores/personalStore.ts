@@ -1,126 +1,37 @@
 import { create } from 'zustand';
 import { encryptData, decryptData } from '../lib/crypto';
+import { apiClient } from '../lib/apiClient';
 import { useAuthStore } from './authStore';
-import { computeBudgetStatus, BudgetStatus, BudgetType, PaymentMethod, type BudgetStatusResult } from '@coldfi/shared';
+import { migratePersonalBlob } from '@coldfi/shared';
 import { onLogout } from '../lib/resetStores';
+import {
+  PersonalBlob,
+  Expense,
+  Budget,
+  Category,
+  IncomeLog,
+  SavingsTarget,
+  computeBudgetStatuses,
+} from '../lib/personalSync';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-
-interface Category {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-}
-
-interface Expense {
-  id: string;
-  amount: number;
-  currency: string;
-  categoryId: string;
-  date: string;
-  payee: string | null;
-  note: string | null;
-  paymentMethod: string | null;
-  receiptUri: string | null;
-  isRecurring: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Budget {
-  id: string;
-  categoryId: string;
-  type: string;
-  amount: number;
-  currency: string;
-  periodStart: string;
-  periodEnd: string;
-  alertThreshold: number;
-  rollover: boolean;
-}
-
-export type Frequency = 'weekly' | 'monthly' | 'yearly';
-
-export interface RecurringBill {
-  id: string;
-  name: string;
-  amount: number;
-  frequency: Frequency;
-  category: string;
-  nextDueDate: string;
-  isActive: boolean;
-}
-
-interface PersonalBlob {
-  version?: number;
-  updatedAt?: string;
-  expenses: Expense[];
-  budgets: Budget[];
-  categories: Category[];
-  recurringBills?: RecurringBill[];
-  incomeLogs?: Array<{ source: string; amount: number; currency: string; date: string }>;
-  savingsTargets?: Array<{ name: string; targetAmount: number; currentAmount: number; currency: string }>;
-}
+export type { RecurringBill, Frequency } from '../lib/personalSync';
 
 interface PersonalState {
   personalBlob: PersonalBlob | null;
   expenses: Expense[];
   budgets: Budget[];
   categories: Category[];
-  budgetStatuses: BudgetStatusResult[];
+  budgetStatuses: any[];
+  incomeLogs: IncomeLog[];
+  savingsTargets: SavingsTarget[];
   isLoading: boolean;
   error: string | null;
 
   fetchPersonalBlob: () => Promise<void>;
   savePersonalBlob: (blob: PersonalBlob) => Promise<void>;
-  addExpense: (expense: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
-  updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
-  deleteExpense: (id: string) => Promise<void>;
-  addBudget: (budget: Omit<Budget, 'id'>) => Promise<void>;
-  updateBudget: (id: string, updates: Partial<Budget>) => Promise<void>;
-  deleteBudget: (id: string) => Promise<void>;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
   clearError: () => void;
-}
-
-function computeBudgetStatuses(
-  budgets: Budget[],
-  expenses: Expense[]
-): BudgetStatusResult[] {
-  return budgets.map((b) =>
-    computeBudgetStatus(
-      {
-        id: b.id,
-        categoryId: b.categoryId,
-        type: b.type as BudgetType,
-        amount: b.amount,
-        currency: b.currency,
-        periodStart: b.periodStart,
-        periodEnd: b.periodEnd,
-        status: BudgetStatus.GREEN,
-        alertThreshold: b.alertThreshold,
-        createdAt: '',
-        updatedAt: '',
-      },
-      expenses.map((e) => ({
-        id: e.id,
-        amount: e.amount,
-        categoryId: e.categoryId,
-        date: e.date,
-        currency: e.currency,
-        description: e.note ?? '',
-        paymentMethod: (e.paymentMethod ?? 'other') as PaymentMethod,
-        isRecurring: e.isRecurring,
-        tags: [],
-        createdAt: e.createdAt,
-        updatedAt: e.updatedAt,
-      }))
-    )
-  );
-}
-
-function generateId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 export const usePersonalStore = create<PersonalState>((set, get) => ({
@@ -129,24 +40,27 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
   budgets: [],
   categories: [],
   budgetStatuses: [],
+  incomeLogs: [],
+  savingsTargets: [],
   isLoading: false,
   error: null,
 
   fetchPersonalBlob: async () => {
-    const { accessToken, pek } = useAuthStore.getState();
-    if (!accessToken || !pek) {
+    const { accessToken, pek, isGoogleUser } = useAuthStore.getState();
+    if (!accessToken || (!pek && !isGoogleUser)) {
       set({ error: 'Not authenticated' });
+      return;
+    }
+
+    if (!pek) {
+      set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] });
       return;
     }
 
     set({ isLoading: true, error: null });
 
     try {
-      const res = await fetch(`${API_BASE}/api/personal/sync`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const res = await apiClient('/api/personal/sync');
 
       if (res.status === 404) {
         set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [] });
@@ -165,16 +79,20 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
       }
 
       const decrypted = await decryptData(pek, data.encryptedBlob);
-      const blob: PersonalBlob = JSON.parse(decrypted);
+      let blob: PersonalBlob = JSON.parse(decrypted);
+      blob = migratePersonalBlob(blob as unknown as Record<string, unknown>) as unknown as PersonalBlob;
 
-      const budgetStatuses = computeBudgetStatuses(blob.budgets, blob.expenses);
+      const { statuses: budgetStatuses, updatedBudgets } = computeBudgetStatuses(blob.budgets, blob.expenses);
+      blob.budgets = updatedBudgets;
 
       set({
         personalBlob: blob,
         expenses: blob.expenses,
-        budgets: blob.budgets,
+        budgets: updatedBudgets,
         categories: blob.categories,
         budgetStatuses,
+        incomeLogs: blob.incomeLogs || [],
+        savingsTargets: blob.savingsTargets || [],
         isLoading: false,
       });
     } catch (error) {
@@ -186,128 +104,109 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
   },
 
   savePersonalBlob: async (blob: PersonalBlob) => {
-    const { accessToken, pek } = useAuthStore.getState();
-    if (!accessToken || !pek) {
+    const { accessToken, pek, isGoogleUser } = useAuthStore.getState();
+    if (!accessToken) {
       throw new Error('Not authenticated');
+    }
+    if (!pek) {
+      if (isGoogleUser) return;
+      throw new Error('No encryption key loaded');
     }
 
     const plaintext = JSON.stringify(blob);
     const encryptedBlob = await encryptData(pek, plaintext);
-    const vectorClock = Date.now();
 
-    const res = await fetch(`${API_BASE}/api/personal/sync`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        encryptedBlob,
-        vectorClock,
-      }),
-    });
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const vectorClock = Date.now();
 
-    if (!res.ok) {
+      const res = await apiClient('/api/personal/sync', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encryptedBlob, vectorClock }),
+      });
+
+      if (res.ok) {
+        const { statuses: budgetStatuses, updatedBudgets } = computeBudgetStatuses(blob.budgets, blob.expenses);
+
+        set({
+          personalBlob: { ...blob, budgets: updatedBudgets },
+          expenses: blob.expenses,
+          budgets: updatedBudgets,
+          categories: blob.categories,
+          budgetStatuses,
+          incomeLogs: blob.incomeLogs || [],
+          savingsTargets: blob.savingsTargets || [],
+        });
+        return;
+      }
+
+      if (res.status === 409 && attempt < 2) {
+        lastError = new Error('Data conflict. Retrying...');
+        continue;
+      }
+
       throw new Error(`Failed to save: ${res.status}`);
     }
 
-    const budgetStatuses = computeBudgetStatuses(blob.budgets, blob.expenses);
+    throw lastError || new Error('Failed to save personal data');
+  },
+
+  addCategory: async (category) => {
+    const { personalBlob } = get();
+    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
+
+    const { generateId } = await import('../lib/personalSync');
+    const newCategory: Category = {
+      ...category,
+      id: generateId(),
+    };
+
+    const updated: PersonalBlob = {
+      ...current,
+      categories: [...(current.categories || []), newCategory],
+    };
 
     set({
-      personalBlob: blob,
-      expenses: blob.expenses,
-      budgets: blob.budgets,
-      categories: blob.categories,
-      budgetStatuses,
+      personalBlob: updated,
+      categories: updated.categories,
     });
+
+    try {
+      const { pek } = useAuthStore.getState();
+      if (pek) {
+        await get().savePersonalBlob(updated);
+      }
+    } catch (err) {
+      set({ personalBlob: current as PersonalBlob, categories: current.categories || [] });
+      throw err;
+    }
   },
 
-  addExpense: async (expense) => {
+  deleteCategory: async (id: string) => {
     const { personalBlob } = get();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
+    if (!personalBlob) return;
 
-    const newExpense: Expense = {
-      ...expense,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    const updated: PersonalBlob = {
-      ...current,
-      expenses: [newExpense, ...current.expenses],
-    };
-
-    await get().savePersonalBlob(updated);
-  },
-
-  updateExpense: async (id, updates) => {
-    const { personalBlob } = get();
-    if (!personalBlob) throw new Error('No data loaded');
-
+    const previousBlob = personalBlob;
     const updated: PersonalBlob = {
       ...personalBlob,
-      expenses: personalBlob.expenses.map((e) =>
-        e.id === id ? { ...e, ...updates, updatedAt: new Date().toISOString() } : e
-      ),
+      categories: personalBlob.categories.filter((c) => c.id !== id),
     };
 
-    await get().savePersonalBlob(updated);
-  },
+    set({
+      personalBlob: updated,
+      categories: updated.categories,
+    });
 
-  deleteExpense: async (id) => {
-    const { personalBlob } = get();
-    if (!personalBlob) throw new Error('No data loaded');
-
-    const updated: PersonalBlob = {
-      ...personalBlob,
-      expenses: personalBlob.expenses.filter((e) => e.id !== id),
-    };
-
-    await get().savePersonalBlob(updated);
-  },
-
-  addBudget: async (budget) => {
-    const { personalBlob } = get();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
-
-    const newBudget: Budget = {
-      ...budget,
-      id: generateId(),
-    };
-
-    const updated: PersonalBlob = {
-      ...current,
-      budgets: [...(current.budgets || []), newBudget],
-    };
-
-    await get().savePersonalBlob(updated);
-  },
-
-  updateBudget: async (id, updates) => {
-    const { personalBlob } = get();
-    if (!personalBlob) throw new Error('No data loaded');
-
-    const updated: PersonalBlob = {
-      ...personalBlob,
-      budgets: personalBlob.budgets.map((b) =>
-        b.id === id ? { ...b, ...updates } : b
-      ),
-    };
-
-    await get().savePersonalBlob(updated);
-  },
-
-  deleteBudget: async (id) => {
-    const { personalBlob } = get();
-    if (!personalBlob) throw new Error('No data loaded');
-
-    const updated: PersonalBlob = {
-      ...personalBlob,
-      budgets: personalBlob.budgets.filter((b) => b.id !== id),
-    };
-
-    await get().savePersonalBlob(updated);
+    try {
+      const { pek } = useAuthStore.getState();
+      if (pek) {
+        await get().savePersonalBlob(updated);
+      }
+    } catch (err) {
+      set({ personalBlob: previousBlob, categories: previousBlob.categories });
+      throw err;
+    }
   },
 
   clearError: () => set({ error: null }),
@@ -320,6 +219,8 @@ onLogout(() => {
     budgets: [],
     categories: [],
     budgetStatuses: [],
+    incomeLogs: [],
+    savingsTargets: [],
     isLoading: false,
     error: null,
   });

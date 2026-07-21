@@ -23,9 +23,19 @@ vi.mock('../../config', () => ({
   config: {
     JWT_SECRET: 'test-secret-key-that-is-at-least-32-chars-long',
     JWT_ACCESS_EXPIRY: '15m',
+    JWT_REFRESH_EXPIRY: '7d',
     MAX_LOGIN_ATTEMPTS: 5,
     LOGIN_WINDOW_MINUTES: 15,
     PBKDF2_ITERATIONS: 100000,
+    SERVER_ENCRYPTION_KEY: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+  },
+  parseExpirySeconds: (expiry: string, fallback: number = 900) => {
+    const match = expiry.match(/^(\d+)([smhd])$/);
+    if (!match) return fallback;
+    const num = parseInt(match[1]!, 10);
+    const unit = match[2]!;
+    const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+    return num * (multipliers[unit] || fallback);
   },
 }));
 
@@ -34,12 +44,16 @@ import { setTempToken, getTempToken } from '../redis';
 import {
   registerUser,
   loginUser,
+} from '../authService';
+import {
   generateTokens,
   refreshAccessToken,
   logoutUser,
   logoutAllDevices,
+} from '../tokenService';
+import {
   changePassword,
-} from '../authService';
+} from '../passwordService';
 
 const mockQuery = query as ReturnType<typeof vi.fn>;
 const mockTransaction = transaction as ReturnType<typeof vi.fn>;
@@ -47,9 +61,10 @@ const mockSetTempToken = setTempToken as ReturnType<typeof vi.fn>;
 const mockGetTempToken = getTempToken as ReturnType<typeof vi.fn>;
 
 function mockTransactionImpl() {
+  const sharedMock = mockQuery as any;
   mockTransaction.mockImplementation(async (fn: any) => {
     const mockClient = {
-      query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+      query: vi.fn((...args: any[]) => sharedMock(...args)),
     };
     return fn(mockClient as any);
   });
@@ -70,6 +85,9 @@ describe('registerUser', () => {
       email: 'test@example.com',
       authKeyHash: 'a'.repeat(64),
       displayName: 'Test User',
+      personalSalt: 'a'.repeat(64),
+      encryptedPek: 'test-encrypted-pek',
+      rawPek: 'test-raw-pek',
     });
 
     expect(result).toHaveProperty('userId');
@@ -82,6 +100,9 @@ describe('registerUser', () => {
       registerUser({
         email: 'not-an-email',
         authKeyHash: 'a'.repeat(64),
+        personalSalt: 'a'.repeat(64),
+        encryptedPek: 'test',
+        rawPek: 'test',
       })
     ).rejects.toThrow('Invalid email format');
   });
@@ -91,6 +112,9 @@ describe('registerUser', () => {
       registerUser({
         email: 'test@example.com',
         authKeyHash: 'short',
+        personalSalt: 'a'.repeat(64),
+        encryptedPek: 'test',
+        rawPek: 'test',
       })
     ).rejects.toThrow('at least 32 characters');
   });
@@ -105,6 +129,9 @@ describe('registerUser', () => {
       registerUser({
         email: 'dupe@example.com',
         authKeyHash: 'a'.repeat(64),
+        personalSalt: 'a'.repeat(64),
+        encryptedPek: 'test',
+        rawPek: 'test',
       })
     ).rejects.toThrow('Email is already registered');
   });
@@ -290,7 +317,7 @@ describe('refreshAccessToken', () => {
       rowCount: 1,
     } as any);
 
-    await expect(refreshAccessToken(token)).rejects.toThrow('Refresh token reuse detected');
+    await expect(refreshAccessToken(token)).rejects.toThrow('Refresh token has been revoked');
   });
 
   it('should reject expired token', async () => {
@@ -356,9 +383,12 @@ describe('changePassword', () => {
       userId: 'user-1',
       oldAuthKeyHash: 'a'.repeat(64),
       newAuthKeyHash: 'b'.repeat(64),
+      personalSalt: 'a'.repeat(64),
+      encryptedPek: 'test-encrypted-pek',
     });
 
     expect(result.personalSalt).toHaveLength(64);
+    expect(result.encryptedPek).toBe('test-encrypted-pek');
   });
 
   it('should reject wrong old password', async () => {
@@ -372,6 +402,8 @@ describe('changePassword', () => {
         userId: 'user-1',
         oldAuthKeyHash: 'wrong-hash-that-is-long-enough-for-validation!!',
         newAuthKeyHash: 'b'.repeat(64),
+        personalSalt: 'a'.repeat(64),
+        encryptedPek: 'test',
       })
     ).rejects.toThrow('Current password is incorrect');
   });
@@ -382,6 +414,8 @@ describe('changePassword', () => {
         userId: 'user-1',
         oldAuthKeyHash: 'a'.repeat(64),
         newAuthKeyHash: 'short',
+        personalSalt: 'a'.repeat(64),
+        encryptedPek: 'test',
       })
     ).rejects.toThrow('at least 32 characters');
   });

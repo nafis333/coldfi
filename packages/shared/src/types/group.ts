@@ -32,6 +32,7 @@ export interface GroupExpense {
   splitMode: SplitMode;
   splits: ExpenseSplit[];
   itemizedItems?: ItemizedItem[];
+  displayId?: string;
   status: ExpenseStatus;
   receiptUrl?: string;
   isRecurring: boolean;
@@ -73,6 +74,7 @@ export interface GroupMemberProfile {
 export interface GroupSettings {
   groupId: string;
   name: string;
+  shortName?: string;
   defaultCurrency: string;
   defaultSplitMode: SplitMode;
   requireApprovalAbove: number;
@@ -107,4 +109,6 @@ export interface ItemizedItem {
   name: string;
   amount: number;
   assignedTo: string[];
+  splitMode?: 'equal' | 'exact' | 'percentage';
+  splitAmounts?: Record<string, number>;
 }

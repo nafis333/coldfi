@@ -1,10 +1,15 @@
 import { FastifyInstance } from 'fastify';
 import os from 'os';
-import { pool, getPoolStats, VERSION } from '../db/pool';
+import { getPoolStats, VERSION } from '../db/pool';
 import { getRedis } from '../services/redis';
-import { incrementRequestCount, getRequestCount, getErrorCount, getTotalDurationMs, getActiveConnections, getMetricsStartTime } from '../middleware/requestMetrics';
+import { pingDatabase, pingRedis } from '../services/healthService';
+import { getRequestCount, getErrorCount, getTotalDurationMs, getActiveConnections, getMetricsStartTime } from '../middleware/requestMetrics';
+import { requireAdmin } from '../middleware';
 
 export async function healthEnhancedRoutes(app: FastifyInstance): Promise<void> {
+  app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireAdmin);
+
   app.get('/health/enhanced', async (request, reply) => {
     const [database, redis] = await Promise.all([
       getDatabaseInfo(),
@@ -142,19 +147,14 @@ function getSystemInfo() {
       cores: os.cpus().length,
     },
     process: {
-      pid: process.pid,
       uptime: process.uptime(),
-      nodeVersion: process.version,
-      pid_memory_mb: Math.round(memUsage.rss / 1024 / 1024),
     },
   };
 }
 
 async function getDatabaseInfo() {
   try {
-    const start = Date.now();
-    await pool.query('SELECT 1');
-    const latencyMs = Date.now() - start;
+    const { latencyMs } = await pingDatabase();
     const poolStats = getPoolStats();
 
     return {
@@ -162,22 +162,19 @@ async function getDatabaseInfo() {
       latencyMs,
       pool: poolStats,
     };
-  } catch (err) {
+  } catch {
     return {
       status: 'disconnected' as const,
       latencyMs: 0,
       pool: { total: 0, idle: 0, active: 0, waiting: 0, maxSize: 0 },
-      error: (err as Error).message,
     };
   }
 }
 
 async function getRedisInfo() {
   try {
+    const { latencyMs } = await pingRedis();
     const redis = getRedis();
-    const start = Date.now();
-    const pong = await redis.ping();
-    const latencyMs = Date.now() - start;
 
     let memory: string | undefined;
     let connectedClients: number | undefined;
@@ -194,16 +191,15 @@ async function getRedisInfo() {
     }
 
     return {
-      status: pong === 'PONG' ? 'connected' as const : 'disconnected' as const,
+      status: 'connected' as const,
       latencyMs,
       memory,
       connectedClients,
     };
-  } catch (err) {
+  } catch {
     return {
       status: 'disconnected' as const,
       latencyMs: 0,
-      error: (err as Error).message,
     };
   }
 }

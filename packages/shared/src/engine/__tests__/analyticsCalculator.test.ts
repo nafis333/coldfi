@@ -5,7 +5,6 @@ import {
   computeTopExpenses,
 } from '../analyticsCalculator';
 import type { PersonalExpense, PersonalCategory } from '../../types/personal';
-import { PaymentMethod } from '../../types/enums';
 
 const makeExpense = (overrides: Partial<PersonalExpense> = {}): PersonalExpense => ({
   id: 'exp-1',
@@ -14,7 +13,7 @@ const makeExpense = (overrides: Partial<PersonalExpense> = {}): PersonalExpense 
   categoryId: 'cat-food',
   description: 'Groceries',
   date: '2024-06-15',
-  paymentMethod: PaymentMethod.CARD,
+  paymentMethod: 'card',
   isRecurring: false,
   tags: [],
   createdAt: '2024-06-15T10:00:00Z',

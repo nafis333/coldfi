@@ -1,45 +1,77 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePersonalStore } from '../stores/personalStore';
+import { useGroupStore } from '../stores/groupStore';
+import { useAuthStore } from '../stores/authStore';
+import { formatCurrency } from '@coldfi/shared';
+import { downloadReceiptPDF, type ReceiptData } from '../lib/receiptPDF';
+import ExpenseListSkeleton from './expenses/ExpenseListSkeleton';
+import ExpenseFilterPanel from './expenses/ExpenseFilterPanel';
+import ExpenseDesktopTable from './expenses/ExpenseDesktopTable';
+import ExpenseMobileCards from './expenses/ExpenseMobileCards';
+import ExpensePagination from './expenses/ExpensePagination';
+import GroupExpenseTab from './expenses/GroupExpenseTab';
 
 const PAGE_SIZE = 20;
 
-const PAYMENT_METHODS = [
-  { id: 'cash', label: 'Cash' },
-  { id: 'credit_card', label: 'Credit Card' },
-  { id: 'debit_card', label: 'Debit Card' },
-  { id: 'bank_transfer', label: 'Bank Transfer' },
-  { id: 'e_wallet', label: 'E-Wallet' },
-  { id: 'other', label: 'Other' },
-];
+type Tab = 'personal' | 'groups';
 
 interface Filters {
   search: string;
   categoryId: string | null;
-  paymentMethod: string | null;
   startDate: string;
   endDate: string;
   minAmount: string;
   maxAmount: string;
 }
 
+const EMPTY_FILTERS: Filters = {
+  search: '',
+  categoryId: null,
+  startDate: '',
+  endDate: '',
+  minAmount: '',
+  maxAmount: '',
+};
+
 export default function ExpenseListPage() {
   const navigate = useNavigate();
-  const { expenses, categories, fetchPersonalBlob, isLoading } = usePersonalStore();
+  const { expenses, categories, fetchPersonalBlob, isLoading: personalLoading } = usePersonalStore();
+  const { groups, currentGroup, fetchGroups, isLoading: groupsLoading } = useGroupStore();
+  const currentUserEmail = useAuthStore((s) => s.email || '');
+  const defaultCurrency = useAuthStore((s) => s.defaultCurrency || 'BDT');
+
+  const [tab, setTab] = useState<Tab>('personal');
+
+  function handleDownloadPersonalReceipt(expense: { id: string; amount: number; categoryId: string; date: string; payee: string | null; note: string | null }) {
+    const cat = categoryMap[expense.categoryId];
+    const receiptData: ReceiptData = {
+      type: 'personal',
+      receiptNumber: expense.id.slice(0, 8).toUpperCase(),
+      date: expense.date,
+      description: expense.payee || cat?.name || 'Expense',
+      category: cat?.name || expense.categoryId,
+      currency: defaultCurrency,
+      paidBy: currentUserEmail,
+      paidByDisplay: 'You',
+      totalAmount: expense.amount,
+    };
+    downloadReceiptPDF(receiptData);
+  }
+
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<Filters>({
-    search: '',
-    categoryId: null,
-    paymentMethod: null,
-    startDate: '',
-    endDate: '',
-    minAmount: '',
-    maxAmount: '',
-  });
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS });
 
   useEffect(() => {
     fetchPersonalBlob();
   }, [fetchPersonalBlob]);
+
+  useEffect(() => {
+    if (tab === 'groups' && groups.length === 0) {
+      fetchGroups();
+    }
+  }, [tab, groups.length, fetchGroups]);
 
   const categoryMap = useMemo(() => {
     const map: Record<string, { name: string; icon: string; color: string }> = {};
@@ -48,35 +80,34 @@ export default function ExpenseListPage() {
   }, [categories]);
 
   const filtered = useMemo(() => {
-    return expenses.filter((e) => {
-      if (filters.search) {
-        const q = filters.search.toLowerCase();
-        const matchPayee = e.payee?.toLowerCase().includes(q) ?? false;
-        const matchNote = e.note?.toLowerCase().includes(q) ?? false;
-        if (!matchPayee && !matchNote) return false;
-      }
-      if (filters.categoryId && e.categoryId !== filters.categoryId) return false;
-      if (filters.paymentMethod && e.paymentMethod !== filters.paymentMethod) return false;
-      if (filters.startDate && e.date < filters.startDate) return false;
-      if (filters.endDate && e.date > filters.endDate) return false;
-      if (filters.minAmount && e.amount < parseFloat(filters.minAmount)) return false;
-      if (filters.maxAmount && e.amount > parseFloat(filters.maxAmount)) return false;
-      return true;
-    }).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-  }, [expenses, filters]);
+    if (tab === 'groups') return [];
+    return expenses
+      .filter((e) => {
+        if (filters.search) {
+          const q = filters.search.toLowerCase();
+          const matchPayee = e.payee?.toLowerCase().includes(q) ?? false;
+          const matchNote = e.note?.toLowerCase().includes(q) ?? false;
+          if (!matchPayee && !matchNote) return false;
+        }
+        if (filters.categoryId && e.categoryId !== filters.categoryId) return false;
+        if (filters.startDate && e.date.slice(0, 10) < filters.startDate) return false;
+        if (filters.endDate && e.date.slice(0, 10) > filters.endDate) return false;
+        if (filters.minAmount) { const min = parseFloat(filters.minAmount); if (!isNaN(min) && e.amount < min) return false; }
+        if (filters.maxAmount) { const max = parseFloat(filters.maxAmount); if (!isNaN(max) && e.amount > max) return false; }
+        return true;
+      })
+      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  }, [expenses, filters, tab]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  const totalAmount = useMemo(
-    () => filtered.reduce((s, e) => s + e.amount, 0),
-    [filtered]
-  );
+  const personalTotal = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
+  const groupBalanceTotal = useMemo(() => groups.reduce((s, g) => s + Math.abs(g.yourBalance), 0), [groups]);
 
   const activeFilterCount = [
     filters.categoryId,
-    filters.paymentMethod,
     filters.startDate,
     filters.endDate,
     filters.minAmount,
@@ -84,282 +115,92 @@ export default function ExpenseListPage() {
   ].filter(Boolean).length;
 
   function clearFilters() {
-    setFilters({
-      search: '',
-      categoryId: null,
-      paymentMethod: null,
-      startDate: '',
-      endDate: '',
-      minAmount: '',
-      maxAmount: '',
-    });
+    setFilters({ ...EMPTY_FILTERS });
     setPage(1);
   }
 
-  if (isLoading && expenses.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-      </div>
-    );
+  function updateFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
+    setFilters((p) => ({ ...p, [key]: value }));
+    setPage(1);
   }
 
+  if (personalLoading && expenses.length === 0 && tab === 'personal') return <ExpenseListSkeleton />;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-neutral-900">Expenses</h1>
-        <Link to="/expenses/new" className="btn-primary">
-          <span>+</span>
-          Add Expense
-        </Link>
-      </div>
-
-      {/* Search + Filters */}
-      <div className="card p-4">
-        <div className="flex flex-wrap gap-3">
-          <div className="flex-1 min-w-[200px]">
-            <input
-              type="text"
-              placeholder="Search by payee or note..."
-              value={filters.search}
-              onChange={(e) => {
-                setFilters((p) => ({ ...p, search: e.target.value }));
-                setPage(1);
-              }}
-              className="input-field"
-            />
-          </div>
-
-          <select
-            value={filters.categoryId || ''}
-            onChange={(e) => {
-              setFilters((p) => ({ ...p, categoryId: e.target.value || null }));
-              setPage(1);
-            }}
-            className="input-field w-auto min-w-[140px]"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.icon} {c.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.paymentMethod || ''}
-            onChange={(e) => {
-              setFilters((p) => ({ ...p, paymentMethod: e.target.value || null }));
-              setPage(1);
-            }}
-            className="input-field w-auto min-w-[140px]"
-          >
-            <option value="">All Methods</option>
-            {PAYMENT_METHODS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="date"
-            value={filters.startDate}
-            onChange={(e) => {
-              setFilters((p) => ({ ...p, startDate: e.target.value }));
-              setPage(1);
-            }}
-            className="input-field w-auto"
-            title="Start date"
-          />
-
-          <input
-            type="date"
-            value={filters.endDate}
-            onChange={(e) => {
-              setFilters((p) => ({ ...p, endDate: e.target.value }));
-              setPage(1);
-            }}
-            className="input-field w-auto"
-            title="End date"
-          />
-
-          <input
-            type="number"
-            placeholder="Min $"
-            value={filters.minAmount}
-            onChange={(e) => {
-              setFilters((p) => ({ ...p, minAmount: e.target.value }));
-              setPage(1);
-            }}
-            className="input-field w-24"
-          />
-
-          <input
-            type="number"
-            placeholder="Max $"
-            value={filters.maxAmount}
-            onChange={(e) => {
-              setFilters((p) => ({ ...p, maxAmount: e.target.value }));
-              setPage(1);
-            }}
-            className="input-field w-24"
-          />
-        </div>
-
-        <div className="mt-3 flex items-center justify-between">
-          <p className="text-sm text-neutral-500">
-            {filtered.length} expense{filtered.length !== 1 ? 's' : ''}
-            {filtered.length > 0 && (
-              <span className="ml-2 font-medium text-neutral-700">
-                &middot; Total: ${totalAmount.toFixed(2)}
-              </span>
-            )}
+    <div className="page-container">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white">Expenses</h1>
+          <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+            {tab === 'personal'
+              ? `${expenses.length} personal transactions · ${formatCurrency(personalTotal, defaultCurrency)} total`
+              : `${groups.length} groups · ${formatCurrency(groupBalanceTotal, defaultCurrency)} total balance`
+            }
           </p>
-          {activeFilterCount > 0 && (
-            <button onClick={clearFilters} className="text-sm text-primary-600 hover:text-primary-700 font-medium">
-              Clear filters ({activeFilterCount})
-            </button>
-          )}
         </div>
-      </div>
-
-      {/* Desktop Table */}
-      <div className="card overflow-hidden hidden md:block">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">
-              <th className="px-5 py-3">Date</th>
-              <th className="px-5 py-3">Category</th>
-              <th className="px-5 py-3">Payee</th>
-              <th className="px-5 py-3">Note</th>
-              <th className="px-5 py-3">Method</th>
-              <th className="px-5 py-3 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100">
-            {paged.map((expense) => {
-              const cat = categoryMap[expense.categoryId];
-              return (
-                <tr
-                  key={expense.id}
-                  onClick={() => navigate(`/expenses/${expense.id}/edit`)}
-                  className="cursor-pointer hover:bg-neutral-50 transition-colors"
-                >
-                  <td className="whitespace-nowrap px-5 py-3 text-sm text-neutral-600">
-                    {new Date(expense.date).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="inline-flex items-center gap-1.5 text-sm">
-                      <span>{cat?.icon || 'X'}</span>
-                      <span className="text-neutral-700">{cat?.name || expense.categoryId}</span>
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-sm text-neutral-700">
-                    {expense.payee || '-'}
-                  </td>
-                  <td className="max-w-[200px] truncate px-5 py-3 text-sm text-neutral-500">
-                    {expense.note || '-'}
-                  </td>
-                  <td className="px-5 py-3 text-sm text-neutral-500">
-                    {expense.paymentMethod || '-'}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-sm font-semibold text-danger-600">
-                    -${expense.amount.toFixed(2)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {paged.length === 0 && (
-          <div className="px-5 py-12 text-center">
-            <p className="text-sm text-neutral-500">No expenses found</p>
-            {activeFilterCount > 0 ? (
-              <p className="text-xs text-neutral-400 mt-1">Try adjusting your filters</p>
-            ) : (
-              <Link to="/expenses/new" className="btn-primary mt-3 inline-flex">
-                Add your first expense
-              </Link>
-            )}
-          </div>
+        {tab === 'personal' && (
+          <Link to="/expenses/new" className="btn-primary text-sm shrink-0">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            <span className="hidden sm:inline">Add Expense</span>
+          </Link>
         )}
       </div>
 
-      {/* Mobile Cards */}
-      <div className="space-y-2 md:hidden">
-        {paged.map((expense) => {
-          const cat = categoryMap[expense.categoryId];
-          return (
-            <div
-              key={expense.id}
-              onClick={() => navigate(`/expenses/${expense.id}/edit`)}
-              className="card cursor-pointer p-4 hover:bg-neutral-50 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-10 w-10 items-center justify-center rounded-lg"
-                    style={{ backgroundColor: (cat?.color || '#CBD5E1') + '20' }}
-                  >
-                    <span className="text-base">{cat?.icon || 'X'}</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-neutral-900">
-                      {expense.payee || cat?.name || 'Expense'}
-                    </p>
-                    <p className="text-xs text-neutral-500">
-                      {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      {expense.paymentMethod && ` · ${expense.paymentMethod}`}
-                    </p>
-                  </div>
-                </div>
-                <p className="text-sm font-semibold text-danger-600">
-                  -${expense.amount.toFixed(2)}
-                </p>
-              </div>
-              {expense.note && (
-                <p className="mt-2 text-xs text-neutral-400">{expense.note}</p>
-              )}
-            </div>
-          );
-        })}
-
-        {paged.length === 0 && (
-          <div className="card px-5 py-12 text-center">
-            <p className="text-sm text-neutral-500">No expenses found</p>
-          </div>
-        )}
+      <div className="mb-5 flex gap-1 p-0.5 rounded-xl bg-neutral-100 dark:bg-neutral-700/60 w-fit">
+        <button onClick={() => setTab('personal')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${tab === 'personal' ? 'bg-white dark:bg-neutral-600 text-primary-700 dark:text-primary-300 shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'}`}>
+          Personal
+        </button>
+        <button onClick={() => setTab('groups')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${tab === 'groups' ? 'bg-white dark:bg-neutral-600 text-primary-700 dark:text-primary-300 shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'}`}>
+          Groups
+        </button>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-neutral-500">
-            Page {safePage} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage <= 1}
-              className="btn-secondary text-sm"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage >= totalPages}
-              className="btn-secondary text-sm"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+      {tab === 'personal' ? (
+        <>
+          <ExpenseFilterPanel
+            showFilters={showFilters}
+            filters={filters}
+            categories={categories}
+            activeFilterCount={activeFilterCount}
+            onToggleFilters={() => setShowFilters(!showFilters)}
+            onUpdateFilter={updateFilter}
+            onClearFilters={clearFilters}
+          />
+
+          <ExpenseDesktopTable
+            paged={paged}
+            categoryMap={categoryMap}
+            defaultCurrency={defaultCurrency}
+            activeFilterCount={activeFilterCount}
+            onNavigate={(path) => navigate(path)}
+            onDownloadReceipt={handleDownloadPersonalReceipt}
+          />
+
+          <ExpenseMobileCards
+            paged={paged}
+            categoryMap={categoryMap}
+            defaultCurrency={defaultCurrency}
+            activeFilterCount={activeFilterCount}
+            onNavigate={(path) => navigate(path)}
+            onDownloadReceipt={handleDownloadPersonalReceipt}
+          />
+
+          <ExpensePagination
+            safePage={safePage}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        </>
+      ) : (
+        <GroupExpenseTab
+          groups={groups}
+          groupsLoading={groupsLoading}
+          currentGroup={currentGroup}
+          defaultCurrency={defaultCurrency}
+          onNavigate={(path) => navigate(path)}
+        />
       )}
     </div>
   );

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useAdminStore } from '../../stores/adminStore';
+import { useAdminConfigStore } from '../../stores/adminConfigStore';
 
 export default function AdminAuditLogPage() {
-  const { auditLog, fetchAuditLog } = useAdminStore();
+  const { auditLog, fetchAuditLog } = useAdminConfigStore();
   const [actionFilter, setActionFilter] = useState('');
   const [page, setPage] = useState(1);
 
@@ -49,7 +49,7 @@ export default function AdminAuditLogPage() {
               <tbody>
                 {auditLog.logs?.map((log: any) => (
                   <tr key={log.id} className="border-b border-neutral-100">
-                    <td className="p-3 text-xs text-neutral-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                    <td className="p-3 text-xs text-neutral-500 whitespace-nowrap">{new Date(log.created_at || log.createdAt).toLocaleString()}</td>
                     <td className="p-3">
                       <span className="font-mono text-xs bg-neutral-100 px-1.5 py-0.5 rounded">{log.action}</span>
                     </td>

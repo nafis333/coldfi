@@ -1,27 +1,111 @@
 import { create } from 'zustand';
 import { usePersonalStore, type RecurringBill, type Frequency } from './personalStore';
+import { useAuthStore } from './authStore';
 import { onLogout } from '../lib/resetStores';
+
+export type BillStatus = 'paid' | 'overdue' | 'due_soon' | 'upcoming' | 'paused' | 'due_today';
 
 interface RecurringState {
   recurringBills: RecurringBill[];
   isLoading: boolean;
   error: string | null;
+  generatedCount: number;
 
   fetchRecurringBills: () => Promise<void>;
   createRecurringBill: (data: Omit<RecurringBill, 'id' | 'isActive'>) => Promise<void>;
   updateRecurringBill: (id: string, updates: Partial<RecurringBill>) => Promise<void>;
   toggleRecurringBill: (id: string, isActive: boolean) => Promise<void>;
+  processDueBills: () => Promise<string[]>;
+  markAsPaid: (id: string) => Promise<void>;
+  undoMarkAsPaid: (id: string) => Promise<void>;
+  clearGeneratedCount: () => void;
   clearError: () => void;
+}
+
+function toLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function todayLocal(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function dateOnlyISO(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export function computeBillStatus(bill: RecurringBill): BillStatus {
+  if (!bill.isActive) return 'paused';
+
+  const today = todayLocal();
+  const dueDate = toLocalDate(bill.nextDueDate);
+  const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (bill.lastPaidDate) {
+    const paidDate = toLocalDate(bill.lastPaidDate);
+    const prevDueDate = previousDueDate(bill.nextDueDate, bill.frequency);
+    if (paidDate >= prevDueDate) return 'paid';
+  }
+
+  if (diffDays < 0) return 'overdue';
+  if (diffDays === 0) return 'due_today';
+  if (diffDays <= 7) return 'due_soon';
+  return 'upcoming';
+}
+
+export function getDaysUntilDue(nextDueDate: string): number {
+  const today = todayLocal();
+  const due = toLocalDate(nextDueDate);
+  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function previousDueDate(current: string, frequency: Frequency): Date {
+  const d = toLocalDate(current);
+  switch (frequency) {
+    case 'weekly':
+      d.setDate(d.getDate() - 7);
+      break;
+    case 'monthly':
+      d.setMonth(d.getMonth() - 1);
+      break;
+    case 'yearly':
+      d.setFullYear(d.getFullYear() - 1);
+      break;
+  }
+  return d;
 }
 
 function generateId(): string {
   return `rb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function computeNextDueDate(current: string, frequency: Frequency): string {
+  const d = toLocalDate(current);
+  const origDate = d.getDate();
+  switch (frequency) {
+    case 'weekly':
+      d.setDate(d.getDate() + 7);
+      break;
+    case 'monthly':
+      d.setMonth(d.getMonth() + 1);
+      if (d.getDate() !== origDate) {
+        d.setDate(0);
+      }
+      break;
+    case 'yearly':
+      d.setFullYear(d.getFullYear() + 1);
+      break;
+  }
+  return dateOnlyISO(d);
+}
+
 export const useRecurringStore = create<RecurringState>((set) => ({
   recurringBills: [],
   isLoading: false,
   error: null,
+  generatedCount: 0,
 
   fetchRecurringBills: async () => {
     set({ isLoading: true, error: null });
@@ -57,7 +141,10 @@ export const useRecurringStore = create<RecurringState>((set) => ({
       }
 
       const state = usePersonalStore.getState();
-      const currentBlob = state.personalBlob!;
+      const currentBlob = state.personalBlob;
+      if (!currentBlob) {
+        throw new Error('Personal data not available');
+      }
 
       const newBill: RecurringBill = {
         ...data,
@@ -106,6 +193,8 @@ export const useRecurringStore = create<RecurringState>((set) => ({
   },
 
   toggleRecurringBill: async (id, isActive) => {
+    set({ error: null });
+
     try {
       const state = usePersonalStore.getState();
       const blob = state.personalBlob;
@@ -126,6 +215,154 @@ export const useRecurringStore = create<RecurringState>((set) => ({
     }
   },
 
+  markAsPaid: async (id) => {
+    set({ error: null });
+
+    try {
+      const state = usePersonalStore.getState();
+      const blob = state.personalBlob;
+      if (!blob) return;
+
+      const today = dateOnlyISO(new Date());
+      const updatedBills = (blob.recurringBills ?? []).map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              lastPaidDate: today,
+              previousNextDueDate: b.nextDueDate,
+              nextDueDate: computeNextDueDate(b.nextDueDate, b.frequency),
+            }
+          : b
+      );
+
+      const updatedBlob = { ...blob, recurringBills: updatedBills };
+      await state.savePersonalBlob(updatedBlob);
+      set({ recurringBills: updatedBills });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to mark bill as paid',
+      });
+      throw error;
+    }
+  },
+
+  undoMarkAsPaid: async (id) => {
+    set({ error: null });
+
+    try {
+      const state = usePersonalStore.getState();
+      const blob = state.personalBlob;
+      if (!blob) return;
+
+      const updatedBills = (blob.recurringBills ?? []).map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              lastPaidDate: undefined,
+              nextDueDate: b.previousNextDueDate || b.nextDueDate,
+              previousNextDueDate: undefined,
+            }
+          : b
+      );
+
+      const updatedBlob = { ...blob, recurringBills: updatedBills };
+      await state.savePersonalBlob(updatedBlob);
+      set({ recurringBills: updatedBills });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to undo mark as paid',
+      });
+      throw error;
+    }
+  },
+
+  processDueBills: async () => {
+    try {
+      const state = usePersonalStore.getState();
+      const blob = state.personalBlob;
+      if (!blob || !blob.recurringBills) return [];
+
+      const today = dateOnlyISO(new Date());
+      const generated: string[] = [];
+      let billsChanged = false;
+
+      const updatedBills: RecurringBill[] = [];
+      const newExpenses: Array<{
+        amount: number;
+        currency: string;
+        categoryId: string;
+        date: string;
+        payee: string | null;
+        note: string | null;
+        paymentMethod: string | null;
+        receiptUri: string | null;
+        isRecurring: boolean;
+      }> = [];
+      const categories = blob.categories ?? [];
+
+      for (const bill of blob.recurringBills) {
+      if (!bill.isActive || bill.nextDueDate > today) {
+        updatedBills.push(bill);
+        continue;
+      }
+
+      billsChanged = true;
+      const matchingCategory = categories.find(
+        (c) => c.name.toLowerCase() === bill.category.toLowerCase()
+      );
+
+      const defaultCurrency = useAuthStore.getState().defaultCurrency || 'BDT';
+
+      newExpenses.push({
+        amount: bill.amount,
+        currency: bill.currency || defaultCurrency,
+        categoryId: matchingCategory?.id ?? bill.category,
+        date: today,
+        payee: bill.name,
+        note: `Auto-generated from recurring bill`,
+        paymentMethod: null,
+        receiptUri: null,
+        isRecurring: true,
+      });
+
+      generated.push(bill.name);
+
+      updatedBills.push({
+        ...bill,
+        lastPaidDate: today,
+        previousNextDueDate: bill.nextDueDate,
+        nextDueDate: computeNextDueDate(bill.nextDueDate, bill.frequency),
+      });
+    }
+
+    if (billsChanged) {
+      const currentBlob = usePersonalStore.getState().personalBlob!;
+      const mergedExpenses = [...(currentBlob.expenses || []), ...newExpenses.map((e) => ({
+        ...e,
+        id: `exp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }))];
+
+      const updatedBlob = { ...currentBlob, expenses: mergedExpenses, recurringBills: updatedBills };
+      await usePersonalStore.getState().savePersonalBlob(updatedBlob);
+      set({
+        recurringBills: updatedBills,
+        generatedCount: generated.length,
+      });
+    }
+
+    return generated;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to process due bills',
+      });
+      return [];
+    }
+  },
+
+  clearGeneratedCount: () => set({ generatedCount: 0 }),
+
   clearError: () => set({ error: null }),
 }));
 
@@ -134,5 +371,6 @@ onLogout(() => {
     recurringBills: [],
     isLoading: false,
     error: null,
+    generatedCount: 0,
   });
 });

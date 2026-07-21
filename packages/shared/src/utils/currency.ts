@@ -40,6 +40,7 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   BGN: 'лв',
   ISK: 'kr',
   HRK: 'kn',
+  BDT: '৳',
 };
 
 const DEFAULT_EXCHANGE_RATES: Record<string, number> = {
@@ -80,6 +81,7 @@ const DEFAULT_EXCHANGE_RATES: Record<string, number> = {
   BGN: 1.80,
   ISK: 138.0,
   HRK: 6.96,
+  BDT: 109.50,
 };
 
 const AMBIGUOUS_SYMBOLS: Record<string, string[]> = {

@@ -70,6 +70,20 @@ export function useWebSocket() {
     socket.on('member-left', (data: { groupId: string }) => {
       useGroupStore.getState().incrementGroupDataVersion(data.groupId);
     });
+
+    socket.on('notification', (data: {
+      id: string;
+      type: string;
+      title: string;
+      body: string;
+      groupId?: string;
+      expenseId?: string;
+      settlementId?: string;
+      isRead: boolean;
+      timestamp: string;
+    }) => {
+      useNotificationStore.getState().addNotification(data as any);
+    });
   }, [scheduleReconnect]);
 
   const connect = useCallback(() => {

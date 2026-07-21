@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { detectUnusualSpending, getSpendingTrend } from '../spendingDetector';
 import type { PersonalExpense } from '../../types/personal';
-import { PaymentMethod } from '../../types/enums';
+
 
 const makeExpense = (overrides: Partial<PersonalExpense> = {}): PersonalExpense => ({
   id: 'exp-1',
@@ -10,7 +10,7 @@ const makeExpense = (overrides: Partial<PersonalExpense> = {}): PersonalExpense 
   categoryId: 'cat-food',
   description: 'Groceries',
   date: '2024-06-15',
-  paymentMethod: PaymentMethod.CARD,
+  paymentMethod: 'card',
   isRecurring: false,
   tags: [],
   createdAt: '2024-06-15T10:00:00Z',

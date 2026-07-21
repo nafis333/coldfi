@@ -1,13 +1,48 @@
 import { create } from 'zustand';
 import { usePersonalStore } from './personalStore';
+import { useGroupStore } from './groupStore';
+import { useGroupExpenseStore } from './groupExpenseStore';
 import { onLogout } from '../lib/resetStores';
+
+interface CategorySummary {
+  id: string;
+  name: string;
+  amount: number;
+  percentage: number;
+}
+
+interface IncomeSource {
+  source: string;
+  amount: number;
+}
+
+interface BudgetProgress {
+  name: string;
+  budgeted: number;
+  spent: number;
+  remaining: number;
+  percentage: number;
+}
 
 interface MonthlyRecap {
   month: string;
   totalSpent: number;
+  totalIncome: number;
+  netSavings: number;
+  expenseCount: number;
+  dailyAverage: number;
+  averageTransaction: number;
   topCategory: { name: string; amount: number };
   biggestExpense: { description: string; amount: number };
+  topSpendingDay: { day: number; total: number };
+  weekdayTotal: number;
+  weekendTotal: number;
+  personalTopExpenses: { description: string; amount: number; date: string }[];
+  groupTopExpenses: { groupName: string; description: string; amount: number; date: string }[];
   savingsRate: number;
+  categories: CategorySummary[];
+  incomeSources: IncomeSource[];
+  budgets: BudgetProgress[];
 }
 
 interface AnalyticsState {
@@ -16,6 +51,13 @@ interface AnalyticsState {
   error: string | null;
   fetchRecap: (month: string) => Promise<void>;
   clearRecaps: () => void;
+}
+
+function monthBoundaries(month: string) {
+  const [year, m] = month.split('-').map(Number);
+  const start = new Date(year, m - 1, 1);
+  const end = new Date(year, m, 0, 23, 59, 59, 999);
+  return { start, end, daysInMonth: end.getDate() };
 }
 
 export const useAnalyticsStore = create<AnalyticsState>((set) => ({
@@ -27,9 +69,8 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const { expenses, budgets, categories, fetchPersonalBlob } = usePersonalStore.getState();
+      const { expenses, budgets, fetchPersonalBlob } = usePersonalStore.getState();
 
-      // Ensure personal data is loaded
       if (expenses.length === 0 && budgets.length === 0) {
         await fetchPersonalBlob();
       }
@@ -38,30 +79,109 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       const allExpenses = state.expenses;
       const allBudgets = state.budgets;
       const allCategories = state.categories;
+      const allIncomeLogs = state.incomeLogs || [];
 
-      // Filter expenses for the selected month
+      const { daysInMonth } = monthBoundaries(month);
+
       const monthExpenses = allExpenses.filter((e) => {
         const d = new Date(e.date);
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         return ym === month;
       });
 
-      const totalSpent = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const monthIncome = allIncomeLogs.filter((i) => {
+        const d = new Date(i.date);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return ym === month;
+      });
 
-      // Top category by total
+      const totalSpent = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const totalIncome = monthIncome.reduce((sum, i) => sum + i.amount, 0);
+      const netSavings = totalIncome - totalSpent;
+      const expenseCount = monthExpenses.length;
+      const dailyAverage = daysInMonth > 0 ? totalSpent / daysInMonth : 0;
+      const averageTransaction = expenseCount > 0 ? totalSpent / expenseCount : 0;
+
+      // Top spending day of the month
+      const dayTotals: Record<number, number> = {};
+      for (const e of monthExpenses) {
+        const day = new Date(e.date).getDate();
+        dayTotals[day] = (dayTotals[day] || 0) + e.amount;
+      }
+      let topSpendingDay = { day: 1, total: 0 };
+      for (const [day, total] of Object.entries(dayTotals)) {
+        if (total > topSpendingDay.total) {
+          topSpendingDay = { day: Number(day), total };
+        }
+      }
+
+      // Weekday vs weekend spending
+      let weekdayTotal = 0;
+      let weekendTotal = 0;
+      for (const e of monthExpenses) {
+        const d = new Date(e.date).getDay();
+        if (d === 0 || d === 6) weekendTotal += e.amount;
+        else weekdayTotal += e.amount;
+      }
+
+      // Top 5 personal expenses (individual items)
+      const sortedExpenses = [...monthExpenses].sort((a, b) => b.amount - a.amount);
+      const personalTopExpenses = sortedExpenses.slice(0, 5).map((e) => ({
+        description: e.note || e.payee || 'Expense',
+        amount: e.amount,
+        date: e.date,
+      }));
+
+      // Top 5 group expense sheets (whole sheets from any group)
+      const groupExpenseState = useGroupExpenseStore.getState();
+      let groupTopExpenses: { groupName: string; description: string; amount: number; date: string }[] = [];
+      try {
+        if (Object.keys(groupExpenseState.groupExpensesCache).length === 0) {
+          await groupExpenseState.fetchAllGroupExpenses();
+        }
+        const updatedGroupExpenseState = useGroupExpenseStore.getState();
+        const cache = updatedGroupExpenseState.groupExpensesCache;
+        const allGroupSheets: { groupName: string; description: string; amount: number; date: string }[] = [];
+        for (const [gid, entry] of Object.entries(cache)) {
+          for (const exp of entry.expenses) {
+            const d = new Date(exp.date || exp.createdAt);
+            const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (ym === month) {
+              allGroupSheets.push({
+                groupName: entry.name,
+                description: exp.description || 'Expense',
+                amount: exp.amount,
+                date: exp.date || exp.createdAt,
+              });
+            }
+          }
+        }
+        groupTopExpenses = allGroupSheets.sort((a, b) => b.amount - a.amount).slice(0, 5);
+      } catch {
+        // group data unavailable for recap
+      }
+
+      // Category breakdown
       const categoryTotals: Record<string, number> = {};
       for (const e of monthExpenses) {
         categoryTotals[e.categoryId] = (categoryTotals[e.categoryId] || 0) + e.amount;
       }
 
+      const categoryEntries = Object.entries(categoryTotals).sort(([, a], [, b]) => b - a);
+      const catSummary: CategorySummary[] = categoryEntries.map(([catId, amount]) => {
+        const cat = allCategories.find((c) => c.id === catId);
+        return {
+          id: catId,
+          name: cat?.name || catId.slice(0, 8),
+          amount,
+          percentage: totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0,
+        };
+      });
+
       let topCategory = { name: 'None', amount: 0 };
-      let topCatAmount = 0;
-      for (const [catId, total] of Object.entries(categoryTotals)) {
-        if (total > topCatAmount) {
-          topCatAmount = total;
-          const cat = allCategories.find((c) => c.id === catId);
-          topCategory = { name: cat?.name || catId, amount: total };
-        }
+      if (catSummary.length > 0) {
+        const top = catSummary[0];
+        topCategory = { name: top.name, amount: top.amount };
       }
 
       // Biggest single expense
@@ -77,7 +197,16 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
         }
       }
 
-      // Savings rate: 1 - (spent / budgeted)
+      // Income sources
+      const sourceTotals: Record<string, number> = {};
+      for (const i of monthIncome) {
+        sourceTotals[i.source] = (sourceTotals[i.source] || 0) + i.amount;
+      }
+      const incomeSources: IncomeSource[] = Object.entries(sourceTotals)
+        .sort(([, a], [, b]) => b - a)
+        .map(([source, amount]) => ({ source, amount }));
+
+      // Budget progress
       const monthBudgets = allBudgets.filter((b) => {
         const start = new Date(b.periodStart);
         const end = new Date(b.periodEnd);
@@ -85,17 +214,47 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
         const ymEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}`;
         return ymStart <= month && ymEnd >= month;
       });
-      const totalBudgeted = monthBudgets.reduce((sum, b) => sum + b.amount, 0);
-      const savingsRate = totalBudgeted > 0
-        ? Math.max(0, ((totalBudgeted - totalSpent) / totalBudgeted) * 100)
+
+      const savingsRate = totalIncome > 0
+        ? Math.max(0, ((totalIncome - totalSpent) / totalIncome) * 100)
         : 0;
+
+      // Per-budget breakdown
+      const budgetProgress: BudgetProgress[] = monthBudgets.map((b) => {
+        const budgetCategories = monthExpenses.filter((e) => {
+          if (b.categoryId === '__all__') return true;
+          return e.categoryId === b.categoryId;
+        });
+        const spent = budgetCategories.reduce((s, e) => s + e.amount, 0);
+        const remaining = Math.max(0, b.amount - spent);
+        return {
+          name: b.categoryId,
+          budgeted: b.amount,
+          spent,
+          remaining,
+          percentage: b.amount > 0 ? Math.min(100, Math.round((spent / b.amount) * 100)) : 0,
+        };
+      });
 
       const recap: MonthlyRecap = {
         month,
         totalSpent,
+        totalIncome,
+        netSavings,
+        expenseCount,
+        dailyAverage,
+        averageTransaction,
         topCategory,
         biggestExpense,
+        topSpendingDay,
+        weekdayTotal,
+        weekendTotal,
+        personalTopExpenses,
+        groupTopExpenses,
         savingsRate,
+        categories: catSummary,
+        incomeSources,
+        budgets: budgetProgress,
       };
 
       set((prev) => {

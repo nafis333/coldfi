@@ -1,121 +1,49 @@
 import { create } from 'zustand';
 import { useAuthStore } from './authStore';
-import { encryptData, decryptData, deriveGroupKey, base64ToUint8Array, uint8ArrayToBase64 } from '../lib/crypto';
+import { apiClient } from '../lib/apiClient';
+import { encryptData, decryptData } from '../lib/crypto';
 import { onLogout } from '../lib/resetStores';
+import {
+  computeNetBalances,
+  migrateGroupBlob,
+  GroupExpense,
+  SettlementProposal,
+  PaymentMethod,
+  SplitMode,
+  ExpenseStatus,
+  SettlementStatus,
+} from '@coldfi/shared';
+import {
+  getGroupKey,
+  cacheGroupKey,
+  clearGroupKeyCache,
+  hashPassphrase,
+  generateSalt,
+  modifySyncBlob,
+  toEngineExpenses,
+  toEngineSettlements,
+  GroupSummary,
+  GroupDetail,
+  GroupMember,
+  GroupExpenseData,
+  SettlementData,
+  GroupCategory,
+  GroupSyncData,
+} from '../lib/groupSync';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+export { getGroupKey, cacheGroupKey } from '../lib/groupSync';
 
-interface GroupSummary {
-  id: string;
-  name: string;
-  memberCount: number;
-  yourBalance: number;
-}
-
-interface GroupMember {
+export interface MemberSplit {
   userId: string;
-  displayName: string;
-  email: string;
-  role: 'admin' | 'member';
-  balance: number;
-  joinedAt: string;
-}
-
-interface GroupDetail {
-  id: string;
-  name: string;
-  members: GroupMember[];
-  myBalance: number;
-}
-
-interface MemberSplit {
-  userId: string;
   amount: number;
 }
 
-interface ItemizedEntry {
+export interface ItemizedEntry {
   name: string;
   amount: number;
-}
-
-interface GroupExpenseInput {
-  amount: number;
-  description: string;
-  category: string;
-  payerId: string;
-  splits: MemberSplit[];
-  itemized?: ItemizedEntry[];
-}
-
-interface GroupExpenseData {
-  id: string;
-  amount: number;
-  description: string;
-  category: string;
-  payerId: string;
-  splits: MemberSplit[];
-  itemized?: ItemizedEntry[];
-  createdAt: string;
-}
-
-interface SettlementInput {
-  fromUserId: string;
-  toUserId: string;
-  amount: number;
-  note?: string;
-}
-
-interface SettlementData {
-  id: string;
-  fromUserId: string;
-  toUserId: string;
-  amount: number;
-  note?: string;
-  status: 'pending' | 'confirmed' | 'cancelled';
-  createdAt: string;
-  confirmedAt?: string;
-}
-
-const groupKeyCache = new Map<string, CryptoKey>();
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-  }
- return bytes;
-}
-
-async function hashPassphrase(passphrase: string, saltHex: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const salt = hexToBytes(saltHex);
-  const passBytes = encoder.encode(passphrase);
-  const combined = new Uint8Array(salt.length + passBytes.length);
-  combined.set(salt);
-  combined.set(passBytes, salt.length);
-  const hash = await crypto.subtle.digest('SHA-256', combined);
-  return bytesToHex(new Uint8Array(hash));
-}
-
-function generateSalt(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return bytesToHex(bytes);
-}
-
-export function getGroupKey(groupId: string): CryptoKey | undefined {
-  return groupKeyCache.get(groupId);
-}
-
-export function cacheGroupKey(groupId: string, passphrase: string): Promise<CryptoKey> {
-  return deriveGroupKey(passphrase, groupId).then((key) => {
-    groupKeyCache.set(groupId, key);
-    return key;
-  });
+  assignedTo?: string[];
+  splitMode?: 'equal' | 'exact' | 'percentage';
+  splitValues?: Record<string, number>;
 }
 
 interface GroupState {
@@ -129,9 +57,14 @@ interface GroupState {
   fetchGroupById: (id: string) => Promise<void>;
   createGroup: (name: string, passphrase: string) => Promise<string>;
   joinGroup: (inviteCode: string, passphrase: string) => Promise<void>;
-  createGroupExpense: (groupId: string, data: GroupExpenseInput) => Promise<void>;
-  proposeSettlement: (groupId: string, data: SettlementInput) => Promise<void>;
   leaveGroup: (groupId: string) => Promise<void>;
+  generateInvite: (groupId: string) => Promise<{ code: string; inviteId: string; expiresIn: string; maxUses: number }>;
+  fetchInvites: (groupId: string) => Promise<{ invites: Array<{ id: string; code: string; use_count: number; max_uses: number; expires_at: string; is_active: boolean; created_at: string }> }>;
+  revokeInvite: (groupId: string, inviteId: string) => Promise<void>;
+  changePassphrase: (groupId: string, newPassphrase: string) => Promise<void>;
+  updateGroupSettings: (groupId: string, settings: { name?: string; defaultCurrency?: string }) => Promise<void>;
+  addGroupCategory: (groupId: string, category: Pick<GroupCategory, 'name' | 'icon' | 'color'>) => Promise<void>;
+  removeGroupCategory: (groupId: string, categoryId: string) => Promise<void>;
   addMemberFromSocket: (groupId: string, member: GroupMember) => void;
   removeMemberFromSocket: (groupId: string, userId: string) => void;
   updateGroupFromSocket: (group: GroupSummary) => void;
@@ -147,15 +80,12 @@ export const useGroupStore = create<GroupState>((set) => ({
   groupDataVersions: {},
 
   fetchGroups: async () => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) return;
+    if (!useAuthStore.getState().accessToken) return;
 
     set({ isLoading: true, error: null });
 
     try {
-      const res = await fetch(`${API_BASE}/api/group`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await apiClient('/api/group');
 
       if (!res.ok) {
         throw new Error(`Failed to fetch groups: ${res.status}`);
@@ -172,27 +102,69 @@ export const useGroupStore = create<GroupState>((set) => ({
   },
 
   fetchGroupById: async (id: string) => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) return;
+    if (!useAuthStore.getState().accessToken) return;
 
     set({ isLoading: true, error: null });
 
     try {
-      const res = await fetch(`${API_BASE}/api/group/${id}/members`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const [membersRes, syncRes] = await Promise.all([
+        apiClient(`/api/group/${id}/members`),
+        apiClient(`/api/group/${id}/sync`),
+      ]);
 
-      if (!res.ok) {
-        throw new Error(`Failed to fetch group: ${res.status}`);
+      if (!membersRes.ok) {
+        throw new Error(`Failed to fetch group: ${membersRes.status}`);
       }
 
-      const data = await res.json();
+      const data = await membersRes.json();
+      let settlements: SettlementData[] = [];
+      let expenses: GroupExpenseData[] = [];
+      let groupCategories: GroupCategory[] = [];
+
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData.encryptedBlob) {
+          const gk = getGroupKey(id);
+          if (gk) {
+            try {
+              const decrypted = await decryptData(gk, syncData.encryptedBlob);
+              const parsed: any = migrateGroupBlob(JSON.parse(decrypted));
+              settlements = parsed.settlements || [];
+              expenses = parsed.expenses || [];
+              groupCategories = parsed.categories || [];
+            } catch {}
+          }
+        }
+      }
+
+      const defaultCurrency = data.defaultCurrency;
+      const memberIdsSet = new Set<string>(data.members.map((m: GroupMember) => m.userId));
+      for (const exp of expenses) {
+        memberIdsSet.add(exp.payerId);
+        for (const s of exp.splits) {
+          memberIdsSet.add(s.userId);
+        }
+      }
+      for (const st of settlements) {
+        memberIdsSet.add(st.fromUserId);
+        memberIdsSet.add(st.toUserId);
+      }
+      const memberIds = Array.from(memberIdsSet);
+      const engineExpenses = toEngineExpenses(expenses, data.id, defaultCurrency);
+      const engineSettlements = toEngineSettlements(settlements);
+      const balances = computeNetBalances(engineExpenses, engineSettlements, memberIds);
+
       set({
         currentGroup: {
           id: data.id,
           name: data.name,
+          defaultCurrency,
           members: data.members,
+          settlements,
+          expenses,
+          groupCategories,
           myBalance: data.myBalance ?? 0,
+          balances,
         },
         isLoading: false,
       });
@@ -205,22 +177,21 @@ export const useGroupStore = create<GroupState>((set) => ({
   },
 
   createGroup: async (name: string, passphrase: string) => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) throw new Error('Not authenticated');
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
     set({ isLoading: true, error: null });
 
     try {
       const salt = generateSalt();
       const passphraseVerifier = await hashPassphrase(passphrase, salt);
+      const defaultCurrency = useAuthStore.getState().defaultCurrency;
 
-      const res = await fetch(`${API_BASE}/api/group/create`, {
+      const res = await apiClient('/api/group/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ name, passphraseVerifier, salt, defaultCurrency: 'USD' }),
+        body: JSON.stringify({ name, passphraseVerifier, salt, defaultCurrency }),
       });
 
       if (!res.ok) {
@@ -231,10 +202,8 @@ export const useGroupStore = create<GroupState>((set) => ({
       const data = await res.json();
       set({ isLoading: false });
 
-      // Cache group key for this session
       await cacheGroupKey(data.groupId, passphrase);
 
-      // Refresh group list
       const state = useGroupStore.getState();
       await state.fetchGroups();
 
@@ -249,16 +218,12 @@ export const useGroupStore = create<GroupState>((set) => ({
   },
 
   joinGroup: async (inviteCode: string, passphrase: string) => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) throw new Error('Not authenticated');
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
     set({ isLoading: true, error: null });
 
     try {
-      // First fetch group info to get the salt
-      const infoRes = await fetch(`${API_BASE}/api/group/invite/${inviteCode}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const infoRes = await apiClient(`/api/group/invite/${inviteCode}`);
 
       if (!infoRes.ok) {
         throw new Error('Group not found or invalid invite code');
@@ -267,13 +232,12 @@ export const useGroupStore = create<GroupState>((set) => ({
       const groupInfo = await infoRes.json();
       const passphraseVerifier = await hashPassphrase(passphrase, groupInfo.salt);
 
-      const res = await fetch(`${API_BASE}/api/group/join`, {
+      const res = await apiClient('/api/group/join', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ groupId: inviteCode, passphraseVerifier }),
+        body: JSON.stringify({ inviteCode, passphraseVerifier }),
       });
 
       if (!res.ok) {
@@ -281,12 +245,11 @@ export const useGroupStore = create<GroupState>((set) => ({
         throw new Error(data.error || 'Failed to join group');
       }
 
+      const data = await res.json();
       set({ isLoading: false });
 
-      // Cache group key for this session
-      await cacheGroupKey(inviteCode, passphrase);
+      await cacheGroupKey(data.groupId, passphrase);
 
-      // Refresh group list
       const state = useGroupStore.getState();
       await state.fetchGroups();
     } catch (error) {
@@ -298,153 +261,151 @@ export const useGroupStore = create<GroupState>((set) => ({
     }
   },
 
-  createGroupExpense: async (groupId: string, data: GroupExpenseInput) => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) throw new Error('Not authenticated');
+  leaveGroup: async (groupId: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
     set({ isLoading: true, error: null });
 
     try {
-      const gk = groupKeyCache.get(groupId);
-      if (!gk) throw new Error('Group key not available. Please re-enter the group passphrase.');
+      const res = await apiClient(`/api/group/${groupId}/leave`, {
+        method: 'POST',
+      });
 
-      let lastError: Error | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const syncRes = await fetch(`${API_BASE}/api/group/${groupId}/sync`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (!syncRes.ok) throw new Error(`Failed to fetch group data: ${syncRes.status}`);
-
-          const syncData = await syncRes.json();
-          const vectorClock = syncData.vectorClock || {};
-
-          let groupData: { expenses: GroupExpenseData[]; settlements: SettlementData[] } = { expenses: [], settlements: [] };
-          if (syncData.encryptedBlob) {
-            const decrypted = await decryptData(gk, syncData.encryptedBlob);
-            groupData = JSON.parse(decrypted);
-          }
-
-          groupData.expenses.push({
-            ...data,
-            createdAt: new Date().toISOString(),
-            id: `exp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          });
-
-          const encrypted = await encryptData(gk, JSON.stringify(groupData));
-
-          const putRes = await fetch(`${API_BASE}/api/group/${groupId}/sync`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ encryptedBlob: encrypted, vectorClock }),
-          });
-
-          if (putRes.status === 409) {
-            lastError = new Error('Data conflict. Retrying...');
-            continue;
-          }
-
-          if (!putRes.ok) {
-            throw new Error(`Failed to save group expense: ${putRes.status}`);
-          }
-
-          set({ isLoading: false });
-          return;
-        } catch (e) {
-          if (e instanceof Error && e.message !== 'Data conflict. Retrying...') {
-            throw e;
-          }
-          lastError = e instanceof Error ? e : new Error('Failed to create expense');
-        }
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to leave group');
       }
 
-      throw lastError || new Error('Failed to create expense after retries');
+      set({ isLoading: false });
+
+      const state = useGroupStore.getState();
+      await state.fetchGroups();
     } catch (error) {
       set({
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to create expense',
+        error: error instanceof Error ? error.message : 'Failed to leave group',
       });
       throw error;
     }
   },
 
-  proposeSettlement: async (groupId: string, data: SettlementInput) => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) throw new Error('Not authenticated');
-
-    set({ isLoading: true, error: null });
-
+  generateInvite: async (groupId: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
     try {
-      const gk = groupKeyCache.get(groupId);
-      if (!gk) throw new Error('Group key not available. Please re-enter the group passphrase.');
-
-      let lastError: Error | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const syncRes = await fetch(`${API_BASE}/api/group/${groupId}/sync`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (!syncRes.ok) throw new Error(`Failed to fetch group data: ${syncRes.status}`);
-
-          const syncData = await syncRes.json();
-          const vectorClock = syncData.vectorClock || {};
-
-          let groupData: { expenses: GroupExpenseData[]; settlements: SettlementData[] } = { expenses: [], settlements: [] };
-          if (syncData.encryptedBlob) {
-            const decrypted = await decryptData(gk, syncData.encryptedBlob);
-            groupData = JSON.parse(decrypted);
-          }
-
-          groupData.settlements.push({
-            id: `stl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            fromUserId: data.fromUserId,
-            toUserId: data.toUserId,
-            amount: data.amount,
-            note: data.note,
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-          });
-
-          const encrypted = await encryptData(gk, JSON.stringify(groupData));
-
-          const putRes = await fetch(`${API_BASE}/api/group/${groupId}/sync`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ encryptedBlob: encrypted, vectorClock }),
-          });
-
-          if (putRes.status === 409) {
-            lastError = new Error('Data conflict. Retrying...');
-            continue;
-          }
-
-          if (!putRes.ok) {
-            throw new Error(`Failed to save settlement: ${putRes.status}`);
-          }
-
-          set({ isLoading: false });
-          return;
-        } catch (e) {
-          if (e instanceof Error && e.message !== 'Data conflict. Retrying...') {
-            throw e;
-          }
-          lastError = e instanceof Error ? e : new Error('Failed to propose settlement');
-        }
-      }
-
-      throw lastError || new Error('Failed to propose settlement after retries');
-    } catch (error) {
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to propose settlement',
+      const res = await apiClient(`/api/group/${groupId}/invites`, {
+        method: 'POST',
       });
+      if (!res.ok) throw new Error('Failed to generate invite code');
+      return res.json();
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to generate invite' });
       throw error;
+    }
+  },
+
+  fetchInvites: async (groupId: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    try {
+      const res = await apiClient(`/api/group/${groupId}/invites`);
+      if (!res.ok) throw new Error('Failed to fetch invite codes');
+      return res.json();
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to fetch invites' });
+      throw error;
+    }
+  },
+
+  revokeInvite: async (groupId: string, inviteId: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    try {
+      const res = await apiClient(`/api/group/${groupId}/invites/${inviteId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to revoke invite code');
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to revoke invite' });
+      throw error;
+    }
+  },
+
+  changePassphrase: async (groupId: string, newPassphrase: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    try {
+      const salt = generateSalt();
+      const newPassphraseVerifier = await hashPassphrase(newPassphrase, salt);
+
+      const res = await apiClient(`/api/group/${groupId}/passphrase`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ newPassphraseVerifier, newSalt: salt }),
+      });
+
+      if (!res.ok) throw new Error('Failed to change passphrase');
+
+      await cacheGroupKey(groupId, newPassphrase);
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to change passphrase' });
+      throw error;
+    }
+  },
+
+  updateGroupSettings: async (groupId: string, settings: { name?: string; defaultCurrency?: string }) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    try {
+      const res = await apiClient(`/api/group/${groupId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) throw new Error('Failed to update group settings');
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to update group settings' });
+      throw error;
+    }
+  },
+
+  addGroupCategory: async (groupId, category) => {
+    try {
+      if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+
+      const gk = getGroupKey(groupId);
+      if (!gk) throw new Error('Group key not available');
+
+      const newCat: GroupCategory = {
+        ...category,
+        id: `gcat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      };
+
+      await modifySyncBlob(groupId, gk, (groupData) => {
+        groupData.categories.push(newCat);
+      });
+
+      await useGroupStore.getState().fetchGroupById(groupId);
+    } catch (err: any) {
+      set({ error: err.message });
+      console.error('addGroupCategory failed:', err.message);
+    }
+  },
+
+  removeGroupCategory: async (groupId, categoryId) => {
+    try {
+      if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+
+      const gk = getGroupKey(groupId);
+      if (!gk) throw new Error('Group key not available');
+
+      await modifySyncBlob(groupId, gk, (groupData) => {
+        groupData.categories = groupData.categories.filter((c) => c.id !== categoryId);
+      });
+
+      await useGroupStore.getState().fetchGroupById(groupId);
+    } catch (err: any) {
+      set({ error: err.message });
+      console.error('removeGroupCategory failed:', err.message);
     }
   },
 
@@ -488,37 +449,6 @@ export const useGroupStore = create<GroupState>((set) => ({
       },
     }));
   },
-
-  leaveGroup: async (groupId: string) => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) throw new Error('Not authenticated');
-
-    set({ isLoading: true, error: null });
-
-    try {
-      const res = await fetch(`${API_BASE}/api/group/${groupId}/leave`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to leave group');
-      }
-
-      set({ isLoading: false });
-
-      // Refresh group list
-      const state = useGroupStore.getState();
-      await state.fetchGroups();
-    } catch (error) {
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to leave group',
-      });
-      throw error;
-    }
-  },
 }));
 
 onLogout(() => {
@@ -529,5 +459,5 @@ onLogout(() => {
     error: null,
     groupDataVersions: {},
   });
-  groupKeyCache.clear();
+  clearGroupKeyCache();
 });

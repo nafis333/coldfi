@@ -10,6 +10,14 @@ import './index.css';
 
 setupErrorReporter();
 
+const storedDark = localStorage.getItem('coldfi:darkMode');
+if (storedDark === 'true') {
+  document.documentElement.classList.add('dark');
+} else if (storedDark !== 'false') {
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (prefersDark) document.documentElement.classList.add('dark');
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

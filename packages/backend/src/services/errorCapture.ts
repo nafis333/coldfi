@@ -71,19 +71,15 @@ export async function captureError(
       );
     }
 
-    logger.error(`[ErrorCapture] ${errorCode}: ${errorMessage}`, { module });
-    try {
-      logger.error(`${errorCode}: ${errorMessage}`, {
-        module,
-        requestId,
-        userId,
-        action: 'error_captured',
-        errorCode,
-        stackHash,
-        stack: stack.split('\n').slice(0, 5),
-      });
-    } catch (logErr) {
-    }
+    logger.error(`${errorCode}: ${errorMessage}`, {
+      module,
+      requestId,
+      userId,
+      action: 'error_captured',
+      errorCode,
+      stackHash,
+      stack: stack.split('\n').slice(0, 5),
+    });
   } catch (captureErr) {
     logger.error('[ErrorCapture] Capture failed', { module: 'error-capture', error: String(captureErr) });
   }
@@ -95,13 +91,13 @@ export function registerGlobalErrorHandlers() {
     captureError(
       reason instanceof Error ? reason : new Error(String(reason)),
       'unhandled-rejection'
-    );
+    ).catch(() => {});
   });
 
   process.on('uncaughtException', (error: Error) => {
     logger.error('Uncaught Exception', { module: 'error-capture', error: error.message });
     captureError(error, 'uncaught-exception').finally(() => {
       setTimeout(() => process.exit(1), 2000);
-    });
+    }).catch(() => {});
   });
 }

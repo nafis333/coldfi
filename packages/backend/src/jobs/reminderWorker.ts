@@ -7,13 +7,14 @@ import { logger } from '../services/logger';
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const REMINDER_QUEUE_NAME = 'reminders';
-const POLL_INTERVAL_MS = parseInt(process.env.REMINDER_POLL_INTERVAL ?? '60000', 10);
-const BATCH_SIZE = parseInt(process.env.REMINDER_BATCH_SIZE ?? '50', 10);
+const POLL_INTERVAL_MS = parseInt(process.env.REMINDER_POLL_INTERVAL ?? '60000', 10) || 60000;
+const BATCH_SIZE = parseInt(process.env.REMINDER_BATCH_SIZE ?? '50', 10) || 50;
 
 function createRedisConnection(): IORedis {
   return new IORedis(REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    connectTimeout: 5000,
   });
 }
 

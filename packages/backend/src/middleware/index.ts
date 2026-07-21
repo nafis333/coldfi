@@ -1,4 +1,5 @@
 export { requireAdmin } from './requireAdmin';
 export { adminAudit, writeAdminAuditLog } from './adminAudit';
-
-// Group middleware is defined inline in routes/group.ts (requireGroupMember)
+export { adminRateLimit, stopCleanupTimer } from './adminRateLimit';
+export { requireGroupAccess } from './requireGroupAccess';
+export { requireGroupAdmin } from './requireGroupAdmin';

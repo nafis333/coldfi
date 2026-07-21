@@ -1,5 +1,6 @@
+import { apiClient } from './apiClient';
+
 const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY ?? '';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) {
@@ -30,7 +31,7 @@ export async function subscribeToPush(
   try {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY),
+      applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY) as BufferSource,
     });
     return subscription;
   } catch (err: any) {
@@ -47,12 +48,9 @@ export async function sendSubscriptionToServer(
   subscription: PushSubscription
 ): Promise<void> {
   const json = subscription.toJSON();
-  const token = localStorage.getItem('accessToken');
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const response = await fetch(`${API_BASE}/api/notifications/push/subscribe`, {
+  const response = await apiClient('/api/notifications/push/subscribe', {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       endpoint: json.endpoint,
       auth: json.keys?.auth,
@@ -75,12 +73,9 @@ export async function unsubscribeFromPush(): Promise<void> {
   const subscription = await registration.pushManager.getSubscription();
   if (subscription) {
     await subscription.unsubscribe();
-    const token = localStorage.getItem('accessToken');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    await fetch(`${API_BASE}/api/notifications/push/unsubscribe`, {
+    await apiClient('/api/notifications/push/unsubscribe', {
       method: 'DELETE',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint: subscription.endpoint }),
     });
   }

@@ -20,6 +20,7 @@ import {
   type BillDraftConfirmedMeta,
   type AdminActionMeta,
   type LargeExpenseApprovedMeta,
+
 } from './types';
 import { formatCurrency } from '../utils/currency';
 
@@ -43,6 +44,7 @@ export type {
   BillDraftConfirmedMeta,
   AdminActionMeta,
   LargeExpenseApprovedMeta,
+
 };
 
 function fmt(amount: number, currency: string): string {
@@ -150,6 +152,7 @@ export const LOG_TEMPLATES: Record<
     const m = meta as unknown as LargeExpenseApprovedMeta;
     return `Large expense "${m.description}" (${fmt(m.amount, m.currency)}) was approved by ${m.approvedBy}`;
   },
+
 };
 
 export function resolveLogMessage(entry: GroupLogEntry): string {

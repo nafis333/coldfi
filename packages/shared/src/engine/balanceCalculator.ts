@@ -81,6 +81,7 @@ export function computeNetBalances(
 
   for (const expense of expenses) {
     if (expense.status === ExpenseStatus.PENDING_APPROVAL) continue;
+    if (typeof expense.amount !== 'number' || isNaN(expense.amount) || expense.amount <= 0) continue;
 
     const paidBy = expense.paidBy;
     for (const split of expense.splits) {

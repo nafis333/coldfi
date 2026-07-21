@@ -1,9 +1,13 @@
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+
 import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(3001),
-  HOST: z.string().default('0.0.0.0'),
+  HOST: z.string().default('127.0.0.1'),
 
   DATABASE_URL: z.string().url().startsWith('postgres'),
   REDIS_URL: z.string().url().startsWith('redis'),
@@ -32,9 +36,18 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .default('false'),
   ADMIN_PORT: z.coerce.number().int().positive().default(3002),
+  ADMIN_CORS_ORIGIN: z.string().default('http://localhost:5174'),
+  ADMIN_ALLOWED_IPS: z.string().default(''),
+  ADMIN_EMAILS: z.string().default(''),
+
+  DEBUG_MODE: z.string().default('false').transform(v => v === 'true' || v === '1'),
 
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
+
+  SERVER_ENCRYPTION_KEY: z.string().length(64).regex(/^[0-9a-f]{64}$/i, 'Must be exactly 64 hex characters (32 bytes)'),
+
+  GOOGLE_CLIENT_ID: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -54,6 +67,16 @@ function loadConfig(): Env {
 }
 
 export const config = loadConfig();
+
+const EXPIRY_MULTIPLIERS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+
+export function parseExpirySeconds(expiry: string, fallbackSeconds: number = 900): number {
+  const match = expiry.match(/^(\d+)([smhd])$/);
+  if (!match) return fallbackSeconds;
+  const num = parseInt(match[1]!, 10);
+  const unit = match[2]!;
+  return num * (EXPIRY_MULTIPLIERS[unit] || fallbackSeconds);
+}
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../package.json');

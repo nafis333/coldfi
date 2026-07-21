@@ -57,31 +57,32 @@ function NotificationCard({
   return (
     <button
       onClick={onPress}
-      className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left transition-colors ${
+      className={`flex w-full items-start gap-3 sm:gap-4 rounded-2xl border p-4 text-left transition-all duration-200 ${
         !notification.isRead
-          ? 'border-primary-200 bg-primary-50/50'
-          : 'border-neutral-200 bg-white hover:bg-neutral-50'
+          ? 'border-primary-200/80 dark:border-primary-800/50 bg-primary-50/60 dark:bg-primary-900/15 shadow-sm'
+          : 'border-neutral-200/80 dark:border-neutral-700/60 bg-white dark:bg-neutral-800/80 hover:bg-neutral-50 dark:hover:bg-neutral-700/30 hover:shadow-sm'
       }`}
     >
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-100">
-        <span className="text-lg">{icon}</span>
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-700/60">
+        <span className="text-base">{icon}</span>
         {!notification.isRead && (
-          <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-primary-600" />
+          <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white dark:border-neutral-800 bg-primary-600" />
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className={`text-sm ${!notification.isRead ? 'font-bold text-neutral-900' : 'font-semibold text-neutral-700'}`}>
+        <p className={`text-sm ${!notification.isRead ? 'font-bold text-neutral-900 dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-300'}`}>
           {notification.title}
         </p>
-        <p className="mb-1 line-clamp-2 text-xs text-neutral-500">{notification.body}</p>
-        <p className="text-xs text-neutral-400">{timeAgo(notification.timestamp)}</p>
+        <p className="mt-0.5 line-clamp-2 text-xs text-neutral-500 dark:text-neutral-400">{notification.body}</p>
+        <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{timeAgo(notification.timestamp)}</p>
       </div>
       {!notification.isRead && (
         <button
           onClick={(e) => { e.stopPropagation(); onMarkRead(); }}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 hover:bg-primary-200"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/40 hover:bg-primary-200 dark:hover:bg-primary-800/40 transition-colors"
+          title="Mark as read"
         >
-          <span className="text-xs font-bold text-primary-600">OK</span>
+          <svg className="h-3.5 w-3.5 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
         </button>
       )}
     </button>
@@ -105,21 +106,19 @@ export default function NotificationsPage() {
 
   const handleMarkRead = useCallback(
     async (id: string) => {
-      try { await markAsRead(id); } catch {}
+      try { await markAsRead(id); } catch (e) { console.error('Failed to mark notification as read:', e); }
     },
     [markAsRead]
   );
 
   const handleMarkAllRead = useCallback(async () => {
-    try { await markAllAsRead(); } catch {}
+    try { await markAllAsRead(); } catch (e) { console.error('Failed to mark all notifications as read:', e); }
   }, [markAllAsRead]);
 
   const handleNotificationPress = useCallback(
     (notification: Notification) => {
       if (!notification.isRead) markAsRead(notification.id);
-      if (notification.settlementId && notification.groupId) {
-        navigate(`/groups/${notification.groupId}/settlements`);
-      } else if (notification.groupId) {
+      if (notification.groupId) {
         navigate(`/groups/${notification.groupId}`);
       }
     },
@@ -127,18 +126,18 @@ export default function NotificationsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
+    <div className="page-container max-w-2xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-neutral-900">
-          Notifications
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white">Notifications</h1>
           {unreadCount > 0 && (
-            <span className="ml-2 text-base text-primary-600">({unreadCount})</span>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{unreadCount} unread</p>
           )}
-        </h1>
+        </div>
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllRead}
-            className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+            className="btn-ghost text-sm"
           >
             Mark All Read
           </button>
@@ -147,12 +146,15 @@ export default function NotificationsPage() {
 
       {isLoading && notifications.length === 0 ? (
         <div className="flex justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
         </div>
       ) : notifications.length === 0 ? (
-        <div className="py-20 text-center">
-          <p className="mb-2 text-xl font-bold text-neutral-900">All Caught Up!</p>
-          <p className="text-sm text-neutral-500">No notifications yet.</p>
+        <div className="card p-10 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-success-100 dark:bg-success-900/20 mb-4">
+            <svg className="h-8 w-8 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </div>
+          <p className="text-lg font-bold text-neutral-900 dark:text-white">All Caught Up!</p>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">No notifications yet.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">

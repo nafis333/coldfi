@@ -55,3 +55,82 @@ export function migrateGroupBlob(
 ): Record<string, unknown> {
   return migrateBlob(blob, groupMigrations);
 }
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+}
+
+function ensureArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value as Record<string, unknown>[] : [];
+}
+
+function normalizeExpense(exp: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...exp,
+    id: exp.id ?? generateId(),
+    currency: exp.currency ?? 'USD',
+    date: exp.date ?? new Date().toISOString().split('T')[0],
+    createdAt: exp.createdAt ?? new Date().toISOString(),
+    updatedAt: exp.updatedAt ?? new Date().toISOString(),
+  };
+}
+
+function normalizeCategory(cat: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...cat,
+    id: cat.id ?? generateId(),
+    icon: cat.icon ?? '📦',
+    color: cat.color ?? '#888888',
+  };
+}
+
+function normalizeBudget(b: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...b,
+    id: b.id ?? generateId(),
+    type: b.type ?? 'monthly',
+    alertThreshold: b.alertThreshold ?? 80,
+  };
+}
+
+function normalizeGroupExpense(exp: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...exp,
+    id: exp.id ?? generateId(),
+    category: exp.category ?? '',
+    payerId: exp.payerId ?? '',
+    createdAt: exp.createdAt ?? new Date().toISOString(),
+  };
+}
+
+function normalizeSettlement(s: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...s,
+    currency: s.currency ?? 'USD',
+    relatedExpenseIds: s.relatedExpenseIds ?? [],
+    createdAt: s.createdAt ?? new Date().toISOString(),
+    updatedAt: s.updatedAt ?? new Date().toISOString(),
+  };
+}
+
+registerPersonalMigration({
+  fromVersion: 0,
+  toVersion: 1,
+  migrate: (blob) => {
+    const expenses = ensureArray(blob.expenses).map(normalizeExpense);
+    const categories = ensureArray(blob.categories).map(normalizeCategory);
+    const budgets = ensureArray(blob.budgets).map(normalizeBudget);
+    return { ...blob, expenses, categories, budgets } as any;
+  },
+});
+
+registerGroupMigration({
+  fromVersion: 0,
+  toVersion: 1,
+  migrate: (blob) => {
+    const expenses = ensureArray(blob.expenses).map(normalizeGroupExpense);
+    const settlements = ensureArray(blob.settlements).map(normalizeSettlement);
+    const categories = ensureArray(blob.categories).map(normalizeCategory);
+    return { ...blob, expenses, settlements, categories } as any;
+  },
+});

@@ -1,13 +1,22 @@
 import { FastifyInstance } from 'fastify';
 import os from 'os';
-import { requireAdmin, adminAudit, writeAdminAuditLog } from '../middleware';
-import { query } from '../db/pool';
+import { requireAdmin, adminAudit, writeAdminAuditLog, adminRateLimit, stopCleanupTimer } from '../middleware';
+import { safeParseInt } from '../utils/parse';
+import { AppError, ValidationError, NotFoundError } from '../errors';
 import * as monitoring from '../services/monitoringService';
 import * as alerts from '../services/alertService';
+import * as adminUser from '../services/adminUserService';
+import * as adminConfig from '../services/adminConfigService';
+import * as adminAlert from '../services/adminAlertService';
+import * as adminAuditSvc from '../services/adminAuditService';
+import * as adminLog from '../services/adminLogService';
+import * as adminSecurity from '../services/adminSecurityService';
 
 export async function adminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', requireAdmin);
+  app.addHook('preHandler', adminRateLimit);
+  app.addHook('onClose', async () => { stopCleanupTimer(); });
 
   // ============================================================
   // SECTION A: DASHBOARD
@@ -19,12 +28,12 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/stats/registrations', { preHandler: [adminAudit] }, async (request, reply) => {
     const { days = '30' } = request.query as any;
-    return reply.send(await monitoring.getRegistrationRate(parseInt(days as string)));
+    return reply.send(await monitoring.getRegistrationRate(safeParseInt(days, 30)));
   });
 
   app.get('/admin/stats/active-users', { preHandler: [adminAudit] }, async (request, reply) => {
     const { days = '30' } = request.query as any;
-    return reply.send(await monitoring.getActiveUserTimeline(parseInt(days as string)));
+    return reply.send(await monitoring.getActiveUserTimeline(safeParseInt(days, 30)));
   });
 
   // ============================================================
@@ -33,17 +42,17 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/monitoring/endpoints', { preHandler: [adminAudit] }, async (request, reply) => {
     const { hours = '24' } = request.query as any;
-    return reply.send(await monitoring.getEndpointMetrics(parseInt(hours as string)));
+    return reply.send(await monitoring.getEndpointMetrics(safeParseInt(hours, 24)));
   });
 
   app.get('/admin/monitoring/errors', { preHandler: [adminAudit] }, async (request, reply) => {
     const { hours = '24' } = request.query as any;
-    return reply.send(await monitoring.getErrorRateOverview(parseInt(hours as string)));
+    return reply.send(await monitoring.getErrorRateOverview(safeParseInt(hours, 24)));
   });
 
   app.get('/admin/monitoring/slow-queries', { preHandler: [adminAudit] }, async (request, reply) => {
     const { hours = '24', minDuration = '500' } = request.query as any;
-    return reply.send(await monitoring.getSlowQueries(parseInt(hours as string), parseInt(minDuration as string)));
+    return reply.send(await monitoring.getSlowQueries(safeParseInt(hours, 24), safeParseInt(minDuration, 500)));
   });
 
   app.get('/admin/monitoring/database', { preHandler: [adminAudit] }, async (request, reply) => {
@@ -52,7 +61,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/monitoring/database/history', { preHandler: [adminAudit] }, async (request, reply) => {
     const { hours = '24' } = request.query as any;
-    return reply.send(await monitoring.getDatabaseStatsHistory(parseInt(hours as string)));
+    return reply.send(await monitoring.getDatabaseStatsHistory(safeParseInt(hours, 24)));
   });
 
   app.get('/admin/monitoring/redis', { preHandler: [adminAudit] }, async (request, reply) => {
@@ -72,12 +81,12 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/debug/logs', { preHandler: [adminAudit] }, async (request, reply) => {
     const { level, module, search, page = '1', limit = '50', from, to } = request.query as any;
-    return reply.send(await monitoring.getSystemLogs({
+    return reply.send(await adminLog.getSystemLogs({
       level: level as string,
       module: module as string,
       search: search as string,
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+      page: safeParseInt(page, 1),
+      limit: safeParseInt(limit, 50),
       from: from as string,
       to: to as string,
     }));
@@ -85,44 +94,44 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/debug/errors', { preHandler: [adminAudit] }, async (request, reply) => {
     const { page = '1', limit = '20', resolved } = request.query as any;
-    return reply.send(await monitoring.getErrorEvents({
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+    return reply.send(await adminLog.getErrorEvents({
+      page: safeParseInt(page, 1),
+      limit: safeParseInt(limit, 50),
       resolved: resolved as string,
     }));
   });
 
   app.get('/admin/debug/errors/:id', { preHandler: [adminAudit] }, async (request, reply) => {
     const { id } = request.params as any;
-    const detail = await monitoring.getErrorDetail(parseInt(id as string));
-    if (!detail) return reply.status(404).send({ error: 'ERR_NOT_FOUND', message: 'Error event not found' });
+    const detail = await adminLog.getErrorDetail(safeParseInt(id, 0));
+    if (!detail) throw new NotFoundError('Error event');
     return reply.send(detail);
   });
 
   app.post('/admin/debug/errors/:id/resolve', { preHandler: [adminAudit] }, async (request, reply) => {
     const { id } = request.params as any;
     const adminId = request.user.userId;
-    await monitoring.resolveError(parseInt(id as string), adminId);
-    await writeAdminAuditLog('error_resolved', null, adminId, { errorId: parseInt(id as string) }, request.ip);
+    await adminLog.resolveError(safeParseInt(id, 0), adminId);
+    await writeAdminAuditLog('error_resolved', null, adminId, { errorId: safeParseInt(id, 0) }, request.ip);
     return reply.send({ message: 'Error marked as resolved' });
   });
 
   app.get('/admin/debug/trace/:requestId', { preHandler: [adminAudit] }, async (request, reply) => {
     const { requestId } = request.params as any;
-    const trace = await monitoring.getRequestTrace(requestId as string);
-    if (!trace) return reply.status(404).send({ error: 'ERR_NOT_FOUND', message: 'Request trace not found' });
+    const trace = await adminLog.getRequestTrace(requestId as string);
+    if (!trace) throw new NotFoundError('Request trace');
     return reply.send(trace);
   });
 
   app.get('/admin/debug/cache', { preHandler: [adminAudit] }, async (request, reply) => {
     const { pattern = '*' } = request.query as any;
-    return reply.send(await monitoring.inspectRedisCache(pattern as string));
+    return reply.send(await adminSecurity.inspectRedisCache(pattern as string));
   });
 
   app.post('/admin/debug/cache/clear', { preHandler: [adminAudit] }, async (request, reply) => {
     const { pattern } = request.body as any;
     const adminId = request.user.userId;
-    const deleted = await monitoring.clearRedisCache(pattern || '*');
+    const deleted = await adminSecurity.clearRedisCache(pattern || '*');
     await writeAdminAuditLog('cache_cleared', null, adminId, { pattern: pattern || '*', deletedCount: deleted }, request.ip);
     return reply.send({ message: `Cache cleared: ${deleted} keys deleted` });
   });
@@ -133,9 +142,9 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/users', { preHandler: [adminAudit] }, async (request, reply) => {
     const { page = '1', limit = '50', status, search } = request.query as any;
-    return reply.send(await monitoring.getAnonymizedUsers({
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+    return reply.send(await adminUser.getAnonymizedUsers({
+      page: safeParseInt(page, 1),
+      limit: safeParseInt(limit, 50),
       status: status as string,
       search: search as string,
     }));
@@ -143,82 +152,75 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/users/:userId', { preHandler: [adminAudit] }, async (request, reply) => {
     const { userId } = request.params as any;
-    const detail = await monitoring.getUserDetail(userId as string);
-    if (!detail) return reply.status(404).send({ error: 'ERR_NOT_FOUND', message: 'User not found' });
+    const detail = await adminUser.getUserDetail(userId as string);
+    if (!detail) throw new NotFoundError('User');
     return reply.send(detail);
   });
 
   app.get('/admin/users/:userId/activity', { preHandler: [adminAudit] }, async (request, reply) => {
     const { userId } = request.params as any;
     const { page = '1', limit = '50' } = request.query as any;
-    return reply.send(await monitoring.getUserActivity(
+    return reply.send(await adminUser.getUserActivity(
       userId as string,
-      parseInt(page as string),
-      parseInt(limit as string)
+      safeParseInt(page, 1),
+      safeParseInt(limit, 50)
     ));
   });
 
   app.post('/admin/users/:userId/force-logout', { preHandler: [adminAudit] }, async (request, reply) => {
     const { userId } = request.params as any;
     const adminId = request.user.userId;
-    await query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
+    await adminUser.forceLogoutUser(userId as string);
     await writeAdminAuditLog('force_logout', userId as string, adminId, {}, request.ip);
     return reply.send({ message: 'All sessions revoked' });
   });
 
-  app.post('/admin/users/:userId/suspend', { preHandler: [adminAudit] }, async (request, reply) => {
+  app.post('/admin/users/:userId/suspend', {
+    preHandler: [adminAudit],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['durationHours'],
+        properties: {
+          durationHours: { type: 'number', minimum: 1 },
+          reason: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { userId } = request.params as any;
     const { reason, durationHours } = request.body as any;
     const adminId = request.user.userId;
-    const expiresAt = durationHours ? new Date(Date.now() + parseInt(durationHours as string) * 3600000) : null;
 
-    await query(
-      `UPDATE user_restrictions SET lifted_at = NOW()
-       WHERE user_id = $1 AND type = 'suspended' AND lifted_at IS NULL`,
-      [userId]
-    );
-
-    await query(
-      `INSERT INTO user_restrictions (user_id, type, reason, admin_id, expires_at, created_at)
-       VALUES ($1, 'suspended', $2, $3, $4, NOW())`,
-      [userId, reason || 'No reason provided', adminId, expiresAt]
-    );
-    await query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
+    const expiresAt = await adminUser.suspendUser(userId as string, reason || 'No reason provided', durationHours, adminId);
     await writeAdminAuditLog('user_suspended', userId as string, adminId, { reason, durationHours }, request.ip);
     return reply.send({ message: 'User suspended', expiresAt });
   });
 
-  app.post('/admin/users/:userId/ban', { preHandler: [adminAudit] }, async (request, reply) => {
+  app.post('/admin/users/:userId/ban', {
+    preHandler: [adminAudit],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { userId } = request.params as any;
     const { reason } = request.body as any;
     const adminId = request.user.userId;
 
-    await query(
-      `UPDATE user_restrictions SET lifted_at = NOW()
-       WHERE user_id = $1 AND type = 'banned' AND lifted_at IS NULL`,
-      [userId]
-    );
-
-    await query(
-      `INSERT INTO user_restrictions (user_id, type, reason, admin_id, created_at)
-       VALUES ($1, 'banned', $2, $3, NOW())`,
-      [userId, reason || 'No reason provided', adminId]
-    );
-    await query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
+    await adminUser.banUser(userId as string, reason || 'No reason provided', adminId);
     await writeAdminAuditLog('user_banned', userId as string, adminId, { reason }, request.ip);
     return reply.send({ message: 'User banned. Data will be deleted after 30 days.' });
   });
 
-
-
   app.post('/admin/users/:userId/restore', { preHandler: [adminAudit] }, async (request, reply) => {
     const { userId } = request.params as any;
     const adminId = request.user.userId;
-    await query(
-      `UPDATE user_restrictions SET lifted_at = NOW()
-       WHERE user_id = $1 AND lifted_at IS NULL`,
-      [userId]
-    );
+    await adminUser.restoreUser(userId as string);
     await writeAdminAuditLog('user_restored', userId as string, adminId, {}, request.ip);
     return reply.send({ message: 'User restrictions lifted' });
   });
@@ -227,17 +229,19 @@ export async function adminRoutes(app: FastifyInstance) {
     const { userId } = request.params as any;
     const adminId = request.user.userId;
 
-    await query('UPDATE slow_queries SET user_id = NULL WHERE user_id = $1', [userId]);
-    await query('UPDATE system_logs SET user_id = NULL WHERE user_id = $1', [userId]);
-    await query('UPDATE admin_audit_log SET actor_id = NULL WHERE actor_id = $1', [userId]);
-    await query('UPDATE error_events SET resolved_by = NULL WHERE resolved_by = $1', [userId]);
-    await query('UPDATE alert_history SET acknowledged_by = NULL WHERE acknowledged_by = $1', [userId]);
-    await query('UPDATE config_change_log SET changed_by = NULL WHERE changed_by = $1', [userId]);
-    await query('UPDATE group_members SET left_at = NOW() WHERE user_id = $1 AND left_at IS NULL', [userId]);
-    await query('DELETE FROM user_restrictions WHERE user_id = $1', [userId]);
-    await query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
-    await query('DELETE FROM user_activity_log WHERE user_id = $1', [userId]);
-    await query('DELETE FROM users WHERE id = $1', [userId]);
+    if (adminId === userId) {
+      throw new AppError('ERR_SELF_DELETE', 'Cannot delete your own account', 400);
+    }
+
+    try {
+      await adminUser.deleteUser(userId as string, adminId);
+    } catch (e: any) {
+      if (e.message === 'ERR_LAST_OWNER') {
+        throw new AppError('ERR_LAST_OWNER', 'Cannot delete the last owner account', 400);
+      }
+      throw e;
+    }
+
     await writeAdminAuditLog('user_deleted', userId as string, adminId, {}, request.ip);
     return reply.send({ message: 'User and all associated data permanently deleted' });
   });
@@ -248,27 +252,46 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/security/failed-logins', { preHandler: [adminAudit] }, async (request, reply) => {
     const { hours = '24' } = request.query as any;
-    return reply.send(await monitoring.getFailedLoginStats(parseInt(hours as string)));
+    return reply.send(await adminSecurity.getFailedLoginStats(safeParseInt(hours, 24)));
   });
 
   app.get('/admin/security/suspicious-ips', { preHandler: [adminAudit] }, async (request, reply) => {
     const { threshold = '50', hours = '1' } = request.query as any;
-    return reply.send(await monitoring.getSuspiciousIPs(parseInt(threshold as string), parseInt(hours as string)));
+    return reply.send(await adminSecurity.getSuspiciousIPs(safeParseInt(threshold, 50), safeParseInt(hours, 24)));
   });
 
   app.get('/admin/security/rate-limit-hits', { preHandler: [adminAudit] }, async (request, reply) => {
     const { hours = '24' } = request.query as any;
-    return reply.send(await monitoring.getRateLimitHits(parseInt(hours as string)));
+    return reply.send(await adminSecurity.getRateLimitHits(safeParseInt(hours, 24)));
   });
 
   app.get('/admin/security/score', { preHandler: [adminAudit] }, async (request, reply) => {
-    return reply.send(await monitoring.getSecurityScore());
+    return reply.send(await adminSecurity.getSecurityScore());
   });
 
-  app.post('/admin/security/block-ip', { preHandler: [adminAudit] }, async (request, reply) => {
+  app.post('/admin/security/block-ip', {
+    preHandler: [adminAudit],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['ipAddress'],
+        properties: {
+          ipAddress: { type: 'string' },
+          reason: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { ipAddress, reason } = request.body as any;
     const adminId = request.user.userId;
-    await monitoring.blockIPAddress(ipAddress as string, reason as string || 'Blocked by admin');
+
+    const IPV4_REGEX = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const IPV6_REGEX = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+    if (!IPV4_REGEX.test(ipAddress) && !IPV6_REGEX.test(ipAddress)) {
+      throw new ValidationError('ipAddress must be a valid IP address');
+    }
+
+    await adminSecurity.blockIPAddress(ipAddress, reason || 'Blocked by admin');
     await writeAdminAuditLog('ip_blocked', null, adminId, { ipAddress, reason }, request.ip);
     return reply.send({ message: `IP ${ipAddress} blocked` });
   });
@@ -278,89 +301,85 @@ export async function adminRoutes(app: FastifyInstance) {
   // ============================================================
 
   app.get('/admin/alerts/rules', { preHandler: [adminAudit] }, async (request, reply) => {
-    const rules = await query('SELECT * FROM alert_rules ORDER BY name');
-    return reply.send(rules.rows);
+    return reply.send(await adminAlert.getAlertRules());
   });
 
-  app.post('/admin/alerts/rules', { preHandler: [adminAudit] }, async (request, reply) => {
+  app.post('/admin/alerts/rules', {
+    preHandler: [adminAudit],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['name', 'metric', 'condition', 'threshold'],
+        properties: {
+          name: { type: 'string', minLength: 1 },
+          metric: { type: 'string', minLength: 1 },
+          condition: { type: 'string', enum: ['>', '<', '>=', '<=', '=='] },
+          threshold: { type: 'number' },
+          window_minutes: { type: 'number', minimum: 1 },
+          severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
+          enabled: { type: 'boolean' },
+          channels: { type: 'array', items: { type: 'string' } },
+          webhook_url: { type: 'string' },
+          cooldown_minutes: { type: 'number', minimum: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const rule = request.body as any;
     const adminId = request.user.userId;
-    const { rows: [created] } = await query(
-      `INSERT INTO alert_rules (name, metric, condition, threshold, window_minutes, enabled, channels, webhook_url, cooldown_minutes, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-       RETURNING *`,
-      [
-        rule.name, rule.metric, rule.condition, rule.threshold,
-        rule.windowMinutes || 5, rule.enabled !== false,
-        rule.channels || ['panel'], rule.webhookUrl || null,
-        rule.cooldownMinutes || 30,
-      ]
-    );
+    const created = await adminAlert.createAlertRule(rule, adminId);
     await writeAdminAuditLog('alert_rule_created', null, adminId, { ruleId: created.id, name: rule.name }, request.ip);
     return reply.status(201).send(created);
   });
 
-  app.put('/admin/alerts/rules/:id', { preHandler: [adminAudit] }, async (request, reply) => {
+  app.put('/admin/alerts/rules/:id', {
+    preHandler: [adminAudit],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', minLength: 1 },
+          metric: { type: 'string', minLength: 1 },
+          condition: { type: 'string', enum: ['>', '<', '>=', '<=', '=='] },
+          threshold: { type: 'number' },
+          window_minutes: { type: 'number', minimum: 1 },
+          severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
+          enabled: { type: 'boolean' },
+          channels: { type: 'array', items: { type: 'string' } },
+          webhook_url: { type: 'string' },
+          cooldown_minutes: { type: 'number', minimum: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { id } = request.params as any;
-    const updates = request.body as any;
-    const { rows: [updated] } = await query(
-      `UPDATE alert_rules SET name=$1, metric=$2, condition=$3, threshold=$4, window_minutes=$5, enabled=$6, channels=$7, webhook_url=$8, cooldown_minutes=$9
-       WHERE id=$10 RETURNING *`,
-      [
-        updates.name, updates.metric, updates.condition, updates.threshold,
-        updates.windowMinutes, updates.enabled, updates.channels,
-        updates.webhookUrl, updates.cooldownMinutes, id,
-      ]
-    );
-    if (!updated) return reply.status(404).send({ error: 'ERR_NOT_FOUND', message: 'Alert rule not found' });
+    const updated = await adminAlert.updateAlertRule(id as string, request.body as any);
+    if (!updated) throw new NotFoundError('Alert rule');
     return reply.send(updated);
   });
 
   app.delete('/admin/alerts/rules/:id', { preHandler: [adminAudit] }, async (request, reply) => {
     const { id } = request.params as any;
     const adminId = request.user.userId;
-    const { rows: [deleted] } = await query('DELETE FROM alert_rules WHERE id = $1 RETURNING *', [id]);
-    if (!deleted) return reply.status(404).send({ error: 'ERR_NOT_FOUND', message: 'Alert rule not found' });
+    const deleted = await adminAlert.deleteAlertRule(id as string);
+    if (!deleted) throw new NotFoundError('Alert rule');
     await writeAdminAuditLog('alert_rule_deleted', null, adminId, { ruleId: id, name: deleted.name }, request.ip);
     return reply.send({ message: 'Alert rule deleted' });
   });
 
   app.get('/admin/alerts/history', { preHandler: [adminAudit] }, async (request, reply) => {
     const { page = '1', limit = '50', acknowledged } = request.query as any;
-    const pageNum = parseInt(page as string);
-    const limitNum = Math.min(parseInt(limit as string), 100);
-    const offset = (pageNum - 1) * limitNum;
-
-    let sql = 'SELECT ah.*, ar.name as rule_name FROM alert_history ah LEFT JOIN alert_rules ar ON ah.rule_id = ar.id';
-    const params: any[] = [];
-
-    if (acknowledged === 'false') {
-      sql += ' WHERE ah.acknowledged = FALSE';
-    }
-
-    sql += ' ORDER BY ah.created_at DESC LIMIT $1 OFFSET $2';
-    params.push(limitNum, offset);
-
-    const [rowsResult, countResult] = await Promise.all([
-      query(sql, params),
-      query<{ count: number }>(
-        'SELECT COUNT(*) as count FROM alert_history' + (acknowledged === 'false' ? ' WHERE acknowledged = FALSE' : '')
-      ),
-    ]);
-
-    return reply.send({
-      alerts: rowsResult.rows,
-      pagination: { page: pageNum, limit: limitNum, total: Number(countResult.rows[0]?.count || 0) },
-    });
+    return reply.send(await adminAlert.getAlertHistory(
+      safeParseInt(page, 1),
+      Math.min(safeParseInt(limit, 50), 100),
+      acknowledged as string
+    ));
   });
 
   app.post('/admin/alerts/:id/acknowledge', { preHandler: [adminAudit] }, async (request, reply) => {
     const { id } = request.params as any;
     const adminId = request.user.userId;
-    await query(
-      'UPDATE alert_history SET acknowledged = TRUE, acknowledged_by = $1 WHERE id = $2',
-      [adminId, id]
-    );
+    await adminAlert.acknowledgeAlert(id as string, adminId);
     await writeAdminAuditLog('alert_acknowledged', null, adminId, { alertId: id }, request.ip);
     return reply.send({ message: 'Alert acknowledged' });
   });
@@ -401,57 +420,53 @@ export async function adminRoutes(app: FastifyInstance) {
   // ============================================================
 
   app.get('/admin/config', { preHandler: [adminAudit] }, async (request, reply) => {
-    const configs = await query('SELECT * FROM system_config ORDER BY key');
-    return reply.send(configs.rows);
+    return reply.send(await adminConfig.getConfig());
   });
 
-  app.put('/admin/config/:key', { preHandler: [adminAudit] }, async (request, reply) => {
+  app.put('/admin/config/:key', {
+    preHandler: [adminAudit],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['value'],
+        properties: {
+          value: {},
+          description: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { key } = request.params as any;
     const { value, description } = request.body as any;
     const adminId = request.user.userId;
 
-    const oldResult = await query('SELECT value FROM system_config WHERE key = $1', [key]);
-    const oldValue = oldResult.rows[0]?.value || null;
-
-    const storedValue = typeof value === 'string' ? value : JSON.stringify(value);
-    await query(
-      `INSERT INTO system_config (key, value, description, updated_by, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (key) DO UPDATE SET value = $2, description = COALESCE($3, system_config.description), updated_by = $4, updated_at = NOW()`,
-      [key, storedValue, description || null, adminId]
-    );
-
-    await query(
-      `INSERT INTO config_change_log (config_key, old_value, new_value, changed_by, ip_address, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())`,
-      [key, oldValue, storedValue, adminId, request.ip]
-    );
-
+    const result = await adminConfig.updateConfig(key as string, value, description || null, adminId, request.ip);
     await writeAdminAuditLog('config_updated', null, adminId, { key, newValue: value }, request.ip);
-    return reply.send({ key, value });
+    return reply.send(result);
   });
 
   app.get('/admin/config/history', { preHandler: [adminAudit] }, async (request, reply) => {
     const { key } = request.query as any;
-    let sql = 'SELECT * FROM config_change_log';
-    const params: any[] = [];
-    if (key) { sql += ' WHERE config_key = $1'; params.push(key); }
-    sql += ' ORDER BY created_at DESC LIMIT 100';
-    return reply.send(await query(sql, params));
+    return reply.send(await adminConfig.getConfigHistory(key as string));
   });
 
-  app.post('/admin/maintenance', { preHandler: [adminAudit] }, async (request, reply) => {
+  app.post('/admin/maintenance', {
+    preHandler: [adminAudit],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['enabled'],
+        properties: {
+          enabled: { type: 'boolean' },
+          message: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { enabled, message } = request.body as any;
     const adminId = request.user.userId;
-    const value = enabled ? 'true' : 'false';
 
-    await query(
-      `INSERT INTO system_config (key, value, description, updated_by, updated_at)
-       VALUES ('app.maintenance_mode', $1, $2, $3, NOW())
-       ON CONFLICT (key) DO UPDATE SET value = $1, description = COALESCE($2, system_config.description), updated_by = $3, updated_at = NOW()`,
-      [value, message || null, adminId]
-    );
-
+    await adminConfig.toggleMaintenance(enabled, message || null, adminId);
     await writeAdminAuditLog('maintenance_toggle', null, adminId, { enabled, message }, request.ip);
     return reply.send({ maintenanceMode: enabled, message: message || null });
   });
@@ -462,33 +477,11 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/audit-log', { preHandler: [adminAudit] }, async (request, reply) => {
     const { action, page = '1', limit = '50' } = request.query as any;
-    const pageNum = parseInt(page as string);
-    const limitNum = Math.min(parseInt(limit as string), 100);
-    const offset = (pageNum - 1) * limitNum;
-
-    let sql = 'SELECT * FROM admin_audit_log';
-    const params: any[] = [];
-
-    if (action) {
-      sql += ' WHERE action = $1';
-      params.push(action);
-    }
-
-    sql += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
-    params.push(limitNum, offset);
-
-    const [rowsResult, countResult] = await Promise.all([
-      query(sql, params),
-      query<{ count: number }>(
-        'SELECT COUNT(*) as count FROM admin_audit_log' + (action ? ' WHERE action = $1' : ''),
-        action ? [action] : []
-      ),
-    ]);
-
-    return reply.send({
-      logs: rowsResult.rows,
-      pagination: { page: pageNum, limit: limitNum, total: Number(countResult.rows[0]?.count || 0) },
-    });
+    return reply.send(await adminAuditSvc.getAuditLog(
+      action as string,
+      safeParseInt(page, 1),
+      safeParseInt(limit, 50)
+    ));
   });
 
   // ============================================================
@@ -523,6 +516,6 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/admin/health/history', { preHandler: [adminAudit] }, async (request, reply) => {
     const { hours = '24' } = request.query as any;
-    return reply.send(await monitoring.getHealthHistory(parseInt(hours as string)));
+    return reply.send(await monitoring.getHealthHistory(safeParseInt(hours, 24)));
   });
 }

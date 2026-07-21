@@ -1,9 +1,8 @@
 import {
-  PaymentMethod,
   BudgetType,
   BudgetStatus,
-  NotificationType,
 } from './enums';
+import type { Invoice } from './invoice';
 
 export interface PersonalBlob {
   version: number;
@@ -14,6 +13,7 @@ export interface PersonalBlob {
   recurringBills: PersonalRecurringBill[];
   incomeLogs: IncomeLog[];
   savingsTargets: SavingsTarget[];
+  invoices?: Invoice[];
 }
 
 export interface PersonalExpense {
@@ -23,7 +23,7 @@ export interface PersonalExpense {
   categoryId: string;
   description: string;
   date: string;
-  paymentMethod: PaymentMethod;
+  paymentMethod: string;
   isRecurring: boolean;
   recurringBillId?: string;
   tags: string[];
@@ -61,7 +61,7 @@ export interface PersonalRecurringBill {
   amount: number;
   currency: string;
   categoryId: string;
-  paymentMethod: PaymentMethod;
+  paymentMethod: string;
   frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
   nextDueDate: string;
   endDate?: string;

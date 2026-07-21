@@ -2,6 +2,9 @@ import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
 import { usePersonalStore } from '../../stores/personalStore';
+import { usePersonalExpenseStore } from '../../stores/personalExpenseStore';
+import { useAuthStore } from '../../stores/authStore';
+import { formatCurrency } from '@coldfi/shared';
 
 interface CSVRow {
   [key: string]: string;
@@ -26,7 +29,7 @@ const STEPS = ['Upload', 'Map Columns', 'Preview', 'Confirm'] as const;
 export default function ImportPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const addExpense = usePersonalStore((s) => s.addExpense);
+  const addExpense = usePersonalExpenseStore((s) => s.addExpense);
   const categories = usePersonalStore((s) => s.categories);
 
   const [step, setStep] = useState<number>(0);
@@ -102,7 +105,7 @@ export default function ImportPage() {
 
         await addExpense({
           amount,
-          currency: 'USD',
+          currency: useAuthStore.getState().defaultCurrency,
           categoryId: resolveCategoryId(row[mapping.category]),
           date: row[mapping.date] ?? new Date().toISOString().split('T')[0],
           payee: null,
@@ -255,7 +258,7 @@ export default function ImportPage() {
                     <td className="px-4 py-2 text-neutral-700">{row[mapping.date]}</td>
                     <td className="px-4 py-2 text-neutral-700 max-w-xs truncate">{row[mapping.description]}</td>
                     <td className="px-4 py-2 text-neutral-700">{row[mapping.category]}</td>
-                    <td className="px-4 py-2 text-neutral-900 font-semibold text-right">${parseFloat(row[mapping.amount] || '0').toFixed(2)}</td>
+                    <td className="px-4 py-2 text-neutral-900 font-semibold text-right">{formatCurrency(parseFloat(row[mapping.amount] || '0'), useAuthStore.getState().defaultCurrency)}</td>
                   </tr>
                 ))}
               </tbody>

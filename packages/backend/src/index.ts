@@ -1,7 +1,3 @@
-import dotenv from 'dotenv';
-import path from 'path';
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-
 import { buildApp } from './app';
 import { config } from './config';
 import { setupRedis, getRedis } from './services/redis';
@@ -21,8 +17,7 @@ async function main() {
     await redis.connect();
     logger.info('Redis connected', { module: 'startup' });
   } catch (err) {
-    logger.fatal('Failed to connect to Redis', { module: 'startup', error: String(err) });
-    process.exit(1);
+    logger.error('Failed to connect to Redis — continuing without Redis', { module: 'startup', error: String(err) });
   }
 
   try {
@@ -63,8 +58,6 @@ async function main() {
     logger.info(`${signal} received. Shutting down...`, { module: 'shutdown' });
 
     try {
-      logger.destroy();
-
       await app.close();
       logger.info('HTTP server closed', { module: 'shutdown' });
 
@@ -78,9 +71,10 @@ async function main() {
       logger.info('Database pool closed', { module: 'shutdown' });
 
       logger.info('Graceful shutdown complete', { module: 'shutdown' });
+      logger.destroy();
       process.exit(0);
     } catch (err) {
-      logger.error('Error during shutdown', { module: 'shutdown', error: String(err) });
+      console.error('Error during shutdown:', err);
       process.exit(1);
     }
   };

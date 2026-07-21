@@ -1,3 +1,5 @@
+import { apiClient } from './apiClient';
+
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
@@ -63,11 +65,8 @@ export function readReceiptFile(file: File): Promise<ReceiptFile> {
 
 export async function uploadReceiptToServer(
   file: ReceiptFile,
-  expenseId: string,
-  accessToken: string
+  expenseId: string
 ): Promise<string> {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-
   const formData = new FormData();
   const base64Data = file.base64.split(',')[1] ?? file.base64;
   const byteString = atob(base64Data);
@@ -79,11 +78,8 @@ export async function uploadReceiptToServer(
   formData.append('receipt', blob, file.name);
   formData.append('expenseId', expenseId);
 
-  const res = await fetch(`${API_BASE}/api/receipts/upload`, {
+  const res = await apiClient('/api/receipts/upload', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
     body: formData,
   });
 

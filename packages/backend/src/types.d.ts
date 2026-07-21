@@ -22,6 +22,10 @@ declare module '@fastify/jwt' {
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    adminWs?: import('socket.io').Server;
+    broadcastLog?: (entry: any) => void;
+    broadcastStats?: (stats: any) => void;
+    broadcastAlert?: (alert: any) => void;
   }
 
   interface FastifyRequest {

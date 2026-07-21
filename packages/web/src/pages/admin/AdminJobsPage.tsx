@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useAdminStore } from '../../stores/adminStore';
+import { useAdminConfigStore } from '../../stores/adminConfigStore';
 
 export default function AdminJobsPage() {
-  const jobs = useAdminStore((s) => s.jobs);
-  const fetchJobs = useAdminStore((s) => s.fetchJobs);
+  const jobs = useAdminConfigStore((s) => s.jobs);
+  const fetchJobs = useAdminConfigStore((s) => s.fetchJobs);
   const [expandedPid, setExpandedPid] = useState<number | null>(null);
 
   useEffect(() => {

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGroupStore } from '../../stores/groupStore';
-import CreateGroupModal from './CreateGroupModal';
-import JoinGroupModal from './JoinGroupModal';
+import { useAuthStore } from '../../stores/authStore';
+import { formatCurrency } from '@coldfi/shared';
+import CreateGroupModal from '../../components/groups/CreateGroupModal';
+import JoinGroupModal from '../../components/groups/JoinGroupModal';
 
 interface GroupSummary {
   id: string;
@@ -12,25 +14,26 @@ interface GroupSummary {
 }
 
 function GroupCard({ group, onSelect }: { group: GroupSummary; onSelect: () => void }) {
+  const defaultCurrency = useAuthStore((s) => s.defaultCurrency);
   return (
     <button
       onClick={onSelect}
-      className="flex w-full items-center rounded-xl border border-neutral-200 bg-white p-4 text-left transition-all hover:border-primary-300 hover:shadow-sm"
+      className="flex w-full items-center rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 text-left transition-all hover:border-primary-300 dark:hover:border-primary-600 hover:shadow-sm"
     >
-      <div className="mr-3 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-100">
-        <span className="text-xl font-bold text-primary-600">
+      <div className="mr-3 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/50">
+        <span className="text-xl font-bold text-primary-600 dark:text-primary-300">
           {group.name.charAt(0).toUpperCase()}
         </span>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-base font-semibold text-neutral-900">{group.name}</p>
-        <p className="text-sm text-neutral-500">
+        <p className="truncate text-base font-semibold text-neutral-900 dark:text-white">{group.name}</p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
           {group.memberCount} member{group.memberCount !== 1 ? 's' : ''}
         </p>
       </div>
       <div className="ml-3 text-right">
-        <p className={`text-base font-bold ${group.yourBalance >= 0 ? 'text-success-600' : 'text-danger-500'}`}>
-          {group.yourBalance >= 0 ? '+' : ''}${Math.abs(group.yourBalance).toFixed(2)}
+        <p className={`text-base font-bold ${group.yourBalance >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-500 dark:text-danger-400'}`}>
+          {group.yourBalance >= 0 ? '+' : ''}{formatCurrency(Math.abs(group.yourBalance), defaultCurrency)}
         </p>
       </div>
     </button>
@@ -40,6 +43,7 @@ function GroupCard({ group, onSelect }: { group: GroupSummary; onSelect: () => v
 export default function GroupsPage() {
   const navigate = useNavigate();
   const { groups, fetchGroups, isLoading } = useGroupStore();
+  const defaultCurrency = useAuthStore((s) => s.defaultCurrency);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 
@@ -57,8 +61,8 @@ export default function GroupsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Groups</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Groups</h1>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
             Shared expense groups with friends
           </p>
         </div>

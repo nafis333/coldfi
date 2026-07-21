@@ -9,6 +9,7 @@ export function setupRedis(): Redis {
 
   redis = new Redis(config.REDIS_URL, {
     maxRetriesPerRequest: 3,
+    connectTimeout: 5000,
     retryStrategy(times) {
       if (times > 10) {
         logger.error('Redis: max retry attempts reached', { module: 'redis' });
@@ -35,8 +36,8 @@ export function setupRedis(): Redis {
 }
 
 export function getRedis(): Redis {
-  if (!redis) {
-    throw new Error('Redis not initialized. Call setupRedis() first.');
+  if (!redis || redis.status === 'close' || redis.status === 'end') {
+    throw new Error('Redis not available');
   }
   return redis;
 }
@@ -59,11 +60,15 @@ export async function getTempToken(
   const client = getRedis();
   const key = `temp:${purpose}:${token}`;
 
-  const data = await client.get(key);
+  const data = await client.getdel(key);
   if (!data) return null;
 
-  await client.del(key);
-  return JSON.parse(data);
+  try {
+    return JSON.parse(data);
+  } catch {
+    logger.warn('Failed to parse temp token data', { module: 'redis', purpose, key });
+    return null;
+  }
 }
 
 export async function deleteTempToken(

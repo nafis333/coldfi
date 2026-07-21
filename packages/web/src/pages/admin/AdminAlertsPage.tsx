@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useAdminStore } from '../../stores/adminStore';
+import { useAdminConfigStore } from '../../stores/adminConfigStore';
 
 export default function AdminAlertsPage() {
-  const { alertRules, alertHistory, fetchAlertRules, fetchAlertHistory, createAlertRule, updateAlertRule, deleteAlertRule, acknowledgeAlert, testAlertRule, evaluateAlerts } = useAdminStore();
+  const { alertRules, alertHistory, fetchAlertRules, fetchAlertHistory, createAlertRule, updateAlertRule, deleteAlertRule, acknowledgeAlert, testAlertRule, evaluateAlerts } = useAdminConfigStore();
   const [tab, setTab] = useState<'rules' | 'history'>('rules');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<any>({});
@@ -168,7 +168,7 @@ export default function AdminAlertsPage() {
             <tbody>
               {alertHistory.alerts?.map((a: any) => (
                 <tr key={a.id} className="border-b border-neutral-100">
-                  <td className="p-3 text-xs text-neutral-500">{new Date(a.created_at).toLocaleString()}</td>
+                  <td className="p-3 text-xs text-neutral-500">{new Date(a.created_at || a.createdAt).toLocaleString()}</td>
                   <td className="p-3">{a.rule_name || a.ruleName}</td>
                   <td className="p-3 font-mono text-xs">{a.metric}</td>
                   <td className="p-3 text-right font-medium">{parseFloat(a.actual_value || a.actualValue).toFixed(2)}</td>

@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import { pool } from '../db/pool';
-import { getRedis } from '../services/redis';
+import { config } from '../config';
+import { pingDatabase, pingRedis } from '../services/healthService';
 
 interface HealthStatus {
   status: 'ok' | 'degraded' | 'down';
@@ -8,43 +8,36 @@ interface HealthStatus {
   uptime: number;
   version: string;
   services: {
-    database: ServiceStatus;
-    redis: ServiceStatus;
+    database: { status: 'ok' | 'down'; latencyMs?: number; error?: string };
+    redis: { status: 'ok' | 'down'; latencyMs?: number; error?: string };
   };
 }
 
-interface ServiceStatus {
-  status: 'ok' | 'down';
-  latencyMs?: number;
-  error?: string;
-}
-
-async function checkDatabase(): Promise<ServiceStatus> {
-  try {
-    const start = Date.now();
-    await pool.query('SELECT 1');
-    return { status: 'ok', latencyMs: Date.now() - start };
-  } catch (err) {
-    return { status: 'down', error: (err as Error).message };
-  }
-}
-
-async function checkRedis(): Promise<ServiceStatus> {
-  try {
-    const redis = getRedis();
-    const start = Date.now();
-    await redis.ping();
-    return { status: 'ok', latencyMs: Date.now() - start };
-  } catch (err) {
-    return { status: 'down', error: (err as Error).message };
-  }
+function sanitizeError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (config.NODE_ENV === 'production') return 'Service check failed';
+  return msg;
 }
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health', async (request, reply) => {
     const [database, redis] = await Promise.all([
-      checkDatabase(),
-      checkRedis(),
+      (async () => {
+        try {
+          const result = await pingDatabase();
+          return { status: 'ok' as const, latencyMs: result.latencyMs };
+        } catch (err) {
+          return { status: 'down' as const, error: sanitizeError(err) };
+        }
+      })(),
+      (async () => {
+        try {
+          const result = await pingRedis();
+          return { status: 'ok' as const, latencyMs: result.latencyMs };
+        } catch (err) {
+          return { status: 'down' as const, error: sanitizeError(err) };
+        }
+      })(),
     ]);
 
     const allOk = database.status === 'ok' && redis.status === 'ok';
@@ -58,10 +51,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
       timestamp: new Date().toISOString(),
       uptime: Math.floor(process.uptime()),
       version: process.env['npm_package_version'] || '1.0.0',
-      services: {
-        database,
-        redis,
-      },
+      services: { database, redis },
     };
 
     return reply.status(statusCode).send(health);
@@ -74,8 +64,22 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/health/ready', async (request, reply) => {
     const [database, redis] = await Promise.all([
-      checkDatabase(),
-      checkRedis(),
+      (async () => {
+        try {
+          const result = await pingDatabase();
+          return { status: 'ok' as const, latencyMs: result.latencyMs };
+        } catch (err) {
+          return { status: 'down' as const, error: sanitizeError(err) };
+        }
+      })(),
+      (async () => {
+        try {
+          const result = await pingRedis();
+          return { status: 'ok' as const, latencyMs: result.latencyMs };
+        } catch (err) {
+          return { status: 'down' as const, error: sanitizeError(err) };
+        }
+      })(),
     ]);
 
     const ready = database.status === 'ok' && redis.status === 'ok';

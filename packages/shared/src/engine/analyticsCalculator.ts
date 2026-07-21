@@ -54,6 +54,7 @@ export function computeSpendingByCategory(
   endDate?: string
 ): CategorySpending[] {
   const filtered = filterByDateRange(expenses, startDate, endDate);
+  // Note: expenses may be in different currencies — aggregation is multi-currency sum
   const totalAmount = filtered.reduce((sum, e) => sum + e.amount, 0);
 
   const categoryMap = new Map<string, {

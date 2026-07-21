@@ -3,14 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-AibojFvrJRZnx2qqecgAmFpt2Djslu2sn1upRaJANAs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://localhost:3001 ws://localhost:3000; frame-ancestors 'none'; form-action 'self'; base-uri 'self'" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <title>ColdFi</title>
+    <script>
+      (function() {
+        try {
+          var dark = localStorage.getItem('coldfi:darkMode');
+          if (dark === 'true') document.documentElement.classList.add('dark');
+        } catch(e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-neutral-50 text-neutral-900 antialiased">
+  <body class="bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

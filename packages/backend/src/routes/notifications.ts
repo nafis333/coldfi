@@ -1,6 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { WebPushService } from '../services/webPush';
 import { query, pool } from '../db/pool';
+import { createNotification, createNotificationForMultipleUsers, deleteNotification } from '../services/notificationService';
+import { ValidationError, NotFoundError, ForbiddenError } from '../errors';
 
 const ENDPOINT_URL_REGEX = /^https:\/\/.+$/;
 const BASE64_REGEX = /^[A-Za-z0-9+/_-]+={0,2}$/;
@@ -33,139 +35,153 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
 
   const pushService = new WebPushService(pool);
 
-  app.post('/push/subscribe', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.post('/push/subscribe', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['endpoint', 'auth', 'p256dh'],
+        properties: {
+          endpoint: { type: 'string' },
+          auth: { type: 'string' },
+          p256dh: { type: 'string' },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
     const { endpoint, auth, p256dh } = request.body as any;
 
-    if (!endpoint || !auth || !p256dh) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: 'endpoint, auth, and p256dh are required',
-      });
-    }
-
     if (!ENDPOINT_URL_REGEX.test(endpoint)) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: 'endpoint must be a valid HTTPS URL',
-      });
+      throw new ValidationError('endpoint must be a valid HTTPS URL');
     }
 
     if (!BASE64_REGEX.test(auth) || !BASE64_REGEX.test(p256dh)) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: 'auth and p256dh must be valid base64-encoded strings',
-      });
+      throw new ValidationError('auth and p256dh must be valid base64-encoded strings');
     }
 
-    try {
-      const id = await pushService.subscribe(userId, { endpoint, auth, p256dh });
-      return reply.status(201).send({
-        success: true,
-        id,
-        message: 'Web Push subscription registered successfully',
-      });
-    } catch (error) {
-      request.log.error(error, 'Failed to register push subscription');
-      return reply.status(500).send({
-        error: 'ERR_INTERNAL',
-        message: 'Failed to register push subscription',
-      });
-    }
+    const id = await pushService.subscribe(userId, { endpoint, auth, p256dh });
+    return reply.status(201).send({
+      success: true,
+      id,
+      message: 'Web Push subscription registered successfully',
+    });
   });
 
-  app.delete('/push/unsubscribe', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.delete('/push/unsubscribe', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['endpoint'],
+        properties: {
+          endpoint: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
     const { endpoint } = request.body as any;
 
-    if (!endpoint || typeof endpoint !== 'string' || endpoint.trim().length === 0) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: 'endpoint is required',
-      });
+    const removed = await pushService.unsubscribe(userId, endpoint.trim());
+    if (!removed) {
+      throw new NotFoundError('Subscription');
     }
-
-    try {
-      const removed = await pushService.unsubscribe(userId, endpoint.trim());
-      if (!removed) {
-        return reply.status(404).send({
-          error: 'ERR_NOT_FOUND',
-          message: 'Subscription not found',
-        });
-      }
-      return reply.status(200).send({
-        success: true,
-        message: 'Web Push subscription removed successfully',
-      });
-    } catch (error) {
-      request.log.error(error, 'Failed to remove push subscription');
-      return reply.status(500).send({
-        error: 'ERR_INTERNAL',
-        message: 'Failed to remove push subscription',
-      });
-    }
+    return reply.send({
+      success: true,
+      message: 'Web Push subscription removed successfully',
+    });
   });
 
-  // In-app notification feed
+  app.post('/', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['type', 'title'],
+        properties: {
+          type: { type: 'string', minLength: 1 },
+          title: { type: 'string', minLength: 1 },
+          body: { type: 'string' },
+          groupId: { type: 'string' },
+          expenseId: { type: 'string' },
+          settlementId: { type: 'string' },
+          recipientIds: {
+            type: 'array',
+            items: { type: 'string' },
+            maxItems: 100,
+          },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = request.user.userId;
+    const { type, title, body, groupId, expenseId, settlementId, recipientIds } = request.body as any;
+
+    if (Array.isArray(recipientIds) && recipientIds.length > 0) {
+      if (!recipientIds.every((id: string) => id === userId) && request.user.role !== 'owner') {
+        throw new ForbiddenError('Only admins may send notifications to other users');
+      }
+      await createNotificationForMultipleUsers(recipientIds, { type, title, body, groupId, expenseId, settlementId });
+    } else {
+      await createNotification({ userId, type, title, body, groupId, expenseId, settlementId });
+    }
+    return reply.status(201).send({ success: true });
+  });
+
+  app.delete('/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = request.user.userId;
+    const { id } = request.params as { id: string };
+
+    const deleted = await deleteNotification(id, userId);
+    if (!deleted) {
+      throw new NotFoundError('Notification');
+    }
+    return reply.send({ success: true });
+  });
 
   app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
 
-    try {
-      const result = await query(
-        `SELECT id, type, title, body, is_read, group_id, expense_id, settlement_id, created_at,
-                COUNT(*) FILTER (WHERE is_read = false) OVER() as unread_count
-         FROM notifications
-         WHERE user_id = $1
-         ORDER BY created_at DESC
-         LIMIT 100`,
-        [userId]
-      );
+    const result = await query(
+      `SELECT id, type, title, body, is_read, group_id, expense_id, settlement_id, created_at,
+              COUNT(*) FILTER (WHERE is_read = false) OVER() as unread_count
+       FROM notifications
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 100`,
+      [userId]
+    );
 
-      const unreadCount = result.rows.length > 0 ? parseInt(result.rows[0]!.unread_count, 10) : 0;
+    const unreadCount = result.rows.length > 0 ? parseInt(result.rows[0]!.unread_count, 10) : 0;
 
-      const notifications = result.rows.map((row: any) => ({
-        id: row.id,
-        type: row.type,
-        title: row.title,
-        body: row.body,
-        isRead: row.is_read,
-        groupId: row.group_id,
-        expenseId: row.expense_id,
-        settlementId: row.settlement_id,
-        timestamp: row.created_at,
-      }));
+    const notifications = result.rows.map((row: any) => ({
+      id: row.id,
+      type: row.type,
+      title: row.title,
+      body: row.body,
+      isRead: row.is_read,
+      groupId: row.group_id,
+      expenseId: row.expense_id,
+      settlementId: row.settlement_id,
+      timestamp: row.created_at,
+    }));
 
-      return reply.send({
-        notifications,
-        unreadCount,
-      });
-    } catch (error) {
-      request.log.error(error, 'Failed to fetch notifications');
-      return reply.status(500).send({
-        error: 'ERR_INTERNAL',
-        message: 'Failed to fetch notifications',
-      });
-    }
+    return reply.send({
+      notifications,
+      unreadCount,
+    });
   });
 
   app.patch('/:id/read', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
     const { id } = request.params as { id: string };
 
-    try {
-      await query(
-        `UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2`,
-        [id, userId]
-      );
-      return reply.send({ success: true });
-    } catch (error) {
-      request.log.error(error, 'Failed to mark notification as read');
-      return reply.status(500).send({
-        error: 'ERR_INTERNAL',
-        message: 'Failed to mark notification as read',
-      });
+    const result = await query(
+      `UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (result.rowCount === 0) {
+      throw new NotFoundError('Notification');
     }
+    return reply.send({ success: true });
   });
 
   app.post('/read-all', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -189,91 +205,82 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
   app.get('/preferences', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
 
-    try {
-      const preferences = await pushService.getPreferences(userId);
-      if (!preferences) {
-        return reply.status(200).send({
-          success: true,
-          preferences: {
-            push_enabled: true,
-            expense_created: true,
-            expense_updated: true,
-            expense_deleted: true,
-            settlement_created: true,
-            settlement_confirmed: true,
-            settlement_rejected: true,
-            member_joined: true,
-            member_left: true,
-            balance_adjusted: true,
-            reminders: true,
-            quiet_hours_start: null,
-            quiet_hours_end: null,
-            quiet_hours_enabled: false,
-          },
-          isDefault: true,
-        });
-      }
-      return reply.status(200).send({
+    const preferences = await pushService.getPreferences(userId);
+    if (!preferences) {
+      return reply.send({
         success: true,
-        preferences,
-        isDefault: false,
-      });
-    } catch (error) {
-      request.log.error(error, 'Failed to get notification preferences');
-      return reply.status(500).send({
-        error: 'ERR_INTERNAL',
-        message: 'Failed to retrieve notification preferences',
+        preferences: {
+          push_enabled: true,
+          expense_created: true,
+          expense_updated: true,
+          expense_deleted: true,
+          settlement_created: true,
+          settlement_confirmed: true,
+          settlement_rejected: true,
+          member_joined: true,
+          member_left: true,
+          balance_adjusted: true,
+          reminders: true,
+          quiet_hours_start: null,
+          quiet_hours_end: null,
+          quiet_hours_enabled: false,
+        },
+        isDefault: true,
       });
     }
+    return reply.send({
+      success: true,
+      preferences,
+      isDefault: false,
+    });
   });
 
-  app.put('/preferences', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.put('/preferences', {
+    schema: {
+      body: {
+        type: 'object',
+        minProperties: 1,
+        properties: {
+          push_enabled: { type: 'boolean' },
+          expense_created: { type: 'boolean' },
+          expense_updated: { type: 'boolean' },
+          expense_deleted: { type: 'boolean' },
+          settlement_created: { type: 'boolean' },
+          settlement_confirmed: { type: 'boolean' },
+          settlement_rejected: { type: 'boolean' },
+          member_joined: { type: 'boolean' },
+          member_left: { type: 'boolean' },
+          balance_adjusted: { type: 'boolean' },
+          reminders: { type: 'boolean' },
+          quiet_hours_start: { type: 'string' },
+          quiet_hours_end: { type: 'string' },
+          quiet_hours_enabled: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
     const body = request.body as any;
-
-    if (!body || Object.keys(body).length === 0) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: 'At least one preference field is required',
-      });
-    }
 
     const invalidKeys = Object.keys(body).filter(
       (key) => !VALID_PREFERENCE_KEYS.includes(key)
     );
     if (invalidKeys.length > 0) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: `Invalid preference keys: ${invalidKeys.join(', ')}`,
-      });
+      throw new ValidationError(`Invalid preference keys: ${invalidKeys.join(', ')}`);
     }
 
     if (body.quiet_hours_start && !validateTimeFormat(body.quiet_hours_start)) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: 'quiet_hours_start must be in HH:MM format (e.g., 22:00)',
-      });
+      throw new ValidationError('quiet_hours_start must be in HH:MM format (e.g., 22:00)');
     }
     if (body.quiet_hours_end && !validateTimeFormat(body.quiet_hours_end)) {
-      return reply.status(400).send({
-        error: 'ERR_VALIDATION',
-        message: 'quiet_hours_end must be in HH:MM format (e.g., 07:00)',
-      });
+      throw new ValidationError('quiet_hours_end must be in HH:MM format (e.g., 07:00)');
     }
 
-    try {
-      const preferences = await pushService.updatePreferences(userId, body);
-      return reply.status(200).send({
-        success: true,
-        preferences,
-        message: 'Notification preferences updated successfully',
-      });
-    } catch (error) {
-      request.log.error(error, 'Failed to update notification preferences');
-      return reply.status(500).send({
-        error: 'ERR_INTERNAL',
-        message: 'Failed to update notification preferences',
-      });
-    }
+    const preferences = await pushService.updatePreferences(userId, body);
+    return reply.send({
+      success: true,
+      preferences,
+      message: 'Notification preferences updated successfully',
+    });
   });
 }

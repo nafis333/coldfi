@@ -1,298 +1,213 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePersonalStore } from '../stores/personalStore';
+import { useGroupStore } from '../stores/groupStore';
+import { useAuthStore } from '../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
+import { useOverview } from '../hooks/useOverview';
+import QuickActions from '../components/dashboard/QuickActions';
+import OverviewCards from '../components/dashboard/OverviewCards';
+import SpendingTrendChart from '../components/dashboard/SpendingTrendChart';
+import BudgetHealthWidget from '../components/dashboard/BudgetHealthWidget';
+import IncomeWidget from '../components/dashboard/IncomeWidget';
+import SavingsTargetsWidget from '../components/dashboard/SavingsTargetsWidget';
 
-
-
-function getStatusColor(percent: number): string {
-  if (percent >= 100) return 'text-danger-600';
-  if (percent >= 80) return 'text-warning-600';
-  return 'text-success-600';
-}
-
-function getBarColor(percent: number): string {
-  if (percent >= 100) return 'bg-danger-500';
-  if (percent >= 80) return 'bg-warning-500';
-  return 'bg-success-500';
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="h-24 rounded-2xl bg-gradient-to-r from-neutral-200 to-neutral-100 dark:from-neutral-700 dark:to-neutral-800" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+            <div className="h-4 w-24 rounded bg-neutral-200 dark:bg-neutral-700" />
+            <div className="h-8 w-32 rounded bg-neutral-200 dark:bg-neutral-700" />
+            <div className="h-3 w-20 rounded bg-neutral-100 dark:bg-neutral-700" />
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+          <div className="h-4 w-32 rounded bg-neutral-200 dark:bg-neutral-700" />
+          <div className="h-32 rounded bg-neutral-100 dark:bg-neutral-700" />
+        </div>
+        <div className="rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+          <div className="h-4 w-40 rounded bg-neutral-200 dark:bg-neutral-700" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-xl bg-neutral-200 dark:bg-neutral-700" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-32 rounded bg-neutral-200 dark:bg-neutral-700" />
+                  <div className="h-3 w-20 rounded bg-neutral-100 dark:bg-neutral-700" />
+                </div>
+                <div className="h-5 w-16 rounded bg-neutral-200 dark:bg-neutral-700" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
-  const { expenses, budgetStatuses, categories, fetchPersonalBlob, isLoading } =
-    usePersonalStore();
+  const { fetchPersonalBlob, isLoading, personalBlob } = usePersonalStore();
+  const displayName = useAuthStore((s) => s.displayName);
+  const { expenses, budgetStatuses, categories } = usePersonalStore();
+  const defaultCurrency = useAuthStore((s) => s.defaultCurrency || 'BDT');
+  const [hasLoaded, setHasLoaded] = useState(() => personalBlob !== null);
+
+  const { groups, groupDataVersions, fetchGroups } = useGroupStore();
 
   useEffect(() => {
-    fetchPersonalBlob();
-  }, [fetchPersonalBlob]);
+    if (!hasLoaded) {
+      fetchPersonalBlob().finally(() => setHasLoaded(true));
+    }
+  }, [fetchPersonalBlob, hasLoaded]);
 
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    .toISOString()
-    .split('T')[0];
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    .toISOString()
-    .split('T')[0];
+  useEffect(() => {
+    if (groups.length === 0) fetchGroups();
+  }, [fetchGroups, groups.length]);
 
-  const thisMonthExpenses = useMemo(
-    () => expenses.filter((e) => e.date >= monthStart && e.date <= monthEnd),
-    [expenses, monthStart, monthEnd]
-  );
-
-  const totalSpent = useMemo(
-    () => thisMonthExpenses.reduce((s, e) => s + e.amount, 0),
-    [thisMonthExpenses]
-  );
-
-  const totalBudget = useMemo(
-    () => budgetStatuses.reduce((s, b) => s + b.budgetAmount, 0),
-    [budgetStatuses]
-  );
-
-  const totalBudgetedSpent = useMemo(
-    () => budgetStatuses.reduce((s, b) => s + b.spent, 0),
-    [budgetStatuses]
-  );
-
-  const budgetPercent = totalBudget > 0 ? (totalBudgetedSpent / totalBudget) * 100 : 0;
-  const remaining = totalBudget - totalBudgetedSpent;
+  const data = useOverview();
 
   const recentExpenses = useMemo(() => expenses.slice(0, 5), [expenses]);
 
   const categoryMap = useMemo(() => {
     const map: Record<string, { name: string; icon: string; color: string }> = {};
-    for (const cat of categories) {
-      map[cat.id] = cat;
-    }
+    for (const cat of categories) map[cat.id] = cat;
     return map;
   }, [categories]);
 
-  const dailySpending = useMemo(() => {
-    const last7: { date: string; total: number; label: string }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      const total = expenses
-        .filter((e) => e.date === dateStr)
-        .reduce((s, e) => s + e.amount, 0);
-      last7.push({
-        date: dateStr,
-        total,
-        label: d.toLocaleDateString('en', { weekday: 'short' }),
-      });
-    }
-    return last7;
-  }, [expenses, now]);
-
-  const maxDaily = Math.max(...dailySpending.map((d) => d.total), 1);
-
-  if (isLoading && expenses.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-      </div>
-    );
-  }
+  if (!hasLoaded || (isLoading && expenses.length === 0)) return <LoadingSkeleton />;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-neutral-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          {now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-        </p>
+      <QuickActions data={data} />
+      <OverviewCards data={data} />
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        <SpendingTrendChart data={data} />
+        <BudgetHealthWidget data={data} />
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="card p-5">
-          <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
-            Spent This Month
-          </p>
-          <p className="mt-2 text-3xl font-bold text-primary-600">
-            {formatCurrency(totalSpent, 'USD')}
-          </p>
-          <p className="mt-1 text-xs text-neutral-400">
-            {thisMonthExpenses.length} transactions
-          </p>
-        </div>
-
-        <div className="card p-5">
-          <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
-            Budget Remaining
-          </p>
-          <p className={`mt-2 text-3xl font-bold ${getStatusColor(budgetPercent)}`}>
-            {formatCurrency(remaining, 'USD')}
-          </p>
-          <p className="mt-1 text-xs text-neutral-400">
-            of {formatCurrency(totalBudget, 'USD')} budgeted
-          </p>
-        </div>
-
-        <div className="card p-5">
-          <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">
-            Budget Used
-          </p>
-          <p className={`mt-2 text-3xl font-bold ${getStatusColor(budgetPercent)}`}>
-            {budgetPercent.toFixed(1)}%
-          </p>
-          <p className="mt-1 text-xs text-neutral-400">
-{formatCurrency(totalBudgetedSpent, 'USD')} spent
-          </p>
-        </div>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <IncomeWidget data={data} />
+        <SavingsTargetsWidget data={data} />
       </div>
 
-      {/* Quick Actions */}
-      <div className="flex gap-3">
-        <Link to="/expenses/new" className="btn-primary">
-          <span>+</span>
-          Add Expense
-        </Link>
-        <Link to="/budgets" className="btn-secondary">
-          View Budgets
-        </Link>
-        <Link to="/groups" className="btn-secondary">
-          View Groups
-        </Link>
-      </div>
-
-      {/* Budget Progress */}
-      {totalBudget > 0 && (
+      {/* Groups Overview */}
+      {groups.length > 0 && (
         <div className="card p-5">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-neutral-900">
-              Overall Budget Progress
-            </h3>
-            <span className={`text-sm font-medium ${getStatusColor(budgetPercent)}`}>
-              {budgetPercent.toFixed(0)}%
-            </span>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="section-title">Groups Overview</h3>
+            <Link to="/expenses" onClick={() => { const el = document.querySelector('[data-tab="groups"]'); if (el) (el as HTMLButtonElement).click(); }}
+              className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 transition-colors">
+              View all &rarr;
+            </Link>
           </div>
-          <div className="h-3 w-full overflow-hidden rounded-full bg-neutral-200">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${getBarColor(budgetPercent)}`}
-              style={{ width: `${Math.min(budgetPercent, 100)}%` }}
-            />
-          </div>
-          <div className="mt-2 flex justify-between text-xs text-neutral-500">
-            <span>{formatCurrency(totalBudgetedSpent, 'USD')} spent</span>
-            <span>{formatCurrency(totalBudget, 'USD')} budget</span>
-          </div>
-
-          {budgetStatuses.length > 0 && (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {budgetStatuses.slice(0, 6).map((status) => {
-                const cat = categoryMap[status.categoryId];
-                return (
-                  <div key={status.budgetId} className="rounded-lg bg-neutral-50 p-3">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-sm font-medium text-neutral-700">
-                        {cat?.icon} {cat?.name || status.categoryId}
-                      </span>
-                      <span className={`text-xs font-medium ${getStatusColor(status.percentUsed)}`}>
-                        {status.percentUsed.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-neutral-200">
-                      <div
-                        className={`h-full rounded-full ${getBarColor(status.percentUsed)}`}
-                        style={{ width: `${Math.min(status.percentUsed, 100)}%` }}
-                      />
-                    </div>
-                    <div className="mt-1 flex justify-between text-xs text-neutral-400">
-                      <span>{formatCurrency(status.spent, 'USD')}</span>
-                      <span>{formatCurrency(status.budgetAmount, 'USD')}</span>
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">Active Groups</p>
+              <p className="mt-1 text-xl font-bold text-neutral-900 dark:text-white">{groups.length}</p>
             </div>
-          )}
+            <div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">You're Owed</p>
+              <p className="mt-1 text-xl font-bold text-success-600 dark:text-success-400">
+                {formatCurrency(groups.filter(g => g.yourBalance > 0).reduce((s, g) => s + g.yourBalance, 0), defaultCurrency)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">You Owe</p>
+              <p className="mt-1 text-xl font-bold text-danger-600 dark:text-danger-400">
+                {formatCurrency(groups.filter(g => g.yourBalance < 0).reduce((s, g) => s + Math.abs(g.yourBalance), 0), defaultCurrency)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">Combined</p>
+              <p className="mt-1 text-xl font-bold text-neutral-900 dark:text-white">
+                {formatCurrency(groups.reduce((s, g) => s + g.yourBalance, 0), defaultCurrency)}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            {groups.slice(0, 3).map((g) => (
+              <Link key={g.id} to={`/groups/${g.id}`}
+                className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700/30 transition-colors">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 text-xs font-bold text-white">
+                    {g.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 truncate">{g.name}</span>
+                </div>
+                <span className={`text-sm font-semibold shrink-0 ml-2 ${g.yourBalance >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>
+                  {g.yourBalance >= 0 ? '+' : ''}{formatCurrency(g.yourBalance, defaultCurrency)}
+                </span>
+              </Link>
+            ))}
+            {groups.length > 3 && (
+              <Link to="/groups" className="block text-center text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 pt-1">
+                +{groups.length - 3} more group{groups.length - 3 !== 1 ? 's' : ''}
+              </Link>
+            )}
+          </div>
         </div>
       )}
 
-      {/* 7-Day Spending Trend */}
-      <div className="card p-5">
-        <h3 className="mb-4 text-sm font-semibold text-neutral-900">
-          Last 7 Days
-        </h3>
-        <div className="flex items-end gap-2" style={{ height: 120 }}>
-          {dailySpending.map((day) => {
-            const barHeight = maxDaily > 0 ? (day.total / maxDaily) * 100 : 0;
-            return (
-              <div key={day.date} className="flex flex-1 flex-col items-center gap-1">
-                {day.total > 0 && (
-                  <span className="text-[10px] text-neutral-500">
-                    {formatCurrency(day.total, 'USD')}
-                  </span>
-                )}
-                <div
-                  className={`w-full rounded-sm ${day.total > 0 ? 'bg-primary-400' : 'bg-neutral-200'}`}
-                  style={{ height: Math.max(barHeight, 4) }}
-                />
-                <span className="text-[10px] text-neutral-400">{day.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Recent Expenses */}
-      <div className="card">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-4">
-          <h3 className="text-sm font-semibold text-neutral-900">
-            Recent Expenses
-          </h3>
-          <Link
-            to="/expenses"
-            className="text-sm font-medium text-primary-600 hover:text-primary-700"
-          >
-            See all
-          </Link>
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-700/50">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">Recent Expenses</h3>
+          {recentExpenses.length > 0 && (
+            <Link to="/expenses" className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors">
+              View all &rarr;
+            </Link>
+          )}
         </div>
 
         {recentExpenses.length === 0 ? (
           <div className="px-5 py-12 text-center">
-            <p className="text-sm text-neutral-500">
-              No expenses yet.
-            </p>
-            <Link
-              to="/expenses/new"
-              className="btn-primary mt-4 inline-flex"
-            >
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 dark:bg-neutral-700/50">
+              <svg className="h-7 w-7 text-neutral-400 dark:text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="mt-4 text-sm font-semibold text-neutral-700 dark:text-neutral-300">No expenses yet</p>
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Start tracking your spending to see insights here</p>
+            <Link to="/expenses/new" className="btn-primary mt-5 inline-flex">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               Add your first expense
             </Link>
           </div>
         ) : (
-          <div className="divide-y divide-neutral-100">
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-700/40">
             {recentExpenses.map((expense) => {
               const cat = categoryMap[expense.categoryId];
               return (
                 <Link
                   key={expense.id}
                   to={`/expenses/${expense.id}/edit`}
-                  className="flex items-center gap-4 px-5 py-3 hover:bg-neutral-50 transition-colors"
+                  className="flex items-center gap-4 px-5 py-3.5 hover:bg-neutral-50 dark:hover:bg-neutral-700/20 transition-colors group"
                 >
                   <div
-                    className="flex h-10 w-10 items-center justify-center rounded-lg"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base group-hover:scale-105 transition-transform"
                     style={{ backgroundColor: (cat?.color || '#CBD5E1') + '20' }}
                   >
-                    <span className="text-base">{cat?.icon || 'X'}</span>
+                    {cat?.icon || '📄'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-neutral-900 truncate">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-white truncate group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                       {expense.payee || cat?.name || 'Expense'}
                     </p>
-                    <p className="text-xs text-neutral-500">
-                      {new Date(expense.date).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                    <div className="flex items-center gap-2 text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+                      <span>{new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold text-danger-600 dark:text-danger-400">
+                      -{formatCurrency(expense.amount, defaultCurrency)}
                     </p>
                   </div>
-                  <p className="text-sm font-semibold text-danger-600">
-                    {formatCurrency(-expense.amount, 'USD')}
-                  </p>
                 </Link>
               );
             })}

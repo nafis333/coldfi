@@ -11,24 +11,10 @@ interface State {
   error: Error | null;
 }
 
-const GLOBAL_ERROR_EVENTS = ['error', 'unhandledrejection'] as const;
-
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null };
-  }
-
-  componentDidMount() {
-    for (const event of GLOBAL_ERROR_EVENTS) {
-      window.addEventListener(event, this.handleGlobalError);
-    }
-  }
-
-  componentWillUnmount() {
-    for (const event of GLOBAL_ERROR_EVENTS) {
-      window.removeEventListener(event, this.handleGlobalError);
-    }
   }
 
   handleGlobalError = (event: Event) => {
@@ -40,16 +26,16 @@ export class ErrorBoundary extends Component<Props, State> {
         componentStack: '',
         timestamp: new Date().toISOString(),
       });
-    } else if (event instanceof PromiseRejectionEvent) {
-      useErrorStore.getState().addError({
-        type: 'UnhandledRejection',
-        message: event.reason?.message || 'Promise rejection',
-        stack: event.reason?.stack || '',
-        componentStack: '',
-        timestamp: new Date().toISOString(),
-      });
     }
   };
+
+  componentDidMount() {
+    window.addEventListener('error', this.handleGlobalError);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('error', this.handleGlobalError);
+  }
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };

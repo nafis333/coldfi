@@ -64,7 +64,7 @@ export function buildPersonalLog(
         date: expense.date,
         description: `Paid: ${expense.description}`,
         amount: expense.amount,
-        share: expense.amount - share,
+        share: othersOwe,
         counterparty: expense.splits
           .filter((s) => s.memberId !== memberId)
           .map((s) => resolveName(s.memberId))

@@ -1,4 +1,5 @@
 import { usePersonalStore } from '../stores/personalStore';
+import { usePersonalExpenseStore } from '../stores/personalExpenseStore';
 import { useGroupStore } from '../stores/groupStore';
 import { useAuthStore } from '../stores/authStore';
 import { encryptData, decryptData, deriveKey, generateSalt, uint8ArrayToBase64, base64ToUint8Array } from './crypto';
@@ -78,9 +79,9 @@ export async function importEncryptedBackup(file: File, password: string): Promi
   if (!accessToken) throw new Error('Not authenticated');
 
   // Import each expense via API to ensure proper encryption & server sync
-  const personalStore = usePersonalStore.getState();
+  const expenseStore = usePersonalExpenseStore.getState();
   for (const expense of expenses ?? []) {
-    await personalStore.addExpense(expense);
+    await expenseStore.addExpense(expense);
   }
 
   // Groups are referenced by ID; queue a full re-sync
@@ -90,13 +91,12 @@ export async function importEncryptedBackup(file: File, password: string): Promi
 export function exportExpensesCSV(): void {
   const expenses = usePersonalStore.getState().expenses;
 
-  const headers = ['Date', 'Description', 'Category', 'Amount', 'Payment Method'];
+  const headers = ['Date', 'Description', 'Category', 'Amount'];
   const rows = expenses.map((e: any) => [
     e.date ?? '',
     e.note ?? '',
     e.categoryId ?? '',
     e.amount?.toFixed(2) ?? '0.00',
-    e.paymentMethod ?? '',
   ]);
 
   const csvContent = [

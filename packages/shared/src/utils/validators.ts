@@ -44,7 +44,7 @@ export function isValidCurrency(currency: string): boolean {
     'USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD', 'BRL', 'CNY', 'KRW',
     'CHF', 'SEK', 'NZD', 'SGD', 'HKD', 'NOK', 'DKK', 'MXN', 'TWD', 'THB',
     'MYR', 'PHP', 'IDR', 'VND', 'ZAR', 'RUB', 'PLN', 'TRY', 'AED', 'SAR',
-    'ILS', 'CZK', 'HUF', 'RON', 'BGN', 'ISK', 'HRK',
+    'ILS', 'CZK', 'HUF', 'RON', 'BGN', 'ISK', 'HRK', 'BDT',
   ];
   return valid.includes(currency);
 }

@@ -19,13 +19,13 @@ async function derivePBKDF2Bytes(
 ): Promise<Uint8Array> {
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    secret instanceof Uint8Array ? secret : new TextEncoder().encode(secret),
+    (secret instanceof Uint8Array ? secret : new TextEncoder().encode(secret)) as BufferSource,
     'PBKDF2',
     false,
     ['deriveBits']
   );
   const derived = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-512' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: PBKDF2_ITERATIONS, hash: 'SHA-512' },
     keyMaterial,
     KEY_LENGTH_BITS
   );
@@ -148,9 +148,9 @@ function aesEncrypt(
   data: Uint8Array
 ): Promise<ArrayBuffer> {
   return crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, tagLength: TAG_LENGTH },
+    { name: 'AES-GCM', iv: iv as BufferSource, tagLength: TAG_LENGTH },
     aesKey,
-    data
+    data as BufferSource
   );
 }
 
@@ -160,9 +160,9 @@ function aesDecrypt(
   data: Uint8Array
 ): Promise<ArrayBuffer> {
   return crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv, tagLength: TAG_LENGTH },
+    { name: 'AES-GCM', iv: iv as BufferSource, tagLength: TAG_LENGTH },
     aesKey,
-    data
+    data as BufferSource
   );
 }
 
@@ -179,7 +179,7 @@ export async function encryptData(
     combined.set(new Uint8Array(encrypted), iv.length);
     return uint8ArrayToBase64(combined);
   } catch (error) {
-    throw new Error('Encryption failed');
+    throw new Error('Encryption failed: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
 
@@ -197,7 +197,7 @@ export async function decryptData(
     const decrypted = await aesDecrypt(key, iv, encryptedData);
     return new TextDecoder().decode(decrypted);
   } catch (error) {
-    throw new Error('Decryption failed');
+    throw new Error('Decryption failed: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
 
@@ -206,7 +206,7 @@ export async function encryptWithRawKey(
   plaintext: string
 ): Promise<EncryptedPayload> {
   const aesKey = await crypto.subtle.importKey(
-    'raw', key,
+    'raw', key as BufferSource,
     { name: 'AES-GCM', length: 256 },
     false, ['encrypt']
   );
@@ -219,7 +219,7 @@ export async function decryptWithRawKey(
   ciphertext: string
 ): Promise<string> {
   const aesKey = await crypto.subtle.importKey(
-    'raw', key,
+    'raw', key as BufferSource,
     { name: 'AES-GCM', length: 256 },
     false, ['decrypt']
   );
@@ -238,11 +238,21 @@ export async function deriveKey(
 export function importKey(raw: Uint8Array): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'raw',
-    raw,
+    raw as BufferSource,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
   );
+}
+
+export async function exportKey(key: CryptoKey): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.exportKey('raw', key));
+}
+
+export async function computeAuthKeyHash(passphrase: string, email: string): Promise<string> {
+  const salt = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(email.toLowerCase().trim())));
+  const keyBytes = await deriveAuthKey(passphrase, salt);
+  return uint8ArrayToHex(keyBytes);
 }
 
 export async function encryptJson<T>(
@@ -258,4 +268,32 @@ export async function decryptJson<T>(
 ): Promise<T> {
   const plaintext = await decryptWithRawKey(key, ciphertext);
   return JSON.parse(plaintext) as T;
+}
+
+export async function deriveWrappingKey(
+  passphrase: string,
+  personalSaltBase64: string
+): Promise<Uint8Array> {
+  const salt = base64ToUint8Array(personalSaltBase64);
+  const context = new TextEncoder().encode('coldfi:pek-wrapping');
+  const contextSalt = new Uint8Array(context.length + salt.length);
+  contextSalt.set(context);
+  contextSalt.set(salt, context.length);
+  return deriveKeyBytes(passphrase, contextSalt, 'coldfi:pek-wrap:');
+}
+
+export async function encryptPEK(
+  pekBytes: Uint8Array,
+  wrappingKey: Uint8Array
+): Promise<string> {
+  const encrypted = await encryptWithRawKey(wrappingKey, uint8ArrayToBase64(pekBytes));
+  return encrypted.ciphertext;
+}
+
+export async function decryptPEK(
+  encryptedPek: string,
+  wrappingKey: Uint8Array
+): Promise<Uint8Array> {
+  const plaintext = await decryptWithRawKey(wrappingKey, encryptedPek);
+  return base64ToUint8Array(plaintext);
 }

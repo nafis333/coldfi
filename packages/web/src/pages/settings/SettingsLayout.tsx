@@ -6,6 +6,7 @@ const SETTINGS_LINKS = [
   { to: '/settings/appearance', label: 'Appearance' },
   { to: '/settings/groups', label: 'Groups' },
   { to: '/settings/data', label: 'Data Export' },
+  { to: '/settings/notifications', label: 'Notifications' },
   { to: '/settings/about', label: 'About' },
 ];
 

@@ -11,7 +11,26 @@ interface AuthenticatedSocket extends Socket {
 
 const userSockets = new Map<string, Set<string>>();
 const socketGroups = new Map<string, Set<string>>();
+const socketEventCounts = new Map<string, Map<string, { count: number; windowStart: number }>>();
+const WS_RATE_LIMIT = 20;
+const WS_RATE_WINDOW_MS = 10_000;
 let io: SocketIOServer | null = null;
+
+function checkWsRateLimit(socketId: string, event: string): boolean {
+  let events = socketEventCounts.get(socketId);
+  if (!events) {
+    events = new Map();
+    socketEventCounts.set(socketId, events);
+  }
+  const now = Date.now();
+  let entry = events.get(event);
+  if (!entry || now - entry.windowStart > WS_RATE_WINDOW_MS) {
+    entry = { count: 0, windowStart: now };
+    events.set(event, entry);
+  }
+  entry.count++;
+  return entry.count <= WS_RATE_LIMIT;
+}
 
 export function getIO(): SocketIOServer {
   if (!io) {
@@ -25,8 +44,8 @@ export function emitToGroup(
   event: string,
   payload: Record<string, unknown>
 ): void {
-  const server = getIO();
-  server.to(`group:${groupId}`).emit(event, payload);
+  if (!io) return;
+  io.to(`group:${groupId}`).emit(event, payload);
 }
 
 export function emitToUser(
@@ -34,11 +53,11 @@ export function emitToUser(
   event: string,
   payload: Record<string, unknown>
 ): void {
-  const server = getIO();
+  if (!io) return;
   const sockets = userSockets.get(userId);
   if (!sockets) return;
   for (const sid of sockets) {
-    server.to(sid).emit(event, payload);
+    io.to(sid).emit(event, payload);
   }
 }
 
@@ -100,6 +119,10 @@ async function websocketPlugin(
     socketGroups.set(socket.id, new Set());
 
     socket.on('join-group', async (data: { groupId: string }) => {
+      if (!checkWsRateLimit(socket.id, 'join-group')) {
+        socket.emit('error', { message: 'Too many requests. Please slow down.' });
+        return;
+      }
       try {
         const { groupId } = data;
         if (!groupId || typeof groupId !== 'string') {
@@ -135,6 +158,10 @@ async function websocketPlugin(
     });
 
     socket.on('leave-group', (data: { groupId: string }) => {
+      if (!checkWsRateLimit(socket.id, 'leave-group')) {
+        socket.emit('error', { message: 'Too many requests. Please slow down.' });
+        return;
+      }
       const { groupId } = data;
       if (!groupId || typeof groupId !== 'string') {
         socket.emit('error', { message: 'groupId is required' });
@@ -170,6 +197,7 @@ async function websocketPlugin(
       }
 
       socketGroups.delete(socket.id);
+      socketEventCounts.delete(socket.id);
       const sockets = userSockets.get(userId);
       if (sockets) {
         sockets.delete(socket.id);
@@ -186,6 +214,7 @@ async function websocketPlugin(
       io = null;
       userSockets.clear();
       socketGroups.clear();
+      socketEventCounts.clear();
     }
   });
 

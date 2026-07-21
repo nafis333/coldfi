@@ -13,7 +13,12 @@ export function createRateLimiter(options: RateLimitOptions) {
   const { windowSeconds, maxAttempts, keyPrefix, keyFn } = options;
 
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const redis = getRedis();
+    let redis;
+    try {
+      redis = getRedis();
+    } catch {
+      return;
+    }
     const key = `${keyPrefix}:${keyFn(request)}`;
 
     try {
@@ -40,22 +45,24 @@ export function createRateLimiter(options: RateLimitOptions) {
       reply.header('X-RateLimit-Remaining', String(Math.max(0, maxAttempts - current)));
       reply.header('X-RateLimit-Reset', String(Math.floor(Date.now() / 1000) + windowSeconds));
     } catch (err) {
-      logger.error('Rate limiter error', { module: 'rate-limiter', error: String(err) });
-      throw err;
+      logger.error('Rate limiter error — allowing request', { module: 'rate-limiter', error: String(err) });
     }
   };
 }
 
 export const loginRateLimiter = createRateLimiter({
   windowSeconds: 900,
-  maxAttempts: 5,
+  maxAttempts: 20,
   keyPrefix: 'rl:login',
-  keyFn: (req) => req.ip || 'unknown',
+  keyFn: (req) => {
+    const email = (req.body as any)?.email || 'unknown';
+    return `${req.ip || 'unknown'}:${email}`;
+  },
 });
 
 export const registerRateLimiter = createRateLimiter({
   windowSeconds: 3600,
-  maxAttempts: 3,
+  maxAttempts: 20,
   keyPrefix: 'rl:register',
   keyFn: (req) => req.ip || 'unknown',
 });
@@ -79,4 +86,39 @@ export const refreshRateLimiter = createRateLimiter({
   maxAttempts: 30,
   keyPrefix: 'rl:refresh',
   keyFn: (req) => req.ip || 'unknown',
+});
+
+export const recoverRateLimiter = createRateLimiter({
+  windowSeconds: 900,
+  maxAttempts: 5,
+  keyPrefix: 'rl:recover',
+  keyFn: (req) => (req.body as any)?.email || req.ip || 'unknown',
+});
+
+export const recoverCompleteRateLimiter = createRateLimiter({
+  windowSeconds: 900,
+  maxAttempts: 5,
+  keyPrefix: 'rl:recover-complete',
+  keyFn: (req) => req.ip || 'unknown',
+});
+
+export const backfillPekRateLimiter = createRateLimiter({
+  windowSeconds: 3600,
+  maxAttempts: 10,
+  keyPrefix: 'rl:backfill-pek',
+  keyFn: (req: any) => req.user?.userId || req.ip || 'unknown',
+});
+
+export const twoFASetupRateLimiter = createRateLimiter({
+  windowSeconds: 900,
+  maxAttempts: 5,
+  keyPrefix: 'rl:2fa-setup',
+  keyFn: (req: any) => req.user?.userId || req.ip || 'unknown',
+});
+
+export const profileRateLimiter = createRateLimiter({
+  windowSeconds: 60,
+  maxAttempts: 10,
+  keyPrefix: 'rl:profile',
+  keyFn: (req: any) => req.user?.userId || req.ip || 'unknown',
 });

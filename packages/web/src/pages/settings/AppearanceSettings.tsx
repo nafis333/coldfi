@@ -20,19 +20,19 @@ export default function AppearanceSettings() {
 
   return (
     <div>
-      <h2 className="mb-4 text-lg font-bold text-neutral-900">Appearance</h2>
-      <label className="flex cursor-pointer items-center gap-3">
+      <h2 className="mb-4 text-lg font-bold text-neutral-900 dark:text-white">Appearance</h2>
+      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 dark:border-neutral-700 p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/30 transition-colors">
         <input
           type="checkbox"
           checked={darkMode}
           onChange={(e) => setDarkMode(e.target.checked)}
           className="h-5 w-5 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
         />
-        <span className="text-sm text-neutral-700">Dark Mode</span>
+        <div>
+          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Dark Mode</span>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Use dark theme for the application</p>
+        </div>
       </label>
-      <p className="mt-2 text-xs text-neutral-500">
-        Toggles the <code>dark</code> class on the root element for Tailwind dark mode.
-      </p>
     </div>
   );
 }

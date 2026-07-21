@@ -1,8 +1,6 @@
 import { create } from 'zustand';
-import { useAuthStore } from './authStore';
+import { apiClient } from '../lib/apiClient';
 import { onLogout } from '../lib/resetStores';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 type NotificationType =
   | 'expense_added' | 'expense_updated'
@@ -42,15 +40,10 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   error: null,
 
   fetchNotifications: async () => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) return;
-
     set({ isLoading: true, error: null });
 
     try {
-      const res = await fetch(`${API_BASE}/api/notifications`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await apiClient('/api/notifications');
 
       if (!res.ok) {
         throw new Error(`Failed to fetch notifications: ${res.status}`);
@@ -71,14 +64,8 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   },
 
   markAsRead: async (id: string) => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) return;
-
     try {
-      await fetch(`${API_BASE}/api/notifications/${id}/read`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      await apiClient(`/api/notifications/${id}/read`, { method: 'PATCH' });
 
       set((state) => ({
         notifications: state.notifications.map((n) =>
@@ -92,14 +79,8 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   },
 
   markAllAsRead: async () => {
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) return;
-
     try {
-      await fetch(`${API_BASE}/api/notifications/read-all`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      await apiClient('/api/notifications/read-all', { method: 'POST' });
 
       set((state) => ({
         notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
@@ -111,14 +92,8 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   },
 
   deleteNotification: async (id: string) => {
-    const { accessToken } = useAuthStore.getState();
     try {
-      if (accessToken) {
-        await fetch(`${API_BASE}/api/notifications/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-      }
+      await apiClient(`/api/notifications/${id}`, { method: 'DELETE' });
       set((state) => {
         const removed = state.notifications.find((n) => n.id === id);
         return {
@@ -127,11 +102,7 @@ export const useNotificationStore = create<NotificationState>((set) => ({
         };
       });
     } catch {
-      set((state) => ({
-        notifications: state.notifications.filter((n) => n.id !== id),
-        unreadCount: state.notifications.find((n) => n.id === id && !n.isRead)
-          ? state.unreadCount - 1 : state.unreadCount,
-      }));
+      // Keep notification in local state — API call failed, don't optimistically remove
     }
   },
 

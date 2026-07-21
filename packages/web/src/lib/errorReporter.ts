@@ -1,5 +1,4 @@
 import { useErrorStore } from '../stores/errorStore';
-import type { ErrorEntry } from '../stores/errorStore';
 
 export function setupErrorReporter(): void {
   if (typeof window === 'undefined') return;
@@ -62,6 +61,4 @@ export function setupErrorReporter(): void {
   };
 }
 
-export function getRecentErrors(limit = 50): ErrorEntry[] {
-  return useErrorStore.getState().errors.slice(0, limit);
-}
+

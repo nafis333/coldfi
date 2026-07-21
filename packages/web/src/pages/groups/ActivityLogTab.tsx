@@ -2,14 +2,14 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useLogStore } from '../../stores/logStore';
 
-type ActionType = 'all' | 'expense' | 'settlement' | 'member' | 'settings';
+type ActionType = 'all' | 'expense' | 'member' | 'settings';
 
 interface LogEntry {
   id: string;
   timestamp: string;
   actorName: string;
   action: string;
-  actionType: Exclude<ActionType, 'all'>;
+  actionType: 'expense' | 'settlement' | 'member' | 'settings';
   details: string;
   hash: string;
   previousHash: string;
@@ -23,7 +23,6 @@ interface TabContext {
 const ACTION_FILTERS: { key: ActionType; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'expense', label: 'Expenses' },
-  { key: 'settlement', label: 'Settlements' },
   { key: 'member', label: 'Members' },
   { key: 'settings', label: 'Settings' },
 ];

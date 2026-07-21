@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useAdminStore } from '../../stores/adminStore';
+import { useAdminConfigStore } from '../../stores/adminConfigStore';
 
 export default function AdminConfigPage() {
-  const { configItems, configHistory, loading, fetchConfig, fetchConfigHistory, updateConfig, toggleMaintenance } = useAdminStore();
+  const { configItems, configHistory, loading, fetchConfig, fetchConfigHistory, updateConfig, toggleMaintenance } = useAdminConfigStore();
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -124,7 +124,7 @@ export default function AdminConfigPage() {
               <tbody>
                 {configHistory.map((ch: any) => (
                   <tr key={ch.id} className="border-b border-neutral-100">
-                    <td className="p-2 text-xs text-neutral-500">{new Date(ch.created_at).toLocaleString()}</td>
+                    <td className="p-2 text-xs text-neutral-500">{new Date(ch.created_at || ch.createdAt).toLocaleString()}</td>
                     <td className="p-2 font-mono text-xs">{ch.config_key}</td>
                     <td className="p-2 text-xs">{ch.changed_by}</td>
                     <td className="p-2 font-mono text-xs max-w-xs truncate">{JSON.stringify(ch.old_value)}</td>

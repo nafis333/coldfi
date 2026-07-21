@@ -13,12 +13,7 @@ import {
   encryptJson,
   decryptJson,
 } from '../crypto';
-import {
-  generateRecoveryPhrase,
-  generateRecoveryBundle,
-  recoverPEK,
-  formatRecoveryPhraseForDisplay,
-} from '../recovery';
+
 
 describe('Key Derivation', () => {
   const testSalt = generateSalt();
@@ -168,58 +163,5 @@ describe('AES-GCM Encryption', () => {
   });
 });
 
-describe('Recovery Key', () => {
-  const userSalt = generateSalt();
-  let testPek: Uint8Array;
 
-  beforeAll(() => {
-    testPek = generateSalt();
-  });
 
-  it('should generate recovery phrase', () => {
-    const phrase = generateRecoveryPhrase();
-    const words = phrase.split(' ');
-
-    expect(words.length).toBe(24);
-    for (const word of words) {
-      expect(word.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('should generate recovery key bundle', async () => {
-    const bundle = await generateRecoveryBundle(testPek, userSalt);
-
-    expect(bundle.recoveryPhrase).toBeDefined();
-    expect(bundle.encryptedPek).toBeDefined();
-    expect(bundle.recoveryKeyHash).toBeDefined();
-    expect(bundle.recoveryPhrase.split(' ').length).toBe(24);
-  });
-
-  it('should recover PEK from recovery phrase', async () => {
-    const bundle = await generateRecoveryBundle(testPek, userSalt);
-    const recoveredPek = await recoverPEK(bundle.recoveryPhrase, userSalt, bundle.encryptedPek);
-
-    // Verify recovered PEK works
-    const testData = 'recovery test data';
-    const encrypted = await encryptWithRawKey(testPek, testData);
-    const decrypted = await decryptWithRawKey(recoveredPek, encrypted.ciphertext);
-
-    expect(decrypted).toBe(testData);
-  });
-
-  it('should fail with wrong recovery phrase', { timeout: 30000 }, async () => {
-    const bundle = await generateRecoveryBundle(testPek, userSalt);
-    const wrongPhrase = generateRecoveryPhrase();
-
-    await expect(
-      recoverPEK(wrongPhrase, userSalt, bundle.encryptedPek)
-    ).rejects.toThrow();
-  });
-
-  it('should generate unique recovery phrases', async () => {
-    const bundle1 = await generateRecoveryBundle(testPek, userSalt);
-    const bundle2 = await generateRecoveryBundle(testPek, userSalt);
-
-    expect(bundle1.recoveryPhrase).not.toBe(bundle2.recoveryPhrase);
-  });
-});

@@ -49,12 +49,17 @@ export type AuthErrorCode =
   | 'ERR_EMAIL_EXISTS'
   | 'ERR_INVALID_TOKEN'
   | 'ERR_TOKEN_REVOKED'
+  | 'ERR_TOKEN_REUSED'
   | 'ERR_2FA_NOT_SETUP'
   | 'ERR_INVALID_PASSWORD'
   | 'ERR_NO_REFRESH_TOKEN'
   | 'ERR_TEMP_TOKEN_EXPIRED'
   | 'ERR_INVALID_2FA'
-  | 'ERR_WRONG_PASSPHRASE';
+  | 'ERR_WRONG_PASSPHRASE'
+  | 'ERR_INVALID_RECOVERY'
+  | 'ERR_RECOVERY_FAILED'
+  | 'ERR_GOOGLE_NOT_CONFIGURED'
+  | 'ERR_INVALID_GOOGLE_TOKEN';
 
 export class AuthError extends AppError {
   constructor(
@@ -172,6 +177,8 @@ export const ERROR_CODES = {
   ERR_NO_REFRESH_TOKEN: { status: 401, message: 'No refresh token provided' },
   ERR_TEMP_TOKEN_EXPIRED: { status: 401, message: 'Temporary token expired' },
   ERR_INVALID_2FA: { status: 401, message: 'Invalid two-factor code' },
+  ERR_INVALID_RECOVERY: { status: 401, message: 'Invalid recovery code' },
+  ERR_RECOVERY_FAILED: { status: 400, message: 'Account recovery failed' },
   ERR_SYNC_FAILED: { status: 500, message: 'Data sync failed' },
   ERR_SYNC_CONFLICT: { status: 409, message: 'Sync conflict detected' },
   ERR_PROPOSAL_NOT_FOUND: { status: 404, message: 'Proposal not found' },

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { useAdminStore } from '../../stores/adminStore';
+import { useAdminConfigStore } from '../../stores/adminConfigStore';
 
 export default function AdminHealthPage() {
-  const { health, healthHistory, fetchHealth, fetchHealthHistory } = useAdminStore();
+  const { health, healthHistory, fetchHealth, fetchHealthHistory } = useAdminConfigStore();
 
   useEffect(() => {
     fetchHealth();
