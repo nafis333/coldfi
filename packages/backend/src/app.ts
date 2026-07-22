@@ -40,8 +40,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
 
+  const origins = [
+    ...config.CORS_ORIGIN.split(','),
+    'https://coldfi.vercel.app',
+  ].map(o => o.trim()).filter(Boolean);
+
   await app.register(cors, {
-    origin: config.CORS_ORIGIN.split(','),
+    origin: origins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -92,7 +97,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     const requestId = request.requestId || 'unknown';
     const userId = request.user?.userId;
     const origin = request.headers.origin;
-    if (origin && config.CORS_ORIGIN.split(',').some(o => o.trim() === origin)) {
+    const allOrigins = [...config.CORS_ORIGIN.split(',').map(o => o.trim()), 'https://coldfi.vercel.app'];
+    if (origin && allOrigins.includes(origin)) {
       reply.header('Access-Control-Allow-Origin', origin);
       reply.header('Access-Control-Allow-Credentials', 'true');
     }

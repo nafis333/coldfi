@@ -18,7 +18,7 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('30d'),
 
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().default('http://localhost:5173,https://coldfi.vercel.app'),
 
   PBKDF2_ITERATIONS: z.coerce.number().int().positive().default(600000),
 
