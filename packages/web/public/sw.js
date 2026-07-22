@@ -1,17 +1,7 @@
-const CACHE_STATIC = 'coldfi-static-v1';
+const CACHE_STATIC = 'coldfi-static-v2';
 const CACHE_API = 'coldfi-api-v1';
 
-const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_STATIC).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch(() => {});
-    })
-  );
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
@@ -23,9 +13,8 @@ self.addEventListener('activate', (event) => {
           .filter((k) => k !== CACHE_STATIC && k !== CACHE_API)
           .map((k) => caches.delete(k))
       );
-    })
+    }).then(() => clients.claim())
   );
-  event.waitUntil(clients.claim());
 });
 
 self.addEventListener('fetch', (event) => {
