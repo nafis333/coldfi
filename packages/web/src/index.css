@@ -10,7 +10,7 @@
   }
 
   body {
-    @apply min-h-screen bg-neutral-50/80 dark:bg-neutral-900;
+    @apply min-h-screen bg-white dark:bg-neutral-900;
   }
 
   *:focus-visible {
@@ -28,7 +28,7 @@
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-neutral-300 dark:bg-neutral-600 hover:bg-neutral-400 dark:hover:bg-neutral-500;
+    @apply rounded-full bg-neutral-300 dark:bg-neutral-700 hover:bg-neutral-400 dark:hover:bg-neutral-600;
   }
 }
 
@@ -37,19 +37,19 @@
     @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium
            text-neutral-500 dark:text-neutral-400
            hover:text-neutral-900 dark:hover:text-neutral-100
-           hover:bg-neutral-100 dark:hover:bg-neutral-700/60
+           hover:bg-neutral-100 dark:hover:bg-neutral-750
            transition-all duration-200;
   }
 
   .sidebar-link-active {
-    @apply bg-primary-50/80 dark:bg-primary-900/30
+    @apply bg-primary-50/80 dark:bg-primary-900/20
            text-primary-700 dark:text-primary-300 font-semibold
-           hover:bg-primary-100/80 dark:hover:bg-primary-900/40
+           hover:bg-primary-100/80 dark:hover:bg-primary-900/30
            hover:text-primary-800 dark:hover:text-primary-200;
   }
 
   .card {
-    @apply bg-white dark:bg-neutral-800/90 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 shadow-sm transition-shadow duration-200;
+    @apply bg-white dark:bg-neutral-800 rounded-2xl border border-neutral-200/80 dark:border-neutral-750 shadow-sm transition-shadow duration-200;
   }
 
   .card-hover {
@@ -71,9 +71,9 @@
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           rounded-xl bg-white dark:bg-neutral-700/80 text-neutral-700 dark:text-neutral-200 font-medium text-sm
-           border border-neutral-300/80 dark:border-neutral-600/60
-           hover:bg-neutral-50 dark:hover:bg-neutral-600/60 active:scale-[0.97]
+           rounded-xl bg-white dark:bg-neutral-750 text-neutral-700 dark:text-neutral-200 font-medium text-sm
+           border border-neutral-300/80 dark:border-neutral-700
+           hover:bg-neutral-50 dark:hover:bg-neutral-700 active:scale-[0.97]
            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900
            disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100
            transition-all duration-150;
@@ -82,7 +82,7 @@
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
            rounded-xl text-neutral-500 dark:text-neutral-400 font-medium text-sm
-           hover:bg-neutral-100 dark:hover:bg-neutral-700/60
+           hover:bg-neutral-100 dark:hover:bg-neutral-750
            hover:text-neutral-900 dark:hover:text-neutral-100 active:scale-[0.97]
            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900
            disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100
@@ -99,11 +99,11 @@
   }
 
   .input-field {
-    @apply block w-full rounded-xl border border-neutral-300/80 dark:border-neutral-600/60
-           bg-white dark:bg-neutral-700/80 px-4 py-2.5
+    @apply block w-full rounded-xl border border-neutral-300/80 dark:border-neutral-700
+           bg-white dark:bg-neutral-750 px-4 py-2.5
            text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500
-           focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 focus:bg-white dark:focus:bg-neutral-700
-           disabled:bg-neutral-100 dark:disabled:bg-neutral-600/40 disabled:text-neutral-400 disabled:cursor-not-allowed
+           focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 focus:bg-white dark:focus:bg-neutral-750
+           disabled:bg-neutral-100 dark:disabled:bg-neutral-700/40 disabled:text-neutral-400 disabled:cursor-not-allowed
            transition-all duration-200;
   }
 
