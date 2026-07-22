@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
+import { silentCatch } from '../lib/errorHandler';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
@@ -37,33 +38,39 @@ export default function GoogleSignInSection() {
 
     let cancelled = false;
     const cancelledRefs: (() => void)[] = [];
+    let initAttempts = 0;
 
     const initGoogle = () => {
       if (!window.google || !buttonRef.current || cancelled) return;
 
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: async (response: { credential: string }) => {
-          try {
-            await googleLogin(response.credential);
-            navigate('/dashboard', { replace: true });
-          } catch (err: any) {
-            console.error('[GoogleSignIn] Login failed:', err);
-            addToast('error', err?.message || 'Google sign-in failed');
-          }
-        },
-      });
+      try {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: async (response: { credential: string }) => {
+            try {
+              await googleLogin(response.credential);
+              navigate('/dashboard', { replace: true });
+            } catch (err: any) {
+              console.error('[GoogleSignIn] Login failed:', err);
+              addToast('error', err?.message || 'Google sign-in failed');
+            }
+          },
+        });
 
-      window.google.accounts.id.renderButton(buttonRef.current, {
-        theme: 'outline',
-        size: 'large',
-        width: 0,
-        text: 'signin_with',
-        shape: 'rectangular',
-        logo_alignment: 'left',
-      });
+        window.google.accounts.id.renderButton(buttonRef.current, {
+          theme: 'outline',
+          size: 'large',
+          width: 0,
+          text: 'signin_with',
+          shape: 'rectangular',
+          logo_alignment: 'left',
+        });
 
-      if (!cancelled) setReady(true);
+        if (!cancelled) setReady(true);
+      } catch (err) {
+        console.error('[GoogleSignIn] initGoogle error:', err);
+        addToast('error', 'Failed to initialize Google sign-in');
+      }
     };
 
     if (window.google) {
@@ -78,13 +85,22 @@ export default function GoogleSignInSection() {
             clearInterval(check);
             initGoogle();
           }
+          initAttempts++;
+          if (initAttempts > 50 && !cancelled) {
+            clearInterval(check);
+            const msg = 'Google sign-in loaded but failed to initialize. Check that the production domain is added to Google Cloud Console authorized JavaScript origins.';
+            console.error('[GoogleSignIn]', msg);
+            addToast('error', msg);
+            silentCatch('GoogleSignInSection.initTimeout', new Error(msg));
+          }
         }, 200);
         cancelledRefs.push(() => clearInterval(check));
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
-          console.error('[GoogleSignIn] Failed to load Google script');
+          console.error('[GoogleSignIn] Failed to load Google script:', err);
           addToast('error', 'Failed to load Google sign-in. Check your ad blocker.');
+          silentCatch('GoogleSignInSection.scriptLoad', err);
         }
       });
 

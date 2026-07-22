@@ -115,6 +115,9 @@ export function categorizeError(error: unknown, context?: string): CriticalError
 export function triggerCriticalError(error: unknown, context?: string): void {
   const critical = categorizeError(error, context);
   useErrorStore.getState().setCriticalError(critical);
+  try {
+    sessionStorage.setItem('coldfi:criticalError', JSON.stringify(critical));
+  } catch {}
   window.location.href = '/error';
 }
 

@@ -18,19 +18,37 @@ const CATEGORY_COLORS: Record<string, string> = {
   UnknownError: 'text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/20 border-neutral-200 dark:border-neutral-800/50',
 };
 
+function restoreCriticalError(): CriticalError | null {
+  const fromStore = useErrorStore.getState().criticalError;
+  if (fromStore) return fromStore;
+  try {
+    const raw = sessionStorage.getItem('coldfi:criticalError');
+    if (raw) {
+      const parsed = JSON.parse(raw) as CriticalError;
+      useErrorStore.getState().setCriticalError(parsed);
+      sessionStorage.removeItem('coldfi:criticalError');
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
 export default function ErrorPage() {
   const navigate = useNavigate();
   const criticalError = useErrorStore((s) => s.criticalError);
   const clearCriticalError = useErrorStore((s) => s.clearCriticalError);
   const [showDetails, setShowDetails] = useState(false);
+  const [error, setError] = useState<CriticalError | null>(criticalError);
 
   useEffect(() => {
-    if (!criticalError) {
+    const restored = restoreCriticalError();
+    if (restored) {
+      setError(restored);
+    } else if (!error) {
       navigate('/', { replace: true });
     }
-  }, [criticalError, navigate]);
+  }, []);
 
-  const error = criticalError as CriticalError;
   if (!error) return null;
 
   const icon = CATEGORY_ICONS[error.category] || CATEGORY_ICONS.UnknownError;
@@ -93,7 +111,7 @@ export default function ErrorPage() {
           <div className="flex gap-3">
             {error.retryable && (
               <button
-                onClick={() => { clearCriticalError(); window.location.href = window.location.origin; }}
+                onClick={() => { clearCriticalError(); try { sessionStorage.removeItem('coldfi:criticalError'); } catch {} window.location.href = window.location.origin; }}
                 className="btn-primary flex-1"
               >
                 Try Again
@@ -102,6 +120,7 @@ export default function ErrorPage() {
             <button
               onClick={() => {
                 clearCriticalError();
+                try { sessionStorage.removeItem('coldfi:criticalError'); } catch {}
                 navigate('/', { replace: true });
               }}
               className="btn-ghost flex-1"
