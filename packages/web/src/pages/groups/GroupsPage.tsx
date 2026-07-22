@@ -98,7 +98,7 @@ export default function GroupsPage() {
         </div>
       )}
 
-      {showCreate && <CreateGroupModal onClose={() => setShowCreate(false)} />}
+      {showCreate && <CreateGroupModal onClose={() => setShowCreate(false)} onGroupCreated={(id) => navigate(`/groups/${id}`)} />}
       {showJoin && <JoinGroupModal onClose={() => setShowJoin(false)} />}
     </div>
   );
