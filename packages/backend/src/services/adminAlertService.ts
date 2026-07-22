@@ -7,28 +7,37 @@ export async function getAlertRules(): Promise<any[]> {
 
 export async function createAlertRule(rule: any, adminId: string): Promise<any> {
   const { rows: [created] } = await query(
-    `INSERT INTO alert_rules (name, metric, condition, threshold, window_minutes, enabled, channels, webhook_url, cooldown_minutes, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+    `INSERT INTO alert_rules (name, metric, condition, threshold, window_minutes, enabled, channels, webhook_url, cooldown_minutes, severity, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
      RETURNING *`,
     [
       rule.name, rule.metric, rule.condition, rule.threshold,
-      rule.windowMinutes || 5, rule.enabled !== false,
-      rule.channels || ['panel'], rule.webhookUrl || null,
-      rule.cooldownMinutes || 30,
+      rule.window_minutes ?? 5, rule.enabled !== false,
+      rule.channels || ['panel'], rule.webhook_url || null,
+      rule.cooldown_minutes ?? 30, rule.severity || 'warning',
     ]
   );
   return created;
 }
 
 export async function updateAlertRule(id: string, updates: any): Promise<any | null> {
+  const fields: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  for (const [col, key] of [['name', 'name'], ['metric', 'metric'], ['condition', 'condition'], ['threshold', 'threshold'], ['window_minutes', 'window_minutes'], ['enabled', 'enabled'], ['channels', 'channels'], ['webhook_url', 'webhook_url'], ['cooldown_minutes', 'cooldown_minutes'], ['severity', 'severity']] as const) {
+    if (updates[key] !== undefined) {
+      fields.push(`${col} = $${idx++}`);
+      values.push(updates[key]);
+    }
+  }
+
+  if (fields.length === 0) return (await query('SELECT * FROM alert_rules WHERE id = $1', [id])).rows[0] || null;
+
+  values.push(id);
   const { rows: [updated] } = await query(
-    `UPDATE alert_rules SET name=$1, metric=$2, condition=$3, threshold=$4, window_minutes=$5, enabled=$6, channels=$7, webhook_url=$8, cooldown_minutes=$9
-     WHERE id=$10 RETURNING *`,
-    [
-      updates.name, updates.metric, updates.condition, updates.threshold,
-      updates.windowMinutes, updates.enabled, updates.channels,
-      updates.webhookUrl, updates.cooldownMinutes, id,
-    ]
+    `UPDATE alert_rules SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+    values
   );
   return updated || null;
 }

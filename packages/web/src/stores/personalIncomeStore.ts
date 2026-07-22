@@ -23,7 +23,7 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
 
   addIncome: async (income) => {
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
+    const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 
     const newIncome: IncomeLog = {
       ...income,
@@ -109,7 +109,7 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
 
   addSavingsTarget: async (target) => {
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
+    const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 
     const newTarget: SavingsTarget = {
       ...target,

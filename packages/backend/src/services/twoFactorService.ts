@@ -104,6 +104,11 @@ export async function verify2FALogin(tempToken: string, code: string): Promise<a
   return generateTokens(userId);
 }
 
+export async function getTwoFactorStatus(userId: string): Promise<{ enabled: boolean }> {
+  const result = await query(`SELECT two_factor_enabled FROM users WHERE id = $1`, [userId]);
+  return { enabled: !!result.rows[0]?.two_factor_enabled };
+}
+
 export async function disable2FA(userId: string, code: string): Promise<void> {
   const userResult = await query(
     `SELECT two_factor_secret, two_factor_enabled FROM users WHERE id = $1`,

@@ -66,9 +66,13 @@ export async function restoreUser(userId: string): Promise<void> {
 
 export async function deleteUser(userId: string, adminId: string): Promise<void> {
   await transaction(async (client) => {
-    const ownerCount = await client.query(`SELECT COUNT(*)::int AS cnt FROM users WHERE role = 'owner' FOR UPDATE`);
-    if (ownerCount.rows[0]?.cnt <= 1) {
-      throw new Error('ERR_LAST_OWNER');
+    const targetUser = await client.query(`SELECT role FROM users WHERE id = $1`, [userId]);
+    if (targetUser.rows.length === 0) throw new Error('ERR_USER_NOT_FOUND');
+    if (targetUser.rows[0].role === 'owner') {
+      const ownerCount = await client.query(`SELECT COUNT(*)::int AS cnt FROM users WHERE role = 'owner' FOR UPDATE`);
+      if (ownerCount.rows[0]?.cnt <= 1) {
+        throw new Error('ERR_LAST_OWNER');
+      }
     }
 
     await client.query('UPDATE slow_queries SET user_id = NULL WHERE user_id = $1', [userId]);

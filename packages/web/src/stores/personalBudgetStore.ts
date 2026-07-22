@@ -20,7 +20,7 @@ export const usePersonalBudgetStore = create<PersonalBudgetState>((set) => ({
 
   addBudget: async (budget) => {
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
+    const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 
     const newBudget: Budget = {
       ...budget,

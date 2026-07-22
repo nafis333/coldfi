@@ -74,6 +74,7 @@ export const useAdminConfigStore = create<AdminConfigState>((set, get) => ({
       await get().fetchAlertRules();
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 
@@ -83,6 +84,7 @@ export const useAdminConfigStore = create<AdminConfigState>((set, get) => ({
       await get().fetchAlertRules();
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 
@@ -92,6 +94,7 @@ export const useAdminConfigStore = create<AdminConfigState>((set, get) => ({
       await get().fetchAlertRules();
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 
@@ -128,6 +131,7 @@ export const useAdminConfigStore = create<AdminConfigState>((set, get) => ({
       await authFetch('/admin/alerts/evaluate', { method: 'POST' });
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 
@@ -170,6 +174,7 @@ export const useAdminConfigStore = create<AdminConfigState>((set, get) => ({
       });
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 

@@ -310,10 +310,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     if (get().isInitialized) return;
-    const lastActivity = storage().getItem('coldfi:lastActivity');
+    const lastActivity = storage().getItem(LAST_ACTIVITY_KEY) || localStorage.getItem(LAST_ACTIVITY_KEY);
     if (lastActivity) {
       const elapsed = Date.now() - Number(lastActivity);
       if (elapsed > 30 * 24 * 60 * 60 * 1000) {
+        try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch {}
         storage().removeItem(LAST_ACTIVITY_KEY);
         storage().removeItem(AUTH_STORAGE_KEY);
         set({ isInitialized: true });
@@ -373,9 +374,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       if (!pek && rawPek && !isGoogleUser) {
         try {
-          const pekBytes = new Uint8Array(
-            rawPek.match(/.{1,2}/g)!.map((b: string) => parseInt(b, 16))
-          );
+          const pekBytes = base64ToUint8Array(rawPek);
           storePekBytes(pekBytes);
           pek = await importKey(pekBytes);
         } catch {

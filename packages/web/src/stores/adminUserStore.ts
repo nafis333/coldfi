@@ -77,6 +77,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
       await authFetch(`/admin/users/${userId}/force-logout`, { method: 'POST' });
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 
@@ -88,6 +89,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
       });
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 
@@ -108,6 +110,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
       await authFetch(`/admin/users/${userId}/restore`, { method: 'POST' });
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
     }
   },
 

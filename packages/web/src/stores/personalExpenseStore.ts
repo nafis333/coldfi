@@ -22,7 +22,7 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     if (typeof expense.amount !== 'number' || isNaN(expense.amount) || expense.amount <= 0) throw new Error('Expense amount must be a positive number');
 
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
+    const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 
     let newId = generateId();
     while (current.expenses.some(e => e.id === newId)) {

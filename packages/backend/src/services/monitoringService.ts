@@ -285,12 +285,4 @@ export async function getRedisStats(): Promise<RedisStats> {
   }
 }
 
-export async function getHealthHistory(hours: number): Promise<any[]> {
-  const result = await query(
-    `SELECT * FROM db_stats_snapshots
-     WHERE snapshot_at > NOW() - $1::interval
-     ORDER BY snapshot_at DESC`,
-    [`${hours} hours`]
-  );
-  return result.rows;
-}
+export const getHealthHistory = getDatabaseStatsHistory;

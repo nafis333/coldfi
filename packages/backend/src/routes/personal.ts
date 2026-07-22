@@ -57,25 +57,27 @@ export async function personalRoutes(app: FastifyInstance) {
         }
 
         const newClock = Math.max(currentClock, vectorClock) + 1;
-        await client.query(
+        const updateResult = await client.query(
           `UPDATE personal_data
            SET encrypted_blob = $1, vector_clock = $2, updated_at = NOW()
-           WHERE user_id = $3`,
+           WHERE user_id = $3
+           RETURNING vector_clock`,
           [encryptedBlob, newClock, userId]
         );
-        return { conflict: false, newClock };
+        return { conflict: false, newClock: updateResult.rows[0].vector_clock };
       } else {
         const newClock = vectorClock + 1;
-        await client.query(
+        const insertResult = await client.query(
           `INSERT INTO personal_data (user_id, encrypted_blob, vector_clock, created_at, updated_at)
            VALUES ($1, $2, $3, NOW(), NOW())
            ON CONFLICT (user_id) DO UPDATE
            SET encrypted_blob = EXCLUDED.encrypted_blob,
                vector_clock = GREATEST(personal_data.vector_clock, EXCLUDED.vector_clock) + 1,
-               updated_at = NOW()`,
+               updated_at = NOW()
+           RETURNING vector_clock`,
           [userId, encryptedBlob, newClock]
         );
-        return { conflict: false, newClock };
+        return { conflict: false, newClock: insertResult.rows[0].vector_clock };
       }
     });
 

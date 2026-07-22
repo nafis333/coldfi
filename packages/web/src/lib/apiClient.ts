@@ -25,7 +25,7 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
       }
     } catch {
     }
-    logout();
+    await logout();
     throw new Error('Session expired');
   }
 

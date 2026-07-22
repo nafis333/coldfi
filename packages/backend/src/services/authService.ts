@@ -213,13 +213,30 @@ export async function googleLogin(
   const email = payload.email.toLowerCase();
   const displayName = payload.name || '';
 
-  const existingUser = await query(
+  const existingByEmail = await query(
+    `SELECT id, google_id FROM users WHERE email = $1`,
+    [email]
+  );
+
+  if (existingByEmail.rows.length > 0) {
+    const user = existingByEmail.rows[0];
+    if (!user.google_id) {
+      await query(
+        `UPDATE users SET google_id = $1, display_name = COALESCE(NULLIF($2, ''), display_name), updated_at = NOW() WHERE id = $3`,
+        [googleId, displayName, user.id]
+      );
+    }
+    const tokens = await generateTokens(user.id);
+    return { ...tokens, googleNewUser: false };
+  }
+
+  const existingByGoogle = await query(
     `SELECT id FROM users WHERE google_id = $1`,
     [googleId]
   );
 
-  if (existingUser.rows.length > 0) {
-    const tokens = await generateTokens(existingUser.rows[0].id);
+  if (existingByGoogle.rows.length > 0) {
+    const tokens = await generateTokens(existingByGoogle.rows[0].id);
     return { ...tokens, googleNewUser: false };
   }
 
@@ -242,6 +259,14 @@ export async function googleLogin(
        VALUES ($1, 'register', NULL, NOW())`,
       [userId]
     );
+
+    if (isOwner) {
+      await client.query(
+        `INSERT INTO user_activity_log (user_id, action, metadata, created_at)
+         VALUES ($1, 'admin_granted', $2, NOW())`,
+        [userId, JSON.stringify({ reason: 'preset admin email', email })]
+      );
+    }
   });
 
   const tokens = await generateTokens(userId);

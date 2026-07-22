@@ -53,7 +53,7 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
     }
 
     if (!pek) {
-      set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] });
+      set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [], budgetStatuses: [], incomeLogs: [], savingsTargets: [] });
       return;
     }
 
@@ -63,7 +63,7 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
       const res = await apiClient('/api/personal/sync');
 
       if (res.status === 404) {
-        set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [] });
+        set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [], budgetStatuses: [], incomeLogs: [], savingsTargets: [] });
         return;
       }
 
@@ -74,7 +74,7 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
       const data = await res.json();
 
       if (!data.encryptedBlob) {
-        set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [] });
+        set({ isLoading: false, personalBlob: null, expenses: [], budgets: [], categories: [], budgetStatuses: [], incomeLogs: [], savingsTargets: [] });
         return;
       }
 
@@ -153,8 +153,9 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
   },
 
   addCategory: async (category) => {
-    const { personalBlob } = get();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [] };
+    const previous = get();
+    const prevBlob = previous.personalBlob;
+    const current = prevBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 
     const { generateId } = await import('../lib/personalSync');
     const newCategory: Category = {
@@ -178,7 +179,13 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
         await get().savePersonalBlob(updated);
       }
     } catch (err) {
-      set({ personalBlob: current as PersonalBlob, categories: current.categories || [] });
+      set({
+        personalBlob: prevBlob,
+        categories: prevBlob?.categories || [],
+        budgetStatuses: previous.budgetStatuses,
+        incomeLogs: previous.incomeLogs,
+        savingsTargets: previous.savingsTargets,
+      });
       throw err;
     }
   },

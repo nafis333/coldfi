@@ -23,6 +23,7 @@ import {
   verify2FASetup,
   verify2FALogin,
   disable2FA,
+  getTwoFactorStatus,
 } from '../services/twoFactorService';
 import {
   loginRateLimiter,
@@ -370,11 +371,12 @@ export async function authRoutes(app: FastifyInstance) {
       }
 
       const hashedAuthKey = await bcrypt.hash(authKeyHash, SALT_ROUNDS);
+      const serverEncryptedPek = encryptServerKey(data.rawPek);
 
       await transaction(async (client) => {
         await client.query(
-          `UPDATE users SET auth_key_hash = $1, personal_salt = $2, encrypted_pek = $3, updated_at = NOW() WHERE id = $4`,
-          [hashedAuthKey, personalSalt, encryptedPek, data.userId]
+          `UPDATE users SET auth_key_hash = $1, personal_salt = $2, encrypted_pek = $3, server_encrypted_pek = $4, updated_at = NOW() WHERE id = $5`,
+          [hashedAuthKey, personalSalt, encryptedPek, serverEncryptedPek, data.userId]
         );
 
         await client.query(
@@ -389,6 +391,11 @@ export async function authRoutes(app: FastifyInstance) {
       request.log.error({ err }, 'POST /recover/complete failed');
       return reply.status(500).send({ error: 'ERR_INTERNAL', message: 'Failed to complete account recovery.' });
     }
+  });
+
+  app.get('/2fa/status', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const result = await getTwoFactorStatus(request.user!.userId);
+    return reply.send(result);
   });
 
   app.post('/2fa/setup', { preHandler: [app.authenticate, twoFASetupRateLimiter] }, async (request, reply) => {

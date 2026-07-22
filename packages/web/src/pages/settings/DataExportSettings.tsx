@@ -13,8 +13,8 @@ export default function DataExportSettings() {
     try {
       await exportEncryptedBackup(backupPassword);
       setStatus({ type: 'success', message: 'Backup downloaded successfully' });
-    } catch (err: any) {
-      setStatus({ type: 'error', message: err.message ?? 'Export failed' });
+    } catch (err: unknown) {
+      setStatus({ type: 'error', message: err instanceof Error ? err.message : 'Export failed' });
     }
   };
 
@@ -23,8 +23,8 @@ export default function DataExportSettings() {
     try {
       exportExpensesCSV();
       setStatus({ type: 'success', message: 'CSV downloaded' });
-    } catch (err: any) {
-      setStatus({ type: 'error', message: err.message ?? 'CSV export failed' });
+    } catch (err: unknown) {
+      setStatus({ type: 'error', message: err instanceof Error ? err.message : 'CSV export failed' });
     }
   };
 
@@ -35,8 +35,8 @@ export default function DataExportSettings() {
     try {
       await importEncryptedBackup(file, importPassword);
       setStatus({ type: 'success', message: 'Backup restored successfully' });
-    } catch (err: any) {
-      setStatus({ type: 'error', message: err.message ?? 'Import failed' });
+    } catch (err: unknown) {
+      setStatus({ type: 'error', message: err instanceof Error ? err.message : 'Import failed' });
     }
     e.target.value = '';
   };

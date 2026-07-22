@@ -13,18 +13,25 @@ export interface User {
 export interface SessionTokens {
   accessToken: string;
   refreshToken: string;
-  refreshTokenId: string;
 }
 
 export interface RegisterRequest {
   email: string;
   authKeyHash: string;
+  personalSalt: string;
+  encryptedPek: string;
+  rawPek: string;
   displayName?: string;
 }
 
 export interface RegisterResponse {
   userId: string;
   personalSalt: string;
+  encryptedPek: string;
+  role: string;
+  accessToken: string;
+  displayName: string;
+  recoveryCode: string;
 }
 
 export interface LoginRequest {
@@ -33,16 +40,33 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  accessToken: string;
+  accessToken?: string;
+  role?: string;
+  userId: string;
+  displayName?: string;
   personalSalt: string;
-  displayName: string;
-  twoFactorRequired: boolean;
+  encryptedPek: string;
+  email?: string;
+  rawPek?: string;
+  isGoogleUser?: boolean;
+  requires2FA?: boolean;
   tempToken?: string;
 }
 
 export interface TwoFactorVerifyRequest {
   tempToken: string;
-  totpCode: string;
+  code: string;
+}
+
+export interface TwoFactorVerifyResponse {
+  accessToken: string;
+  role: string;
+  userId: string;
+  displayName: string;
+  personalSalt: string;
+  encryptedPek: string;
+  email: string;
+  isGoogleUser: boolean;
 }
 
 export interface TwoFactorSetupResponse {
@@ -50,16 +74,56 @@ export interface TwoFactorSetupResponse {
   otpauthUrl: string;
 }
 
+export interface GoogleLoginResponse {
+  accessToken: string;
+  role: string;
+  userId: string;
+  displayName: string;
+  personalSalt: string;
+  encryptedPek: string;
+  email: string;
+  isGoogleUser: boolean;
+  googleNewUser: boolean;
+}
+
 export interface ChangePasswordRequest {
-  oldPassword: string;
-  newPassword: string;
+  oldAuthKeyHash: string;
   newAuthKeyHash: string;
+  personalSalt: string;
+  encryptedPek: string;
 }
 
 export interface RefreshTokenResponse {
   accessToken: string;
-  userId: string;
-  email: string;
-  displayName: string;
   role: string;
+  userId: string;
+  displayName: string;
+  personalSalt: string;
+  encryptedPek: string;
+  email: string;
+  rawPek?: string;
+  isGoogleUser: boolean;
+}
+
+export interface RecoverRequest {
+  email: string;
+  recoveryCode: string;
+}
+
+export interface RecoverResponse {
+  tempToken: string;
+  rawPek: string;
+}
+
+export interface RecoverCompleteRequest {
+  tempToken: string;
+  authKeyHash: string;
+  personalSalt: string;
+  encryptedPek: string;
+}
+
+export interface ProfileUpdateRequest {
+  displayName?: string;
+  defaultCurrency?: string;
+  timezone?: string;
 }

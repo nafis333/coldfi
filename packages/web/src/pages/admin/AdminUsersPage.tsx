@@ -15,7 +15,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     fetchUsers({ page, search, status: statusFilter || undefined });
-  }, [fetchUsers, page]);
+  }, [fetchUsers, page, search, statusFilter]);
 
   function handleSearch() {
     setPage(1);

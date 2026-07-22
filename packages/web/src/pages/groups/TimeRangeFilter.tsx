@@ -25,8 +25,12 @@ export default function TimeRangeFilter({
   rangeDays, showCustom, onPreset, onCustomStart, onCustomEnd, onApplyCustom, onToggleCustom,
   presets = DEFAULT_PRESETS, compact = false,
 }: TimeRangeFilterProps) {
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [customKey, setCustomKey] = useState(0);
+
+  function handleToggleCustom() {
+    setCustomKey((k) => k + 1);
+    onToggleCustom();
+  }
 
   if (compact) {
     return (
@@ -42,7 +46,7 @@ export default function TimeRangeFilter({
               {r.label}
             </button>
           ))}
-          <button onClick={onToggleCustom}
+          <button onClick={handleToggleCustom}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
               showCustom
                 ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
@@ -51,10 +55,10 @@ export default function TimeRangeFilter({
             Custom
           </button>
           {showCustom && (
-            <div className="flex items-center gap-2 ml-1">
-              <input type="date" value={customStart} onChange={(e) => { setCustomStart(e.target.value); onCustomStart(e.target.value); }} className="input text-xs py-1 px-2 w-32" />
+            <div key={customKey} className="flex items-center gap-2 ml-1">
+              <input type="date" onChange={(e) => onCustomStart(e.target.value)} className="input text-xs py-1 px-2 w-32" />
               <span className="text-xs text-neutral-400">to</span>
-              <input type="date" value={customEnd} onChange={(e) => { setCustomEnd(e.target.value); onCustomEnd(e.target.value); }} className="input text-xs py-1 px-2 w-32" />
+              <input type="date" onChange={(e) => onCustomEnd(e.target.value)} className="input text-xs py-1 px-2 w-32" />
             </div>
           )}
         </div>
@@ -82,7 +86,7 @@ export default function TimeRangeFilter({
           ))}
         </div>
         <button
-          onClick={onToggleCustom}
+          onClick={handleToggleCustom}
           className={`rounded-md px-3 py-1 text-sm font-medium transition-all ${
             showCustom
               ? 'bg-primary-600 text-white shadow-sm'
@@ -93,16 +97,12 @@ export default function TimeRangeFilter({
         </button>
       </div>
       {showCustom && (
-        <div className="mt-3 flex items-center gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-700/50">
-          <input type="date" value={customStart} onChange={(e) => { setCustomStart(e.target.value); onCustomStart(e.target.value); }}
+        <div key={customKey} className="mt-3 flex items-center gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-700/50">
+          <input type="date" onChange={(e) => onCustomStart(e.target.value)}
             className="input-field text-sm flex-1" />
           <span className="text-neutral-300 dark:text-neutral-600">→</span>
-          <input type="date" value={customEnd} onChange={(e) => { setCustomEnd(e.target.value); onCustomEnd(e.target.value); }}
+          <input type="date" onChange={(e) => onCustomEnd(e.target.value)}
             className="input-field text-sm flex-1" />
-          {onApplyCustom && (
-            <button onClick={onApplyCustom} disabled={!customStart || !customEnd}
-              className="btn-primary text-sm">Apply</button>
-          )}
         </div>
       )}
     </div>

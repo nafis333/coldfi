@@ -270,16 +270,17 @@ export default function AnalyticsPage() {
 
   const savingsData = useMemo(() => {
     if (source === 'groups') return null;
+    const savingsExpenses = source === 'all' ? expenses : filtered;
     return computeSavings(
       incomeLogs.map((i) => ({
         id: i.id, source: i.source, amount: i.amount,
         currency: i.currency || defaultCurrency, date: i.date,
         isRecurring: false, notes: i.note, createdAt: i.createdAt, updatedAt: i.updatedAt,
       })),
-      toEngineExpenses(source === 'all' ? filtered : expenses),
+      toEngineExpenses(savingsExpenses),
       periodRange.start, periodRange.end
     );
-  }, [incomeLogs, expenses, allExpenses, source, periodRange, defaultCurrency]);
+  }, [incomeLogs, expenses, filtered, source, periodRange, defaultCurrency]);
 
   const currentRecap = useMemo(() => {
     const d = new Date();

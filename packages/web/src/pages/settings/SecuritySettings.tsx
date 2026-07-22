@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import TabSyncStatus from '../../components/settings/TabSyncStatus';
 import QRCode from 'qrcode';
@@ -18,6 +18,7 @@ export default function SecuritySettings() {
 
   // --- 2FA ---
   const [twoFaEnabled, setTwoFaEnabled] = useState(false);
+  const [twoFaLoaded, setTwoFaLoaded] = useState(false);
   const [twoFaStep, setTwoFaStep] = useState<'idle' | 'setup' | 'enable' | 'disable'>('idle');
   const [twoFaSecret, setTwoFaSecret] = useState('');
   const [twoFaUri, setTwoFaUri] = useState('');
@@ -26,6 +27,23 @@ export default function SecuritySettings() {
   const [twoFaError, setTwoFaError] = useState('');
   const [twoFaSuccess, setTwoFaSuccess] = useState('');
   const [twoFaLoading, setTwoFaLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/2fa/status`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTwoFaEnabled(data.enabled);
+        }
+      } catch {
+      } finally {
+        setTwoFaLoaded(true);
+      }
+    })();
+  }, [accessToken]);
 
   // --- Logout All ---
   const [logoutAllLoading, setLogoutAllLoading] = useState(false);

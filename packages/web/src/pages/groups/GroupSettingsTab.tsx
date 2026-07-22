@@ -15,12 +15,12 @@ interface InviteCode {
 
 export default function GroupSettingsTab() {
   const { groupId } = useOutletContext<{ groupId: string }>();
-  const { generateInvite, fetchInvites, revokeInvite, changePassphrase, updateGroupSettings } = useGroupStore();
+  const { currentGroup, generateInvite, fetchInvites, revokeInvite, changePassphrase, updateGroupSettings } = useGroupStore();
   const [invites, setInvites] = useState<InviteCode[]>([]);
   const [newPassphrase, setNewPassphrase] = useState('');
   const [confirmPassphrase, setConfirmPassphrase] = useState('');
-  const [groupName, setGroupName] = useState('');
-  const [currency, setCurrency] = useState(useAuthStore.getState().defaultCurrency);
+  const [groupName, setGroupName] = useState(currentGroup?.name || '');
+  const [currency, setCurrency] = useState(currentGroup?.defaultCurrency || useAuthStore.getState().defaultCurrency);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState('');
