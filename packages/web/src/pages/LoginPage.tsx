@@ -46,6 +46,7 @@ export default function LoginPage() {
         navigate('/dashboard', { replace: true });
       } catch (err) {
         if (err instanceof Error && err.message === '2FA_REQUIRED') {
+          clearError();
           setNeed2FA(true);
         } else {
           setLocalError(err instanceof Error ? err.message : 'Login failed');
