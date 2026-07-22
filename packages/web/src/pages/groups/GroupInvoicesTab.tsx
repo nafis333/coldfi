@@ -15,6 +15,7 @@ interface Member {
   userId: string;
   displayName: string;
   email?: string;
+  leftAt?: string | null;
 }
 
 interface ExpenseData {
@@ -60,6 +61,11 @@ export default function GroupInvoicesTab() {
 
   const [now, setNow] = useState(() => Date.now());
 
+  const activeMemberIds = useMemo(() =>
+    group.members.filter((m) => !m.leftAt).map((m) => m.userId),
+    [group.members]
+  );
+
   async function handleMarkPaid(settlementId: string) {
     setActionMsg(null);
     await markSettlementAsPaid(groupId, settlementId);
@@ -92,15 +98,29 @@ export default function GroupInvoicesTab() {
     setTimeout(() => setActionMsg(null), 3000);
   }
 
+  const activeSettlements = useMemo(() =>
+    (group.settlements || []).filter((s: any) =>
+      activeMemberIds.includes(s.fromUserId) && activeMemberIds.includes(s.toUserId)
+    ),
+    [group.settlements, activeMemberIds]
+  );
+
+  const archivedSettlements = useMemo(() =>
+    (group.settlements || []).filter((s: any) =>
+      !activeMemberIds.includes(s.fromUserId) || !activeMemberIds.includes(s.toUserId)
+    ),
+    [group.settlements, activeMemberIds]
+  );
+
   const overdueSettlements = useMemo(() => {
     const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-    return (group.settlements || []).filter((s: any) => {
+    return activeSettlements.filter((s: any) => {
       if (s.status !== SettlementStatus.PROPOSED && s.status !== SettlementStatus.MARKED_PAID) return false;
       const proposedAt = new Date(s.proposedAt || s.createdAt).getTime();
       if (isNaN(proposedAt)) return false;
       return (now - proposedAt) > SEVEN_DAYS;
     });
-  }, [group.settlements, now]);
+  }, [activeSettlements, now]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60000);
@@ -129,13 +149,14 @@ export default function GroupInvoicesTab() {
   const spentByPerson = useMemo(() => {
     const map: Record<string, number> = {};
     for (const e of filteredExpenses) {
+      if (!activeMemberIds.includes(e.payerId)) continue;
       map[e.payerId] = (map[e.payerId] || 0) + e.amount;
     }
     return map;
-  }, [filteredExpenses]);
+  }, [filteredExpenses, activeMemberIds]);
 
   const balances = useMemo(() => {
-    const mockMemberIds = group.members.map((m) => m.userId);
+    const allMemberIds = group.members.map((m) => m.userId);
     const mockExpenses = filteredExpenses.map((e) => ({
       id: e.id,
       groupId,
@@ -159,13 +180,18 @@ export default function GroupInvoicesTab() {
       updatedAt: e.createdAt,
       createdBy: e.payerId,
     }));
-    return computeNetBalances(mockExpenses, [], mockMemberIds);
+    return computeNetBalances(mockExpenses, [], allMemberIds);
   }, [filteredExpenses, group.members, defaultCurrency, groupId]);
 
-  const currentBalance = balances.find((b) => b.userId === currentUserId);
+  const activeBalances = useMemo(() =>
+    balances.filter((b) => activeMemberIds.includes(b.userId)),
+    [balances, activeMemberIds]
+  );
+
+  const currentBalance = activeBalances.find((b) => b.userId === currentUserId);
 
   function handleSimplifyDebts() {
-    const result = generateMinimalTransfers(balances, defaultCurrency);
+    const result = generateMinimalTransfers(activeBalances, defaultCurrency);
     setSimplifiedTransfers(result.transfers.length > 0 ? result.transfers : []);
   }
 
@@ -173,7 +199,7 @@ export default function GroupInvoicesTab() {
     setSettleAllLoading(true);
     setActionMsg(null);
     try {
-      const optimized = generateMinimalTransfers(balances, defaultCurrency);
+      const optimized = generateMinimalTransfers(activeBalances, defaultCurrency);
       if (optimized.transfers.length === 0) {
         setActionMsg({ text: 'No outstanding debts to settle', isError: false });
         setTimeout(() => setActionMsg(null), 3000);
@@ -235,7 +261,7 @@ export default function GroupInvoicesTab() {
       />
 
       <SpentByPersonSection
-        members={group.members}
+        members={group.members.filter((m) => !m.leftAt)}
         spentByPerson={spentByPerson}
         totalSpent={totalSpent}
         currentUserId={currentUserId}
@@ -243,8 +269,8 @@ export default function GroupInvoicesTab() {
       />
 
       <BalanceOverviewSection
-        balances={balances}
-        members={group.members}
+        balances={activeBalances}
+        members={group.members.filter((m) => !m.leftAt)}
         currentUserId={currentUserId}
         defaultCurrency={defaultCurrency}
       />
@@ -291,9 +317,9 @@ export default function GroupInvoicesTab() {
       )}
 
       <SettlementSection
-        settlements={group.settlements || []}
+        settlements={activeSettlements}
         overdueSettlements={overdueSettlements}
-        members={group.members}
+        members={group.members.filter((m) => !m.leftAt)}
         currentUserId={currentUserId}
         defaultCurrency={defaultCurrency}
         actionMsg={actionMsg}
@@ -302,6 +328,34 @@ export default function GroupInvoicesTab() {
         onReject={handleReject}
         onCancel={handleCancel}
       />
+
+      {archivedSettlements.length > 0 && (
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 mb-4">Archived Settlements ({archivedSettlements.length})</h3>
+          <p className="text-xs text-neutral-400 mb-3">Settlements involving former members — no longer actionable</p>
+          <div className="space-y-1">
+            {archivedSettlements.slice().sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((s: any) => {
+              const fromName = group.members.find((m) => m.userId === s.fromUserId)?.displayName || s.fromUserId.slice(0, 6);
+              const toName = group.members.find((m) => m.userId === s.toUserId)?.displayName || s.toUserId.slice(0, 6);
+              return (
+                <div key={s.id} className="flex items-center justify-between py-2 opacity-60">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-xs px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700/60 text-neutral-500 dark:text-neutral-400">
+                      {s.status.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-sm text-neutral-500 dark:text-neutral-400 truncate">
+                      {fromName} <span className="text-neutral-300">→</span> {toName}
+                    </span>
+                  </div>
+                  <span className="text-sm font-semibold text-neutral-500 dark:text-neutral-400">
+                    {formatCurrency(s.amount, defaultCurrency)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {filteredExpenses.length === 0 && (
         <div className="card p-10 text-center">

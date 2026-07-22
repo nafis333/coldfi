@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
-import { useGroupSettlementStore } from '../../stores/groupSettlementStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
 
@@ -28,7 +27,6 @@ interface TabContext {
 export default function MembersTab() {
   const { groupId, group, currentUserId } = useOutletContext<TabContext>();
   const { leaveGroup, removeMember, updateMemberRole } = useGroupStore();
-  const { forceSettleLeavingMember } = useGroupSettlementStore();
   const navigate = useNavigate();
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaveConfirmed, setLeaveConfirmed] = useState(false);
@@ -84,9 +82,6 @@ export default function MembersTab() {
   async function handleLeave() {
     setLeaving(true);
     try {
-      if (hasOutstandingDebts) {
-        await forceSettleLeavingMember(groupId, currentUserId);
-      }
       await leaveGroup(groupId);
       navigate('/groups', { replace: true });
     } catch (e) {
@@ -100,7 +95,6 @@ export default function MembersTab() {
     if (!window.confirm(`Remove ${group.members.find((m) => m.userId === targetUserId)?.displayName}? Their past splits stay in expenses but they will no longer have access.`)) return;
     setRemovingUserId(targetUserId);
     try {
-      await forceSettleLeavingMember(groupId, targetUserId);
       await removeMember(groupId, targetUserId);
     } catch (e) {
       silentCatch('MembersTab.remove', e);
@@ -163,9 +157,9 @@ export default function MembersTab() {
           {!isFormer && breakdownText(member.userId) && (
             <p className="mt-1 text-xs text-neutral-400 truncate">{breakdownText(member.userId)}</p>
           )}
-          {isFormer && (
-            <p className="mt-1 text-xs text-neutral-400 italic">
-              Settled on leave
+          {isFormer && memberBalance(member.userId) && breakdownText(member.userId) && (
+            <p className="mt-1 text-xs text-warning-500 italic">
+              Outstanding: {breakdownText(member.userId)}
             </p>
           )}
         </div>
@@ -200,24 +194,23 @@ export default function MembersTab() {
 
           {hasOutstandingDebts && (
             <div className="mb-4 space-y-2">
-              <div className="rounded-lg border border-danger-300 dark:border-danger-700 bg-danger-100 dark:bg-danger-900/40 p-3">
+              <div className="rounded-lg border border-warning-300 dark:border-warning-700 bg-warning-100 dark:bg-warning-900/40 p-3">
                 <div className="flex items-start gap-2">
-                  <svg className="h-5 w-5 text-danger-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-5 w-5 text-warning-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
                   <div>
-                    <p className="text-sm font-medium text-danger-700 dark:text-danger-300">
-                      You have outstanding balances that will be auto-settled on leave
+                    <p className="text-sm font-medium text-warning-700 dark:text-warning-300">
+                      You have outstanding balances that will remain after you leave
                     </p>
-                    <p className="mt-1 text-xs text-danger-600 dark:text-danger-400">
+                    <p className="mt-1 text-xs text-warning-600 dark:text-warning-400">
                       {breakdownText(currentUserId)}
                     </p>
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-danger-600 dark:text-danger-400">
-                All your outstanding debts will be auto-approved as settled. Other members will be notified.
-                This cannot be undone.
+              <p className="text-xs text-warning-600 dark:text-warning-400">
+                These outstanding balances will stay recorded but won't appear in the group's active overview or settlement stats. Remaining members won't be able to settle these through the normal flow.
               </p>
             </div>
           )}
@@ -237,7 +230,7 @@ export default function MembersTab() {
             />
             <span className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
               {hasOutstandingDebts
-                ? 'I understand that all my outstanding balances will be auto-settled and I will permanently lose access to this group.'
+                ? 'I understand my outstanding balances will remain recorded and I will permanently lose access to this group.'
                 : 'I understand that I will permanently lose access to this group and all its data.'}
             </span>
           </label>

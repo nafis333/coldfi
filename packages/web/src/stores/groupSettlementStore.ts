@@ -15,7 +15,6 @@ import {
   cancelProposal as engineCancelProposal,
   findDuplicateProposal as engineFindDuplicate,
   getValidTransitions as engineGetValidTransitions,
-  forceSettleOnLeave as engineForceSettle,
   SettlementStatus,
 } from '@coldfi/shared';
 import { onLogout } from '../lib/resetStores';
@@ -25,7 +24,6 @@ interface GroupSettlementState {
   error: string | null;
 
   proposeSettlement: (groupId: string, data: SettlementInput) => Promise<void>;
-  forceSettleLeavingMember: (groupId: string, leavingUserId: string) => Promise<void>;
   markSettlementAsPaid: (groupId: string, settlementId: string, paidAmount?: number) => Promise<void>;
   acceptSettlement: (groupId: string, settlementId: string) => Promise<void>;
   rejectSettlement: (groupId: string, settlementId: string) => Promise<void>;
@@ -36,48 +34,6 @@ interface GroupSettlementState {
 export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
   isLoading: false,
   error: null,
-
-  forceSettleLeavingMember: async (groupId: string, leavingUserId: string) => {
-    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
-    const gk = getGroupKey(groupId);
-    if (!gk) throw new Error('Group key not available');
-    const { useGroupStore } = await import('./groupStore');
-    const state = useGroupStore.getState();
-    const currentGroup = state.currentGroup;
-    if (!currentGroup) throw new Error('Group data not loaded');
-    const balanceArr = currentGroup.balances as Array<{ userId: string; owesTo: Record<string, number>; owedBy: Record<string, number> }> | undefined;
-    const leavingBalance = balanceArr?.find((b) => b.userId === leavingUserId);
-    if (!leavingBalance) return;
-    const currency = currentGroup.defaultCurrency || useAuthStore.getState().defaultCurrency;
-
-    await modifySyncBlob(groupId, gk, (groupData) => {
-      const settlements = groupData.settlements || [];
-      for (const [otherId, amtStr] of Object.entries(leavingBalance.owesTo)) {
-        const amt = amtStr as number;
-        if (amt <= 0.01) continue;
-        const id = `stl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const settled = engineForceSettle({
-          id, groupId, fromUserId: leavingUserId, toUserId: otherId,
-          amount: Math.round(amt * 100) / 100, currency,
-          note: `Auto-settled: ${leavingUserId.slice(0, 8)} left the group`,
-        });
-        settlements.push(settled as SettlementData);
-      }
-      for (const [otherId, amtStr] of Object.entries(leavingBalance.owedBy)) {
-        const amt = amtStr as number;
-        if (amt <= 0.01) continue;
-        const id = `stl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const settled = engineForceSettle({
-          id, groupId, fromUserId: otherId, toUserId: leavingUserId,
-          amount: Math.round(amt * 100) / 100, currency,
-          note: `Auto-settled: ${leavingUserId.slice(0, 8)} left the group`,
-        });
-        settlements.push(settled as SettlementData);
-      }
-      groupData.settlements = settlements;
-    });
-    await useGroupStore.getState().fetchGroupById(groupId);
-  },
 
   proposeSettlement: async (groupId: string, data: SettlementInput) => {
     if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');

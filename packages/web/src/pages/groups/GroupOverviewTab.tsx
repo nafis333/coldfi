@@ -94,15 +94,24 @@ export default function GroupOverviewTab() {
     });
   }, [currentGroup, rangeDays, customStart, customEnd, now]);
 
+  const activeMemberIds = useMemo(() =>
+    (currentGroup?.members || []).filter((m) => !m.leftAt).map((m) => m.userId),
+    [currentGroup?.members]
+  );
+
   const overview = useMemo(() => {
     if (!currentGroup) return null;
     const expenses = filteredExpenses;
     const settlements = currentGroup.settlements || [];
     const members = currentGroup.members || [];
+    const activeMembers = members.filter((m) => !m.leftAt);
     const categories = currentGroup.groupCategories || [];
 
     const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
-    const settledAmount = settlements
+    const activeSettlements = settlements.filter(
+      (s) => activeMemberIds.includes(s.fromUserId) && activeMemberIds.includes(s.toUserId)
+    );
+    const settledAmount = activeSettlements
       .filter((s) => s.status === SettlementStatus.APPROVED)
       .reduce((s, st) => s + st.amount, 0);
     const outstandingDebt = Math.max(0, totalSpent - settledAmount);
@@ -134,8 +143,11 @@ export default function GroupOverviewTab() {
       .sort((a, b) => b.total - a.total);
 
     const memberExpenses: Record<string, number> = {};
-    for (const e of expenses) memberExpenses[e.payerId] = (memberExpenses[e.payerId] || 0) + e.amount;
-    const memberSpending = members.map((m) => ({
+    for (const e of expenses) {
+      if (!activeMemberIds.includes(e.payerId)) continue;
+      memberExpenses[e.payerId] = (memberExpenses[e.payerId] || 0) + e.amount;
+    }
+    const memberSpending = activeMembers.map((m) => ({
       userId: m.userId, displayName: m.displayName || m.userId.slice(0, 8),
       totalPaid: memberExpenses[m.userId] || 0,
       percentage: totalSpent > 0 ? Math.round(((memberExpenses[m.userId] || 0) / totalSpent) * 100) : 0,
@@ -156,8 +168,8 @@ export default function GroupOverviewTab() {
     }));
 
     const currentUserBalance = overviewBalances.find((b) => b.userId === currentUserId);
-    return { totalSpent, expenseCount: expenses.length, totalSettled: settledAmount, outstandingDebt, memberCount: members.length, categoryBreakdown, memberSpending, monthlyTrend, recentActivity, currentUserBalance, overviewBalances };
-  }, [currentGroup, groupId, defaultCurrency, filteredExpenses]);
+    return { totalSpent, expenseCount: expenses.length, totalSettled: settledAmount, outstandingDebt, memberCount: activeMembers.length, categoryBreakdown, memberSpending, monthlyTrend, recentActivity, currentUserBalance, overviewBalances };
+  }, [currentGroup, groupId, defaultCurrency, filteredExpenses, activeMemberIds]);
 
   if (!overview) {
     return <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Loading overview...</p></div>;
