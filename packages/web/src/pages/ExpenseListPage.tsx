@@ -38,6 +38,7 @@ export default function ExpenseListPage() {
   const navigate = useNavigate();
   const { expenses, categories, fetchPersonalBlob, isLoading: personalLoading } = usePersonalStore();
   const { groups, currentGroup, fetchGroups, isLoading: groupsLoading } = useGroupStore();
+  const [groupsFetched, setGroupsFetched] = useState(false);
   const currentUserEmail = useAuthStore((s) => s.email || '');
   const defaultCurrency = useAuthStore((s) => s.defaultCurrency || 'BDT');
 
@@ -68,10 +69,15 @@ export default function ExpenseListPage() {
   }, [fetchPersonalBlob]);
 
   useEffect(() => {
-    if (tab === 'groups' && groups.length === 0) {
+    if (tab !== 'groups') {
+      setGroupsFetched(false);
+      return;
+    }
+    if (!groupsFetched && !groupsLoading) {
+      setGroupsFetched(true);
       fetchGroups();
     }
-  }, [tab, groups.length, fetchGroups]);
+  }, [tab, groupsFetched, groupsLoading, fetchGroups]);
 
   const categoryMap = useMemo(() => {
     const map: Record<string, { name: string; icon: string; color: string }> = {};
