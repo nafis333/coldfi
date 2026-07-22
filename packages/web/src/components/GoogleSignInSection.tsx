@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
@@ -6,24 +6,25 @@ import { silentCatch } from '../lib/errorHandler';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
-let scriptPromise: Promise<void> | null = null;
+function generateNonce(): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
-function loadGoogleScript(): Promise<void> {
-  if (scriptPromise) return scriptPromise;
-  scriptPromise = new Promise((resolve, reject) => {
-    if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
-      resolve();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Google script'));
-    document.body.appendChild(script);
+function buildGoogleAuthUrl(redirectUri: string): string {
+  const nonce = generateNonce();
+  sessionStorage.setItem('google_nonce', nonce);
+
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    response_type: 'id_token',
+    redirect_uri: redirectUri,
+    scope: 'openid email profile',
+    nonce,
   });
-  return scriptPromise;
+
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
 export default function GoogleSignInSection() {
@@ -31,8 +32,6 @@ export default function GoogleSignInSection() {
   const location = useLocation();
   const googleLogin = useAuthStore((s) => s.googleLogin);
   const addToast = useToastStore((s) => s.addToast);
-  const buttonRef = useRef<HTMLDivElement>(null);
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
@@ -43,95 +42,28 @@ export default function GoogleSignInSection() {
       const credential = params.get('id_token');
       if (credential) {
         window.location.hash = '';
-        googleLogin(credential).then(() => {
-          navigate('/dashboard', { replace: true });
-        }).catch((err) => {
-          console.error('[GoogleSignIn] Redirect login failed:', err);
-          addToast('error', err?.message || 'Google sign-in failed');
-        });
+        googleLogin(credential)
+          .then(() => {
+            navigate('/dashboard', { replace: true });
+          })
+          .catch((err) => {
+            console.error('[GoogleSignIn] Login failed:', err);
+            addToast('error', err?.message || 'Google sign-in failed');
+            silentCatch('GoogleSignInSection.loginError', err);
+          });
       }
     }
   }, [location.hash]);
 
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID || !buttonRef.current) return;
+  const handleClick = () => {
+    const redirectUri = `${window.location.origin}/login`;
+    const url = buildGoogleAuthUrl(redirectUri);
+    window.location.href = url;
+  };
 
-    let cancelled = false;
-    const cancelledRefs: (() => void)[] = [];
-    let initAttempts = 0;
-
-    const initGoogle = () => {
-      if (!window.google || !buttonRef.current || cancelled) return;
-
-      try {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: async (response: { credential: string }) => {
-            try {
-              await googleLogin(response.credential);
-              navigate('/dashboard', { replace: true });
-            } catch (err: any) {
-              console.error('[GoogleSignIn] Login failed:', err);
-              addToast('error', err?.message || 'Google sign-in failed');
-            }
-          },
-        });
-
-        window.google.accounts.id.renderButton(buttonRef.current, {
-          theme: 'outline',
-          size: 'large',
-          width: 0,
-          text: 'signin_with',
-          shape: 'rectangular',
-          logo_alignment: 'left',
-        });
-
-        if (!cancelled) setReady(true);
-      } catch (err) {
-        console.error('[GoogleSignIn] initGoogle error:', err);
-        addToast('error', 'Failed to initialize Google sign-in');
-        silentCatch('GoogleSignInSection.initError', err);
-      }
-    };
-
-    if (window.google) {
-      initGoogle();
-      return;
-    }
-
-    loadGoogleScript()
-      .then(() => {
-        const check = setInterval(() => {
-          if (window.google && !cancelled) {
-            clearInterval(check);
-            initGoogle();
-          }
-          initAttempts++;
-          if (initAttempts > 50 && !cancelled) {
-            clearInterval(check);
-            const msg = 'Google sign-in failed to initialize. Check: (1) Popup blockers are disabled, (2) Production domain is in Google Cloud Console authorized origins, (3) Ad blockers are off.';
-            console.error('[GoogleSignIn]', msg);
-            addToast('error', msg);
-            silentCatch('GoogleSignInSection.initTimeout', new Error(msg));
-          }
-        }, 200);
-        cancelledRefs.push(() => clearInterval(check));
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('[GoogleSignIn] Failed to load Google script:', err);
-          addToast('error', 'Failed to load Google sign-in. Check your ad blocker.');
-          silentCatch('GoogleSignInSection.scriptLoad', err);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      cancelledRefs.forEach(fn => fn());
-    };
-  }, [googleLogin, navigate, addToast]);
-
-  if (!GOOGLE_CLIENT_ID) return null;
+  if (!GOOGLE_CLIENT_ID) {
+    return null;
+  }
 
   return (
     <div className="mt-6">
@@ -145,9 +77,36 @@ export default function GoogleSignInSection() {
           </span>
         </div>
       </div>
-      <div className="flex justify-center">
-        <div ref={buttonRef} className={ready ? '' : 'h-10'} />
-      </div>
+
+      <button
+        type="button"
+        onClick={handleClick}
+        className="flex w-full items-center justify-center gap-3 rounded-xl border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-4 py-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 shadow-sm hover:bg-neutral-50 dark:hover:bg-neutral-750 transition-colors"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <path
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+            fill="#4285F4"
+          />
+          <path
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            fill="#34A853"
+          />
+          <path
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            fill="#FBBC05"
+          />
+          <path
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            fill="#EA4335"
+          />
+        </svg>
+        Sign in with Google
+      </button>
+
+      <p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500 text-center">
+        You&apos;ll be redirected to Google to sign in. No scripts loaded from Google on this page.
+      </p>
     </div>
   );
 }
