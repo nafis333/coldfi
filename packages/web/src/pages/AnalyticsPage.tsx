@@ -12,6 +12,7 @@ import {
   type PersonalExpense,
   type PersonalCategory,
 } from '@coldfi/shared';
+import type { ExpenseItem } from '../lib/personalSync';
 import SpendingTrendIndicator from './analytics/SpendingTrendIndicator';
 import SavingsOverview from './analytics/SavingsOverview';
 import DailySpendingChart from './analytics/DailySpendingChart';
@@ -30,14 +31,16 @@ interface StoreExpense {
   id: string; amount: number; currency: string; categoryId: string;
   date: string; payee: string | null; note: string | null;
   paymentMethod: string | null; receiptUri: string | null;
-  isRecurring: boolean; createdAt: string; updatedAt: string;
+  isRecurring: boolean; items?: ExpenseItem[];
+  createdAt: string; updatedAt: string;
 }
 interface StoreCategory { id: string; name: string; icon: string; color: string; }
 
 function toEngineExpenses(storeExpenses: StoreExpense[]): PersonalExpense[] {
   return storeExpenses.map((e) => ({
     id: e.id, amount: e.amount, currency: e.currency, categoryId: e.categoryId,
-    description: e.note || e.payee || 'Expense', date: e.date,
+    description: e.items?.length ? e.items.map((i) => i.name).join(', ') : (e.note || e.payee || 'Expense'),
+    date: e.date,
     paymentMethod: e.paymentMethod ?? '', isRecurring: e.isRecurring,
     tags: [], createdAt: e.createdAt, updatedAt: e.updatedAt,
   }));

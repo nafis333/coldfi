@@ -32,20 +32,29 @@ export default function ExpenseMobileCards({
         paged.map((expense) => {
           const cat = categoryMap[expense.categoryId];
           return (
-            <div key={expense.id} onClick={() => onNavigate(`/expenses/${expense.id}/edit`)} className="card card-hover p-4 cursor-pointer transition-all duration-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base" style={{ backgroundColor: (cat?.color || '#CBD5E1') + '20' }}>
-                    {cat?.icon || '📄'}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{expense.payee || cat?.name || 'Expense'}</p>
-                    <div className="flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500">
-                      <span>{new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                      {expense.note && (<><span className="text-neutral-300 dark:text-neutral-600">·</span><span className="truncate max-w-[80px]">{expense.note}</span></>)}
+              <div key={expense.id} onClick={() => onNavigate(`/expenses/${expense.id}/edit`)} className="card card-hover p-4 cursor-pointer transition-all duration-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base" style={{ backgroundColor: (cat?.color || '#CBD5E1') + '20' }}>
+                      {cat?.icon || '📄'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{expense.payee || cat?.name || 'Expense'}</p>
+                      <div className="flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500">
+                        <span>{new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        {expense.note && (<><span className="text-neutral-300 dark:text-neutral-600">·</span><span className="truncate max-w-[80px]">{expense.note}</span></>)}
+                      </div>
+                      {expense.items && expense.items.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {expense.items.map((item, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 rounded-md bg-neutral-100 dark:bg-neutral-700/40 px-1.5 py-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                              {item.name} {formatCurrency(item.amount, defaultCurrency)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
                 <div className="flex items-center gap-1 shrink-0 ml-3">
                   <p className="text-sm font-bold text-danger-600 dark:text-danger-400">-{formatCurrency(expense.amount, defaultCurrency)}</p>
                   <button

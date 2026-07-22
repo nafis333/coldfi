@@ -73,8 +73,22 @@ export default function ExpenseDesktopTable({
                     <td className="px-5 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 font-medium">
                       {expense.payee || <span className="text-neutral-400 dark:text-neutral-500">—</span>}
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-neutral-400 dark:text-neutral-500 max-w-[200px] truncate hidden lg:table-cell">
-                      {expense.note || <span className="italic">No note</span>}
+                    <td className="px-5 py-3.5 text-sm text-neutral-400 dark:text-neutral-500 max-w-[220px] hidden lg:table-cell">
+                      {expense.items && expense.items.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {expense.note && <p className="truncate">{expense.note}</p>}
+                          <div className="flex flex-wrap gap-1">
+                            {expense.items.map((item, i) => (
+                              <span key={i} className="inline-flex items-center gap-1 rounded-md bg-neutral-100 dark:bg-neutral-700/40 px-1.5 py-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                                {item.name}
+                                <span className="text-neutral-400 dark:text-neutral-500">{formatCurrency(item.amount, defaultCurrency)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        expense.note || <span className="italic">No note</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-2">

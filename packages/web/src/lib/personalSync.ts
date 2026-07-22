@@ -7,6 +7,11 @@ export interface Category {
   color: string;
 }
 
+export interface ExpenseItem {
+  name: string;
+  amount: number;
+}
+
 export interface Expense {
   id: string;
   amount: number;
@@ -18,6 +23,7 @@ export interface Expense {
   paymentMethod: string | null;
   receiptUri: string | null;
   isRecurring: boolean;
+  items?: ExpenseItem[];
   createdAt: string;
   updatedAt: string;
 }
