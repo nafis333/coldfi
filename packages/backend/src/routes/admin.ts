@@ -180,7 +180,6 @@ export async function adminRoutes(app: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        required: ['durationHours'],
         properties: {
           durationHours: { type: 'number', minimum: 1 },
           reason: { type: 'string' },
@@ -192,7 +191,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const { reason, durationHours } = request.body as any;
     const adminId = request.user.userId;
 
-    const expiresAt = await adminUser.suspendUser(userId as string, reason || 'No reason provided', durationHours, adminId);
+    const expiresAt = await adminUser.suspendUser(userId as string, reason || 'No reason provided', durationHours ?? null, adminId);
     await writeAdminAuditLog('user_suspended', userId as string, adminId, { reason, durationHours }, request.ip);
     return reply.send({ message: 'User suspended', expiresAt });
   });
@@ -285,8 +284,8 @@ export async function adminRoutes(app: FastifyInstance) {
     const { ipAddress, reason } = request.body as any;
     const adminId = request.user.userId;
 
-    const IPV4_REGEX = /^(\d{1,3}\.){3}\d{1,3}$/;
-    const IPV6_REGEX = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+    const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+    const IPV6_REGEX = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
     if (!IPV4_REGEX.test(ipAddress) && !IPV6_REGEX.test(ipAddress)) {
       throw new ValidationError('ipAddress must be a valid IP address');
     }

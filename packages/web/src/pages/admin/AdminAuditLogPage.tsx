@@ -12,7 +12,6 @@ export default function AdminAuditLogPage() {
 
   function handleFilter() {
     setPage(1);
-    fetchAuditLog({ action: actionFilter || undefined, page: '1' });
   }
 
   return (

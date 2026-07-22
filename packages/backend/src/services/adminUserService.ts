@@ -12,10 +12,10 @@ export async function forceLogoutUser(userId: string): Promise<void> {
 export async function suspendUser(
   userId: string,
   reason: string,
-  durationHours: number,
+  durationHours: number | null,
   adminId: string
-): Promise<Date> {
-  const expiresAt = new Date(Date.now() + durationHours * 3600000);
+): Promise<Date | null> {
+  const expiresAt = durationHours != null ? new Date(Date.now() + durationHours * 3600000) : null;
 
   await transaction(async (client) => {
     await client.query(

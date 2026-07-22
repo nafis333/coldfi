@@ -19,7 +19,6 @@ export default function AdminUsersPage() {
 
   function handleSearch() {
     setPage(1);
-    fetchUsers({ page: 1, search, status: statusFilter || undefined });
   }
 
   function selectUser(userId: string) {
@@ -70,7 +69,7 @@ export default function AdminUsersPage() {
           onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()}
           className="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm" />
         <select value={statusFilter}
-          onChange={e => { setStatusFilter(e.target.value); setPage(1); fetchUsers({ page: 1, search, status: e.target.value || undefined }); }}
+          onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="px-3 py-2 border border-neutral-300 rounded-lg text-sm">
           <option value="">All</option>
           <option value="active">Active</option>

@@ -4,6 +4,8 @@ import { useAdminStore } from '../../stores/adminStore';
 export default function AdminSecurityPage() {
   const { failedLogins, suspiciousIPs, rateLimitHits, securityScore, fetchFailedLogins, fetchSuspiciousIPs, fetchRateLimitHits, fetchSecurityScore, blockIP } = useAdminStore();
   const [ipToBlock, setIpToBlock] = useState('');
+  const [blockingIP, setBlockingIP] = useState(false);
+  const [blockError, setBlockError] = useState('');
 
   useEffect(() => {
     fetchFailedLogins();
@@ -14,9 +16,17 @@ export default function AdminSecurityPage() {
 
   async function handleBlockIP() {
     if (!ipToBlock) return;
-    await blockIP(ipToBlock);
-    setIpToBlock('');
-    fetchSuspiciousIPs();
+    setBlockingIP(true);
+    setBlockError('');
+    try {
+      await blockIP(ipToBlock);
+      setIpToBlock('');
+      fetchSuspiciousIPs();
+    } catch (err: any) {
+      setBlockError(err.message || 'Failed to block IP');
+    } finally {
+      setBlockingIP(false);
+    }
   }
 
   return (
@@ -85,13 +95,15 @@ export default function AdminSecurityPage() {
               type="text"
               placeholder="IP address..."
               value={ipToBlock}
-              onChange={e => setIpToBlock(e.target.value)}
+              onChange={e => { setIpToBlock(e.target.value); setBlockError(''); }}
               className="flex-1 px-3 py-2 border rounded text-sm font-mono"
             />
-            <button onClick={handleBlockIP} className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700">
-              Block
+            <button onClick={handleBlockIP} disabled={blockingIP || !ipToBlock}
+              className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50">
+              {blockingIP ? 'Blocking...' : 'Block'}
             </button>
           </div>
+          {blockError && <p className="mt-2 text-sm text-red-600">{blockError}</p>}
         </div>
       </div>
 
