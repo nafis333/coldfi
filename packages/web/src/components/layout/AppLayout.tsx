@@ -200,26 +200,26 @@ export default function AppLayout() {
           </div>
         </header>
 
-        <main className="flex-1">
+        <main className="flex-1 pb-16 md:pb-0">
           <Outlet />
         </main>
       </div>
 
-      <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-neutral-800/95 backdrop-blur-md border-t border-neutral-200/80 dark:border-neutral-700/60 flex md:hidden pb-[env(safe-area-inset-bottom)]">
-        <div className="flex flex-1 overflow-x-auto">
-          {NAV_ITEMS.map((item) => {
-            const isActive = location.pathname.startsWith(item.to);
+      <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-neutral-800/95 backdrop-blur-md border-t border-neutral-200/80 dark:border-neutral-700/60 flex md:hidden pb-[env(safe-area-inset-bottom)] safe-bottom">
+        <div className="flex flex-1 justify-around px-1">
+          {NAV_ITEMS.filter(i => ['/dashboard', '/expenses', '/groups', '/settings'].includes(i.to)).map((item) => {
+            const isActive = location.pathname === item.to || location.pathname.startsWith(item.to + '/');
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={`flex-1 flex flex-col items-center py-2 min-h-[56px] justify-center relative transition-colors duration-150 ${
+                className={`flex flex-col items-center py-1.5 min-h-[52px] justify-center relative transition-colors duration-150 min-w-0 ${
                   isActive ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400 dark:text-neutral-500'
                 }`}
               >
                 {isActive && <span className="absolute top-0 left-1/4 right-1/4 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-b-full" />}
                 <span className="[&>svg]:h-5 [&>svg]:w-5">{item.icon}</span>
-                <span className="text-[10px] font-semibold mt-0.5 truncate max-w-[64px]">{item.label}</span>
+                <span className="text-[10px] font-semibold mt-0.5">{item.label}</span>
               </NavLink>
             );
           })}
