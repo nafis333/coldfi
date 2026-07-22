@@ -65,14 +65,18 @@ export default function AnalyticsPage() {
   const defaultCurrency = useAuthStore((s) => s.defaultCurrency);
   const [period, setPeriod] = useState<Period>('1m');
   const [source, setSource] = useState<Source>('personal');
+  const [groupsFetched, setGroupsFetched] = useState(false);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const lastNonGroupSource = useRef<Source>('personal');
 
   useEffect(() => { fetchPersonalBlob(); }, [fetchPersonalBlob]);
 
   useEffect(() => {
-    if (groups.length === 0) fetchGroups();
-  }, [fetchGroups, groups.length]);
+    if (!groupsFetched) {
+      setGroupsFetched(true);
+      fetchGroups();
+    }
+  }, [groupsFetched, fetchGroups]);
 
   useEffect(() => {
     if ((source === 'groups' || source === 'all') && !groupsLoaded) {
