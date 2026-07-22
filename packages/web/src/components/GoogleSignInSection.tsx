@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { silentCatch } from '../lib/errorHandler';
@@ -28,10 +28,30 @@ function loadGoogleScript(): Promise<void> {
 
 export default function GoogleSignInSection() {
   const navigate = useNavigate();
+  const location = useLocation();
   const googleLogin = useAuthStore((s) => s.googleLogin);
   const addToast = useToastStore((s) => s.addToast);
   const buttonRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+
+    const hash = location.hash;
+    if (hash && hash.includes('id_token=')) {
+      const params = new URLSearchParams(hash.replace('#', ''));
+      const credential = params.get('id_token');
+      if (credential) {
+        window.location.hash = '';
+        googleLogin(credential).then(() => {
+          navigate('/dashboard', { replace: true });
+        }).catch((err) => {
+          console.error('[GoogleSignIn] Redirect login failed:', err);
+          addToast('error', err?.message || 'Google sign-in failed');
+        });
+      }
+    }
+  }, [location.hash]);
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID || !buttonRef.current) return;
@@ -70,6 +90,7 @@ export default function GoogleSignInSection() {
       } catch (err) {
         console.error('[GoogleSignIn] initGoogle error:', err);
         addToast('error', 'Failed to initialize Google sign-in');
+        silentCatch('GoogleSignInSection.initError', err);
       }
     };
 
@@ -88,7 +109,7 @@ export default function GoogleSignInSection() {
           initAttempts++;
           if (initAttempts > 50 && !cancelled) {
             clearInterval(check);
-            const msg = 'Google sign-in loaded but failed to initialize. Check that the production domain is added to Google Cloud Console authorized JavaScript origins.';
+            const msg = 'Google sign-in failed to initialize. Check: (1) Popup blockers are disabled, (2) Production domain is in Google Cloud Console authorized origins, (3) Ad blockers are off.';
             console.error('[GoogleSignIn]', msg);
             addToast('error', msg);
             silentCatch('GoogleSignInSection.initTimeout', new Error(msg));
