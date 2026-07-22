@@ -20,6 +20,7 @@ export interface GroupMember {
   role: 'admin' | 'member';
   balance: number;
   joinedAt: string;
+  leftAt?: string | null;
 }
 
 export interface GroupDetail {

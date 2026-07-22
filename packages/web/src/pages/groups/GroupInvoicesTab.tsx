@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { computeNetBalances, SettlementStatus, type DetailedBalance } from '@coldfi/shared';
+import { computeNetBalances, generateMinimalTransfers, formatCurrency, SettlementStatus, type DetailedBalance, type TransferProposal } from '@coldfi/shared';
 import { useAuthStore } from '../../stores/authStore';
 import { useGroupSettlementStore } from '../../stores/groupSettlementStore';
+import { useGroupStore } from '../../stores/groupStore';
+import { silentCatch } from '../../lib/errorHandler';
 import TimeRangeFilter from './TimeRangeFilter';
 import InvoiceSummaryCards from './InvoiceSummaryCards';
 import SpentByPersonSection from './SpentByPersonSection';
@@ -47,7 +49,10 @@ export default function GroupInvoicesTab() {
   const acceptSettlement = useGroupSettlementStore((s) => s.acceptSettlement);
   const rejectSettlement = useGroupSettlementStore((s) => s.rejectSettlement);
   const cancelSettlement = useGroupSettlementStore((s) => s.cancelSettlement);
+  const proposeSettlement = useGroupSettlementStore((s) => s.proposeSettlement);
   const [actionMsg, setActionMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [simplifiedTransfers, setSimplifiedTransfers] = useState<TransferProposal[] | null>(null);
+  const [settleAllLoading, setSettleAllLoading] = useState(false);
   const [rangeDays, setRangeDays] = useState(30);
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -159,6 +164,43 @@ export default function GroupInvoicesTab() {
 
   const currentBalance = balances.find((b) => b.userId === currentUserId);
 
+  function handleSimplifyDebts() {
+    const result = generateMinimalTransfers(balances, defaultCurrency);
+    setSimplifiedTransfers(result.transfers.length > 0 ? result.transfers : []);
+  }
+
+  async function handleSettleAll() {
+    setSettleAllLoading(true);
+    setActionMsg(null);
+    try {
+      const debts: { fromUserId: string; toUserId: string; amount: number }[] = [];
+      for (const bal of balances) {
+        for (const [otherId, amt] of Object.entries(bal.owesTo)) {
+          if (amt > 0.01) debts.push({ fromUserId: bal.userId, toUserId: otherId, amount: amt });
+        }
+      }
+      if (debts.length === 0) {
+        setActionMsg({ text: 'No outstanding debts to settle', isError: false });
+        setTimeout(() => setActionMsg(null), 3000);
+        return;
+      }
+      for (const d of debts) {
+        try {
+          await proposeSettlement(groupId, { fromUserId: d.fromUserId, toUserId: d.toUserId, amount: Math.round(d.amount * 100) / 100 });
+        } catch (e) {
+          silentCatch('GroupInvoicesTab.settleAll', e);
+        }
+      }
+      await useGroupStore.getState().fetchGroupById(groupId);
+      setActionMsg({ text: `${debts.length} settlement${debts.length > 1 ? 's' : ''} proposed`, isError: false });
+      setTimeout(() => setActionMsg(null), 3000);
+    } catch (e) {
+      setActionMsg({ text: e instanceof Error ? e.message : 'Failed to settle all', isError: true });
+    } finally {
+      setSettleAllLoading(false);
+    }
+  }
+
   function applyPreset(days: number) {
     setRangeDays(days);
     setShowCustom(days === 0 ? false : showCustom);
@@ -204,6 +246,47 @@ export default function GroupInvoicesTab() {
         currentUserId={currentUserId}
         defaultCurrency={defaultCurrency}
       />
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={handleSimplifyDebts} className="btn-secondary text-sm">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+          Simplify Debts
+        </button>
+        <button onClick={handleSettleAll} disabled={settleAllLoading} className="btn-primary text-sm">
+          {settleAllLoading ? 'Proposing...' : 'Settle All'}
+        </button>
+      </div>
+
+      {simplifiedTransfers !== null && simplifiedTransfers.length > 0 && (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">Simplified Settlement Plan</h3>
+            <button onClick={() => setSimplifiedTransfers(null)} className="text-xs text-neutral-400 hover:text-neutral-600">Dismiss</button>
+          </div>
+          <div className="space-y-2">
+            {simplifiedTransfers.map((t, i) => {
+              const from = group.members.find((m) => m.userId === t.fromUserId)?.displayName || t.fromUserId.slice(0, 6);
+              const to = group.members.find((m) => m.userId === t.toUserId)?.displayName || t.toUserId.slice(0, 6);
+              return (
+                <div key={i} className="flex items-center justify-between rounded-lg bg-neutral-50 dark:bg-neutral-700/30 px-3 py-2 text-sm">
+                  <span className="text-neutral-700 dark:text-neutral-300">
+                    {from} <span className="text-neutral-400">→</span> {to}
+                  </span>
+                  <span className="font-semibold text-neutral-900 dark:text-white">{formatCurrency(t.amount, defaultCurrency)}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-neutral-400">Use "Settle All" above to create settlement proposals for these transfers</p>
+        </div>
+      )}
+
+      {simplifiedTransfers !== null && simplifiedTransfers.length === 0 && (
+        <div className="card p-4 text-center text-sm text-neutral-500">
+          All balances are already settled.
+          <button onClick={() => setSimplifiedTransfers(null)} className="ml-2 text-xs text-primary-600 hover:text-primary-700">Dismiss</button>
+        </div>
+      )}
 
       <SettlementSection
         settlements={group.settlements || []}

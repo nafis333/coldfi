@@ -244,11 +244,11 @@ export async function getGroupMembers(groupId: string): Promise<any> {
   }
 
   const membersResult = await query(
-    `SELECT gm.user_id, u.display_name, gm.role, gm.joined_at
+    `SELECT gm.user_id, u.display_name, gm.role, gm.joined_at, gm.left_at
      FROM group_members gm
      JOIN users u ON u.id = gm.user_id
-     WHERE gm.group_id = $1 AND gm.left_at IS NULL
-     ORDER BY gm.joined_at ASC`,
+     WHERE gm.group_id = $1
+     ORDER BY gm.left_at NULLS FIRST, gm.joined_at ASC`,
     [groupId]
   );
 
@@ -258,6 +258,7 @@ export async function getGroupMembers(groupId: string): Promise<any> {
     role: row.role,
     balance: 0,
     joinedAt: row.joined_at,
+    leftAt: row.left_at,
   }));
 
   return {
@@ -350,13 +351,78 @@ export async function syncGroupBlob(
   });
 }
 
+export async function removeMember(
+  groupId: string,
+  targetUserId: string,
+  adminUserId: string
+): Promise<{ leftAt: string }> {
+  return transaction(async (client) => {
+    const result = await client.query(
+      `SELECT id, role, left_at FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
+      [groupId, targetUserId]
+    );
+    if (result.rows.length === 0) throw new AppError('ERR_NOT_FOUND', 'Member not found', 404);
+    if (result.rows[0].left_at) throw new AppError('ERR_CONFLICT', 'Already left', 400);
+
+    // Check requesting user is still admin
+    const adminRes = await client.query(
+      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL`,
+      [groupId, adminUserId]
+    );
+    if (adminRes.rows.length === 0 || adminRes.rows[0].role !== 'admin') {
+      throw new AppError('ERR_FORBIDDEN', 'Admin access required', 403);
+    }
+    // Cannot remove self this way
+    if (targetUserId === adminUserId) throw new AppError('ERR_VALIDATION', 'Use leave endpoint to leave', 400);
+
+    await client.query(
+      `UPDATE group_members SET left_at = NOW() WHERE id = $1`,
+      [result.rows[0].id]
+    );
+
+    return { leftAt: new Date().toISOString() };
+  });
+}
+
+export async function updateMemberRole(
+  groupId: string,
+  targetUserId: string,
+  newRole: 'admin' | 'member',
+  adminUserId: string
+): Promise<{ role: string }> {
+  return transaction(async (client) => {
+    const adminRes = await client.query(
+      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL`,
+      [groupId, adminUserId]
+    );
+    if (adminRes.rows.length === 0 || adminRes.rows[0].role !== 'admin') {
+      throw new AppError('ERR_FORBIDDEN', 'Admin access required', 403);
+    }
+
+    const targetRes = await client.query(
+      `SELECT id, role, left_at FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
+      [groupId, targetUserId]
+    );
+    if (targetRes.rows.length === 0) throw new AppError('ERR_NOT_FOUND', 'Member not found', 404);
+    if (targetRes.rows[0].left_at) throw new AppError('ERR_CONFLICT', 'Cannot change role of former member', 400);
+    if (targetUserId === adminUserId) throw new AppError('ERR_VALIDATION', 'Cannot change your own role', 400);
+
+    await client.query(
+      `UPDATE group_members SET role = $1 WHERE id = $2`,
+      [newRole, targetRes.rows[0].id]
+    );
+
+    return { role: newRole };
+  });
+}
+
 export async function leaveGroup(
   groupId: string,
   userId: string
-): Promise<{ leftAt: string }> {
+): Promise<{ leftAt: string; adminTransferredTo?: string }> {
   return transaction(async (client) => {
     const memberResult = await client.query(
-      `SELECT id, left_at FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
+      `SELECT id, role, left_at FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
       [groupId, userId]
     );
 
@@ -374,7 +440,31 @@ export async function leaveGroup(
       [member.id]
     );
 
-    return { leftAt: new Date().toISOString() };
+    // If leaving admin was the only admin, transfer to next member
+    let adminTransferredTo: string | undefined;
+    if (member.role === 'admin') {
+      const remainingAdmins = await client.query(
+        `SELECT user_id FROM group_members WHERE group_id = $1 AND left_at IS NULL AND role = 'admin' AND user_id != $2
+         ORDER BY joined_at ASC LIMIT 1`,
+        [groupId, userId]
+      );
+      if (remainingAdmins.rows.length === 0) {
+        // No other admin — promote the earliest-joined remaining member
+        const nextMember = await client.query(
+          `SELECT user_id FROM group_members WHERE group_id = $1 AND left_at IS NULL ORDER BY joined_at ASC LIMIT 1`,
+          [groupId]
+        );
+        if (nextMember.rows.length > 0) {
+          adminTransferredTo = nextMember.rows[0].user_id;
+          await client.query(
+            `UPDATE group_members SET role = 'admin' WHERE group_id = $1 AND user_id = $2`,
+            [groupId, adminTransferredTo]
+          );
+        }
+      }
+    }
+
+    return { leftAt: new Date().toISOString(), adminTransferredTo };
   });
 }
 

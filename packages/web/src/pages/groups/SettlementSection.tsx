@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatCurrency, SettlementStatus } from '@coldfi/shared';
 
 interface Member {
@@ -62,9 +63,20 @@ function OverdueAlert({ overdueSettlements, members, defaultCurrency }: {
 function SettlementList({ settlements, members, currentUserId, defaultCurrency, actionMsg, onMarkPaid, onAccept, onReject, onCancel }: SettlementSectionProps) {
   if (!settlements || settlements.length === 0) return null;
 
+  const [showAll, setShowAll] = useState(false);
+  const sorted = [...settlements].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const displayed = showAll ? sorted : sorted.slice(0, 10);
+
   return (
     <div className="card p-5">
-      <h3 className="text-sm font-semibold text-neutral-900 dark:text-white mb-4">Recent Settlements</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">Settlements ({settlements.length})</h3>
+        {sorted.length > 10 && (
+          <button onClick={() => setShowAll(!showAll)} className="text-xs font-medium text-primary-600 hover:text-primary-700">
+            {showAll ? 'Show less' : `Show all (${sorted.length})`}
+          </button>
+        )}
+      </div>
       {actionMsg && (
         <div className={`mb-3 px-3 py-2 rounded-lg text-xs font-medium ${
           actionMsg.isError ? 'bg-danger-50 text-danger-700 dark:bg-danger-900/20 dark:text-danger-300' :
@@ -72,7 +84,7 @@ function SettlementList({ settlements, members, currentUserId, defaultCurrency, 
         }`}>{actionMsg.text}</div>
       )}
       <div className="space-y-1 divide-y divide-neutral-100 dark:divide-neutral-700/50">
-        {settlements.slice().sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10).map((s: any) => {
+        {displayed.map((s: any) => {
           const isDebtor = s.fromUserId === currentUserId;
           const isCreditor = s.toUserId === currentUserId;
           return (

@@ -65,7 +65,7 @@ function memberName(members: Member[], userId: string): string {
 }
 
 export default function GroupOverviewTab() {
-  const { groupId, group } = useOutletContext<TabContext>();
+  const { groupId, group, currentUserId } = useOutletContext<TabContext>();
   const currentGroup = useGroupStore((s) => s.currentGroup);
   const defaultCurrency = group.defaultCurrency || useAuthStore((s) => s.defaultCurrency);
   const [rangeDays, setRangeDays] = useState(30);
@@ -120,7 +120,7 @@ export default function GroupOverviewTab() {
       currency: defaultCurrency, status: s.status as any, proposedAt: s.proposedAt,
       relatedExpenseIds: [], createdAt: s.createdAt, updatedAt: s.createdAt,
     }));
-    computeNetBalances(engineExpenses as any, engineSettlements as any, memberIds);
+    const overviewBalances = computeNetBalances(engineExpenses as any, engineSettlements as any, memberIds);
 
     const categorySpending: Record<string, { name: string; icon: string; total: number }> = {};
     for (const e of expenses) {
@@ -155,7 +155,8 @@ export default function GroupOverviewTab() {
       description: e.description || 'added expense', date: e.createdAt, amount: e.amount,
     }));
 
-    return { totalSpent, expenseCount: expenses.length, totalSettled: settledAmount, outstandingDebt, memberCount: members.length, categoryBreakdown, memberSpending, monthlyTrend, recentActivity };
+    const currentUserBalance = overviewBalances.find((b) => b.userId === currentUserId);
+    return { totalSpent, expenseCount: expenses.length, totalSettled: settledAmount, outstandingDebt, memberCount: members.length, categoryBreakdown, memberSpending, monthlyTrend, recentActivity, currentUserBalance, overviewBalances };
   }, [currentGroup, groupId, defaultCurrency, filteredExpenses]);
 
   if (!overview) {

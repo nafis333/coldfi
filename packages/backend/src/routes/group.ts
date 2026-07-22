@@ -183,8 +183,35 @@ export async function groupRoutes(app: FastifyInstance) {
 
     const result = await groupService.leaveGroup(groupId, userId);
 
-    try { emitToGroup(groupId, 'member-left', { groupId, userId, leftAt: result.leftAt }); } catch {}
+    try { emitToGroup(groupId, 'member-left', { groupId, userId, leftAt: result.leftAt, adminTransferredTo: result.adminTransferredTo }); } catch {}
+
+    return reply.send({ success: true, leftAt: result.leftAt, adminTransferredTo: result.adminTransferredTo });
+  });
+
+  app.delete('/:groupId/members/:targetUserId', { preHandler: [requireGroupAccess] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = request.user.userId;
+    const { groupId, targetUserId } = request.params as { groupId: string; targetUserId: string };
+
+    const result = await groupService.removeMember(groupId, targetUserId, userId);
+
+    try { emitToGroup(groupId, 'member-left', { groupId, userId: targetUserId, removedBy: userId, leftAt: result.leftAt }); } catch {}
 
     return reply.send({ success: true, leftAt: result.leftAt });
+  });
+
+  app.patch('/:groupId/members/:targetUserId/role', { preHandler: [requireGroupAccess] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = request.user.userId;
+    const { groupId, targetUserId } = request.params as { groupId: string; targetUserId: string };
+    const { role } = request.body as { role: 'admin' | 'member' };
+
+    if (!role || !['admin', 'member'].includes(role)) {
+      return reply.status(400).send({ error: 'ERR_VALIDATION', message: 'Role must be admin or member' });
+    }
+
+    const result = await groupService.updateMemberRole(groupId, targetUserId, role, userId);
+
+    try { emitToGroup(groupId, 'member-role-changed', { groupId, userId: targetUserId, newRole: role, updatedBy: userId }); } catch {}
+
+    return reply.send(result);
   });
 }

@@ -59,6 +59,8 @@ interface GroupState {
   createGroup: (name: string, passphrase: string) => Promise<string>;
   joinGroup: (inviteCode: string, passphrase: string) => Promise<void>;
   leaveGroup: (groupId: string) => Promise<void>;
+  removeMember: (groupId: string, targetUserId: string) => Promise<void>;
+  updateMemberRole: (groupId: string, targetUserId: string, role: 'admin' | 'member') => Promise<void>;
   generateInvite: (groupId: string) => Promise<{ code: string; inviteId: string; expiresIn: string; maxUses: number }>;
   fetchInvites: (groupId: string) => Promise<{ invites: Array<{ id: string; code: string; use_count: number; max_uses: number; expires_at: string; is_active: boolean; created_at: string }> }>;
   revokeInvite: (groupId: string, inviteId: string) => Promise<void>;
@@ -288,6 +290,24 @@ export const useGroupStore = create<GroupState>((set) => ({
       });
       throw error;
     }
+  },
+
+  removeMember: async (groupId: string, targetUserId: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    const res = await apiClient(`/api/group/${groupId}/members/${targetUserId}`, { method: 'DELETE' });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.message || 'Failed to remove member'); }
+    await useGroupStore.getState().fetchGroupById(groupId);
+  },
+
+  updateMemberRole: async (groupId: string, targetUserId: string, role: 'admin' | 'member') => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    const res = await apiClient(`/api/group/${groupId}/members/${targetUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.message || 'Failed to update role'); }
+    await useGroupStore.getState().fetchGroupById(groupId);
   },
 
   generateInvite: async (groupId: string) => {
