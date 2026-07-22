@@ -1,4 +1,5 @@
 import { useAuthStore } from '../stores/authStore';
+import { triggerCriticalError } from './errorHandler';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -9,11 +10,19 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
 
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+  const fullUrl = `${API_BASE}${url}`;
+
+  let res: Response;
+  try {
+    res = await fetch(fullUrl, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
+  } catch (err) {
+    triggerCriticalError(err, fullUrl);
+    throw err;
+  }
 
   if (res.status === 401) {
     const { refreshToken, logout } = useAuthStore.getState();
@@ -21,12 +30,20 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
       const newToken = await refreshToken();
       if (newToken) {
         headers.set('Authorization', `Bearer ${newToken}`);
-        return fetch(`${API_BASE}${url}`, { ...options, headers, credentials: 'include' });
+        return fetch(fullUrl, { ...options, headers, credentials: 'include' });
       }
     } catch {
     }
     await logout();
-    throw new Error('Session expired');
+    const err = new Error('Session expired');
+    triggerCriticalError(err, 'Authentication session expired');
+    throw err;
+  }
+
+  if (res.status >= 500) {
+    const err = new Error(`Server error: ${res.status} ${res.statusText}`);
+    triggerCriticalError(err, fullUrl);
+    throw err;
   }
 
   return res;

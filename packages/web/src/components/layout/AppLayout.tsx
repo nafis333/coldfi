@@ -7,6 +7,7 @@ import ConnectionStatus from '../ConnectionStatus';
 import PekPromptModal from '../PekPromptModal';
 import ToastContainer from '../ToastContainer';
 import { useGlobalErrorToast } from '../../hooks/useGlobalErrorToast';
+import ErrorDebugPanel from '../ErrorDebugPanel';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: (
@@ -226,6 +227,7 @@ export default function AppLayout() {
       </nav>
 
       <PekPromptModal />
+      <ErrorDebugPanel />
       <ToastContainer />
 
     </div>

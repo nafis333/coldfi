@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
+import { silentCatch } from '../../lib/errorHandler';
 import TabSyncStatus from '../../components/settings/TabSyncStatus';
 import QRCode from 'qrcode';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
@@ -38,7 +39,8 @@ export default function SecuritySettings() {
           const data = await res.json();
           setTwoFaEnabled(data.enabled);
         }
-      } catch {
+      } catch (err) {
+        silentCatch('SecuritySettings.twoFAStatus', err);
       } finally {
         setTwoFaLoaded(true);
       }
@@ -93,7 +95,8 @@ export default function SecuritySettings() {
           });
         });
         setTwoFaQrDataUrl(url);
-      } catch {
+      } catch (err) {
+        silentCatch('SecuritySettings.qrCode', err);
         console.error('Failed to generate QR code');
       }
       setTwoFaStep('setup');
@@ -118,7 +121,7 @@ export default function SecuritySettings() {
         body: JSON.stringify({ code: twoFaCode }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+        const data = await res.json().catch((err) => { silentCatch('SecuritySettings.enableParse', err); return {}; });
         throw new Error(data.error || 'Invalid code');
       }
       setTwoFaEnabled(true);
@@ -146,7 +149,7 @@ export default function SecuritySettings() {
         body: JSON.stringify({ code: twoFaCode }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+        const data = await res.json().catch((err) => { silentCatch('SecuritySettings.disableParse', err); return {}; });
         throw new Error(data.error || 'Invalid code');
       }
       setTwoFaEnabled(false);

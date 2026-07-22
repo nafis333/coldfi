@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { silentCatch } from '../../lib/errorHandler';
 import { useAnalyticsStore } from '../../stores/analyticsStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
@@ -190,7 +191,7 @@ export default function RecapsPage() {
       link.download = `recap-${monthList[0] || 'range'}.png`;
       link.href = canvas.toDataURL();
       link.click();
-    } catch { /* html2canvas failed silently */ }
+    } catch (err) { silentCatch('RecapsPage.shareAsImage', err); }
   }, [monthList]);
 
   const isLoadingAny = isLoading && !aggregatedRecap;

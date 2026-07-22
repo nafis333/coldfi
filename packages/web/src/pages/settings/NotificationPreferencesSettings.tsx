@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
+import { silentCatch } from '../../lib/errorHandler';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -56,6 +57,7 @@ export default function NotificationPreferencesSettings() {
           setPrefs({ ...DEFAULT_PREFS, ...data.preferences });
         }
       } catch (e) {
+        silentCatch('NotificationPreferencesSettings.load', e);
         console.error('Failed to load notification preferences:', e);
       } finally {
         setLoaded(true);
@@ -102,7 +104,7 @@ export default function NotificationPreferencesSettings() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+        const data = await res.json().catch((err) => { silentCatch('NotificationPreferencesSettings.saveParse', err); return {}; });
         throw new Error(data.message || 'Failed to save preferences');
       }
       setSuccess('Preferences saved');

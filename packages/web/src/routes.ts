@@ -45,6 +45,7 @@ const AdminAuditLogPage = lazy(() => import('./pages/admin/AdminAuditLogPage'));
 const AdminHealthPage = lazy(() => import('./pages/admin/AdminHealthPage'));
 const AdminJobsPage = lazy(() => import('./pages/admin/AdminJobsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const ErrorPage = lazy(() => import('./pages/ErrorPage'));
 
 function wrap(page: React.LazyExoticComponent<React.ComponentType<any>>) {
   return createElement(SuspenseWrapper, null, createElement(page));
@@ -56,6 +57,7 @@ export const routes = [
   { path: '/forgot-password', element: createElement(Navigate, { to: '/recover', replace: true }) },
   { path: '/reset-password', element: createElement(Navigate, { to: '/recover', replace: true }) },
   { path: '/recover', element: wrap(RecoveryPage) },
+  { path: '/error', element: wrap(ErrorPage) },
   {
     path: '/',
     element: createElement(ProtectedRoute),

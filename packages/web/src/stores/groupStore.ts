@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { useAuthStore } from './authStore';
 import { apiClient } from '../lib/apiClient';
 import { encryptData, decryptData } from '../lib/crypto';
+import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
 import {
   computeNetBalances,
@@ -132,7 +133,7 @@ export const useGroupStore = create<GroupState>((set) => ({
               settlements = parsed.settlements || [];
               expenses = parsed.expenses || [];
               groupCategories = parsed.categories || [];
-            } catch {}
+            } catch (err) { silentCatch('groupStore.blobDecrypt', err); }
           }
         }
       }

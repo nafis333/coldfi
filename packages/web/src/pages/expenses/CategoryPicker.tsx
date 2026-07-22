@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { silentCatch } from '../../lib/errorHandler';
 import { usePersonalStore } from '../../stores/personalStore';
 import type { Category } from '../../lib/personalSync';
 
@@ -100,7 +101,7 @@ export default function CategoryPicker({ value, categories, error, onChange }: C
                   type="button"
                   onClick={(e) => { e.stopPropagation();
                     if (confirm(`Delete category "${cat.name}"?`)) {
-                      usePersonalStore.getState().deleteCategory(cat.id).catch(() => {});
+                      usePersonalStore.getState().deleteCategory(cat.id).catch((err) => { silentCatch('CategoryPicker.delete', err); });
                     }
                   }}
                   className="ml-1 text-neutral-300 hover:text-danger-500 dark:text-neutral-600 dark:hover:text-danger-400 text-sm px-1"

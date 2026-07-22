@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { apiClient } from '../lib/apiClient';
 import { encryptData, decryptData } from '../lib/crypto';
 import { getGroupKey } from './groupStore';
+import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
 import { verifyLogChain, createGroupLogEntry, type GroupLogEntry as EngineLogEntry, GroupLogEventType } from '@coldfi/shared';
 
@@ -196,7 +197,7 @@ export const useLogStore = create<LogState>((set) => ({
           }));
           return { valid: brokenAt.length === 0, totalChecked: entries.length, brokenAt };
         }
-      } catch {}
+      } catch (err) { silentCatch('logStore.verifyChain', err); }
 
       // Fallback: pure inline verification
       const brokenAt: number[] = [];
@@ -216,7 +217,8 @@ export const useLogStore = create<LogState>((set) => ({
         logs: state.logs.map((log, i) => ({ ...log, isValid: !brokenAt.includes(i) })),
       }));
       return { valid: brokenAt.length === 0, totalChecked: entries.length, brokenAt };
-    } catch {
+    } catch (err) {
+      silentCatch('logStore.verifyFallback', err);
       return { valid: false, totalChecked: 0, brokenAt: [] };
     }
   },

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
 
 interface Props {
@@ -29,7 +30,8 @@ export default function JoinGroupModal({ onClose }: Props) {
         } else {
           setGroupInfo(null);
         }
-      } catch {
+      } catch (err) {
+        silentCatch('JoinGroupModal.preview', err);
         setGroupInfo(null);
       } finally {
         setPreviewLoading(false);

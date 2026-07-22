@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -33,7 +34,7 @@ export default function GroupSettingsTab() {
     try {
       const data = await fetchInvites(groupId);
       setInvites(data.invites);
-    } catch {}
+    } catch (err) { silentCatch('GroupSettingsTab.loadInvites', err); }
   }
 
   async function handleGenerate() {

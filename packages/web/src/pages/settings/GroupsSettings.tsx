@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
 
 export default function GroupsSettings() {
@@ -15,8 +16,8 @@ export default function GroupsSettings() {
     setLeaving(groupId);
     try {
       await leaveGroup(groupId);
-    } catch {
-      // Error handled by store
+    } catch (err) {
+      silentCatch('GroupsSettings.leave', err);
     } finally {
       setLeaving(null);
     }

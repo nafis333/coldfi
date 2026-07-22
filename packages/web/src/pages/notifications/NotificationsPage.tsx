@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { silentCatch } from '../../lib/errorHandler';
 import { useNotificationStore } from '../../stores/notificationStore';
 
 type NotificationType =
@@ -106,13 +107,13 @@ export default function NotificationsPage() {
 
   const handleMarkRead = useCallback(
     async (id: string) => {
-      try { await markAsRead(id); } catch (e) { console.error('Failed to mark notification as read:', e); }
+      try { await markAsRead(id); } catch (e) { silentCatch('NotificationsPage.markAsRead', e); console.error('Failed to mark notification as read:', e); }
     },
     [markAsRead]
   );
 
   const handleMarkAllRead = useCallback(async () => {
-    try { await markAllAsRead(); } catch (e) { console.error('Failed to mark all notifications as read:', e); }
+    try { await markAllAsRead(); } catch (e) { silentCatch('NotificationsPage.markAllAsRead', e); console.error('Failed to mark all notifications as read:', e); }
   }, [markAllAsRead]);
 
   const handleNotificationPress = useCallback(

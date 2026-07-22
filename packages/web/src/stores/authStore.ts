@@ -3,6 +3,7 @@ import { importKey, exportKey, uint8ArrayToBase64, base64ToUint8Array, deriveWra
 import { broadcastLogin, broadcastLogout } from '../lib/tabSync';
 import { resetAllStores } from '../lib/resetStores';
 import { PEK_STORAGE_KEY, AUTH_STORAGE_KEY, LAST_ACTIVITY_KEY, getJwtExpiry, saveAuthToStorage, clearAuthStorage, storage, storePekBytes, clearPekStorage, deriveAndStorePek } from '../lib/authPersistence';
+import { triggerCriticalError, silentCatch } from '../lib/errorHandler';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -61,67 +62,69 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   pekErrorMessage: null,
   error: null,
 
-  login: async (email: string, passphrase: string) => {
-    set({ isLoading: true, error: null });
+    login: async (email: string, passphrase: string) => {
+      set({ isLoading: true, error: null });
 
-    try {
-      const authKeyHash = await computeAuthKeyHash(passphrase, email);
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, authKeyHash }),
-      });
+      try {
+        const authKeyHash = await computeAuthKeyHash(passphrase, email);
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, authKeyHash }),
+        });
 
-      if (!res.ok) {
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || data.error || 'Login failed');
+        }
+
         const data = await res.json();
-        throw new Error(data.message || data.error || 'Login failed');
-      }
 
-      const data = await res.json();
+        if (data.requires2FA) {
+          set({
+            userId: data.userId,
+            personalSalt: data.personalSalt,
+            tempToken: data.tempToken,
+            email,
+            isLoading: false,
+            isInitialized: true,
+          });
+          throw new Error('2FA_REQUIRED');
+        }
 
-      if (data.requires2FA) {
+        const { accessToken, userId, displayName, personalSalt, encryptedPek, role } = data;
+        const pek = await deriveAndStorePek(passphrase, personalSalt, encryptedPek);
+        saveAuthToStorage({ accessToken, userId, email, displayName, role: role || 'user', isGoogleUser: false });
+
         set({
-          userId: data.userId,
-          personalSalt: data.personalSalt,
-          tempToken: data.tempToken,
+          userId,
           email,
+          displayName: displayName || null,
+          accessToken,
+          pek,
+          personalSalt,
+          encryptedPek,
+          role: role || 'user',
+          isAuthenticated: true,
           isLoading: false,
           isInitialized: true,
+          pekMissing: false,
+          isGoogleUser: false,
         });
-        throw new Error('2FA_REQUIRED');
+
+        broadcastLogin(userId);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Login failed';
+        if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+          triggerCriticalError(error, `${API_BASE}/api/auth/login`);
+        }
+        if (msg !== '2FA_REQUIRED') {
+          set({ isLoading: false, isInitialized: true, error: msg });
+        }
+        throw error;
       }
-
-      const { accessToken, userId, displayName, personalSalt, encryptedPek, role } = data;
-      const pek = await deriveAndStorePek(passphrase, personalSalt, encryptedPek);
-      saveAuthToStorage({ accessToken, userId, email, displayName, role: role || 'user', isGoogleUser: false });
-
-      set({
-        userId,
-        email,
-        displayName: displayName || null,
-        accessToken,
-        pek,
-        personalSalt,
-        encryptedPek,
-        role: role || 'user',
-        isAuthenticated: true,
-        isLoading: false,
-        isInitialized: true,
-        pekMissing: false,
-        isGoogleUser: false,
-      });
-
-      broadcastLogin(userId);
-    } catch (error) {
-      set({
-        isLoading: false,
-        isInitialized: true,
-        error: error instanceof Error ? error.message : 'Login failed',
-      });
-      throw error;
-    }
-  },
+    },
 
   googleLogin: async (idToken: string) => {
     set({ isLoading: true, error: null });
@@ -161,14 +164,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       broadcastLogin(userId);
     } catch (error) {
-      set({
-        isLoading: false,
-        isInitialized: true,
-        error: error instanceof Error ? error.message : 'Google login failed',
-      });
-      throw error;
-    }
-  },
+        const msg = error instanceof Error ? error.message : 'Google login failed';
+        if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+          triggerCriticalError(error, `${API_BASE}/api/auth/google`);
+        }
+        set({ isLoading: false, isInitialized: true, error: msg });
+        throw error;
+      }
+    },
 
   verify2FA: async (code: string, passphrase: string) => {
     set({ isLoading: true, error: null });
@@ -211,14 +214,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       broadcastLogin(userId);
     } catch (error) {
-      set({
-        isLoading: false,
-        isInitialized: true,
-        error: error instanceof Error ? error.message : '2FA verification failed',
-      });
-      throw error;
-    }
-  },
+        const msg = error instanceof Error ? error.message : '2FA verification failed';
+        if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+          triggerCriticalError(error, `${API_BASE}/api/auth/2fa/verify`);
+        }
+        set({ isLoading: false, isInitialized: true, error: msg });
+        throw error;
+      }
+    },
 
   register: async (email: string, displayName: string, passphrase: string) => {
     set({ isLoading: true, error: null });
@@ -268,11 +271,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       return recoveryCode as string | undefined;
     } catch (error) {
-      set({
-        isLoading: false,
-        isInitialized: true,
-        error: error instanceof Error ? error.message : 'Registration failed',
-      });
+      const msg = error instanceof Error ? error.message : 'Registration failed';
+      if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        triggerCriticalError(error, `${API_BASE}/api/auth/register`);
+      }
+      set({ isLoading: false, isInitialized: true, error: msg });
       throw error;
     }
   },
@@ -288,8 +291,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           Authorization: `Bearer ${accessToken}`,
         },
       });
-    } catch {
-      // Non-critical — server will expire the cookie
+    } catch (err) {
+      silentCatch('authStore.logout', err);
     }
 
     resetAllStores();
@@ -321,7 +324,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (lastActivity) {
       const elapsed = Date.now() - Number(lastActivity);
       if (elapsed > 30 * 24 * 60 * 60 * 1000) {
-        try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch {}
+        try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch (err) { silentCatch('authStore.initialize.removeLastActivity', err); }
         storage().removeItem(LAST_ACTIVITY_KEY);
         storage().removeItem(AUTH_STORAGE_KEY);
         set({ isInitialized: true });
@@ -376,6 +379,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
           pek = await importKey(base64ToUint8Array(storedPek));
         } catch {
+          silentCatch('authStore.initialize.importStoredPek');
           storage().removeItem(PEK_STORAGE_KEY);
         }
       }
@@ -385,6 +389,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           storePekBytes(pekBytes);
           pek = await importKey(pekBytes);
         } catch {
+          silentCatch('authStore.initialize.importRawPek');
         }
       }
 
@@ -404,7 +409,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         pekMissing: !!(personalSalt && !pek && !isGoogleUser),
         isGoogleUser: !!isGoogleUser,
       });
-    } catch {
+    } catch (err) {
+      silentCatch('authStore.initialize.refresh', err);
       set({ isInitialized: true });
     }
   },
@@ -446,7 +452,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ accessToken: parsed.accessToken });
             return parsed.accessToken;
           }
-        } catch {}
+        } catch (err) { silentCatch('authStore.refreshToken.parseStored', err); }
       }
 
       pending = (async () => {
@@ -464,7 +470,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 set({ accessToken: parsed.accessToken, isAuthenticated: true });
                 return parsed.accessToken;
               }
-            } catch {}
+            } catch (err) { silentCatch('authStore.refreshToken.parseStoredFallback', err); }
           }
           clearAuthStorage();
           set({ isAuthenticated: false, accessToken: null });
@@ -516,7 +522,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
       });
     } catch (error) {
-      set({ isLoading: false, error: error instanceof Error ? error.message : 'Failed to update profile' });
+      const msg = error instanceof Error ? error.message : 'Failed to update profile';
+      if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        triggerCriticalError(error, `${API_BASE}/api/auth/profile`);
+      }
+      set({ isLoading: false, error: msg });
       throw error;
     }
   },
@@ -556,7 +566,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
       });
     } catch (error) {
-      set({ isLoading: false, error: error instanceof Error ? error.message : 'Failed to change password' });
+      const msg = error instanceof Error ? error.message : 'Failed to change password';
+      if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        triggerCriticalError(error, `${API_BASE}/api/auth/change-password`);
+      }
+      set({ isLoading: false, error: msg });
       throw error;
     }
   },

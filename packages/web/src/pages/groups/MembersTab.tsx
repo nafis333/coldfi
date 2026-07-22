@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
+import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
@@ -69,6 +70,7 @@ export default function MembersTab() {
       await leaveGroup(groupId);
       navigate('/groups', { replace: true });
     } catch (e) {
+      silentCatch('MembersTab.leave', e);
       console.error('Failed to leave group:', e);
     }
   }

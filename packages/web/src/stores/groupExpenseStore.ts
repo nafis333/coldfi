@@ -13,6 +13,7 @@ import {
 } from '../lib/groupSync';
 import { decryptData } from '../lib/crypto';
 import { SplitMode } from '@coldfi/shared';
+import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
 
 interface GroupExpenseState {
@@ -154,7 +155,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
 
       if (!created) throw lastError || new Error('Failed to create expense after retries');
       set({ isLoading: false });
-      useGroupStore.getState().fetchGroupById(groupId).catch(() => {});
+      useGroupStore.getState().fetchGroupById(groupId).catch((err) => { silentCatch('groupExpenseStore.refreshGroup', err); });
       createGroupNotification('expense_added', 'Expense Added', `New expense of ${data.amount} ${defaultCurrency}`, groupId);
     } catch (error) {
       set({
@@ -192,13 +193,14 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
             expenses: parsed.expenses || [],
             currency: parsed.settings?.defaultCurrency || useAuthStore.getState().defaultCurrency,
           };
-        } catch {
-          // skip groups that fail to decrypt
+        } catch (err) {
+          silentCatch('groupExpenseStore.decryptGroup', err);
         }
       }
 
       set({ groupExpensesCache: cache });
-    } catch {
+    } catch (err) {
+      silentCatch('groupExpenseStore.fetchAll', err);
       console.error('[groupExpenseStore] fetchAllGroupExpenses failed');
     }
   },

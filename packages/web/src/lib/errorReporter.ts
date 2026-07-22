@@ -1,4 +1,5 @@
 import { useErrorStore } from '../stores/errorStore';
+import { categorizeError } from './errorHandler';
 
 export function setupErrorReporter(): void {
   if (typeof window === 'undefined') return;
@@ -32,21 +33,22 @@ export function setupErrorReporter(): void {
   };
 
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
-    const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
-
+    event.preventDefault();
+    const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+    const critical = categorizeError(err, 'Unhandled Promise Rejection');
     useErrorStore.getState().addError({
-      type: 'UnhandledRejection',
-      message: error.message,
-      stack: error.stack || '',
-      timestamp: new Date().toISOString(),
+      type: critical.type,
+      message: critical.message,
+      stack: critical.stack,
+      timestamp: critical.timestamp,
     });
+    useErrorStore.getState().setCriticalError(critical);
+    window.location.href = '/error';
   });
 
   const originalConsoleError = console.error;
   console.error = (...args: unknown[]) => {
-    const message = args
-      .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
-      .join(' ');
+    const message = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
 
     if (message.length > 0 && message.length < 2000) {
       useErrorStore.getState().addError({
@@ -60,5 +62,3 @@ export function setupErrorReporter(): void {
     originalConsoleError.call(console, ...args);
   };
 }
-
-

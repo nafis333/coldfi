@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { silentCatch } from '../../lib/errorHandler';
 import { useLogStore } from '../../stores/logStore';
 
 type ActionType = 'all' | 'expense' | 'member' | 'settings';
@@ -80,8 +81,8 @@ export default function ActivityLogTab() {
     try {
       const result = await verifyIntegrity(groupId);
       setVerifyResult(result);
-    } catch {
-      // Silently fail
+    } catch (err) {
+      silentCatch('ActivityLogTab.verify', err);
     } finally {
       setVerifying(false);
     }

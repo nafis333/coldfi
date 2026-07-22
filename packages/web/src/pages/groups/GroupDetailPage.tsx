@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
+import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
@@ -34,7 +35,7 @@ export default function GroupDetailPage() {
     try {
       await leaveGroup(id);
       navigate('/groups', { replace: true });
-    } catch {}
+    } catch (err) { silentCatch('GroupDetailPage.leave', err); }
   }
 
   if (isLoading) {

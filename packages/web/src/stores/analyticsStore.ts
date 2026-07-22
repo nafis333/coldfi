@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { usePersonalStore } from './personalStore';
 import { useGroupStore } from './groupStore';
 import { useGroupExpenseStore } from './groupExpenseStore';
+import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
 
 interface CategorySummary {
@@ -157,8 +158,8 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
           }
         }
         groupTopExpenses = allGroupSheets.sort((a, b) => b.amount - a.amount).slice(0, 5);
-      } catch {
-        // group data unavailable for recap
+      } catch (err) {
+        silentCatch('analyticsStore.groupData', err);
       }
 
       // Category breakdown

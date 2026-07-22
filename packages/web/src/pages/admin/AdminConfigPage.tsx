@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { silentCatch } from '../../lib/errorHandler';
 import { useAdminConfigStore } from '../../stores/adminConfigStore';
 
 export default function AdminConfigPage() {
@@ -13,7 +14,7 @@ export default function AdminConfigPage() {
 
   async function handleSave(key: string) {
     let parsed: any = editValue;
-    try { parsed = JSON.parse(editValue); } catch {}
+    try { parsed = JSON.parse(editValue); } catch (err) { silentCatch('AdminConfigPage.parseConfig', err); }
     await updateConfig(key, parsed, editDescription || undefined);
     setEditKey(null);
   }

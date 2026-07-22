@@ -1,3 +1,4 @@
+import { silentCatch } from './errorHandler';
 import { apiClient } from './apiClient';
 import { encryptData, decryptData, deriveGroupKey } from './crypto';
 import { useAuthStore } from '../stores/authStore';
@@ -225,7 +226,7 @@ export async function createGroupNotification(type: string, title: string, body:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, title, body, groupId, settlementId }),
     });
-  } catch { /* best-effort */ }
+  } catch (err) { silentCatch('groupSync.notification', err); }
 }
 
 export function toEngineExpenses(

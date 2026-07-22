@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { apiClient } from '../lib/apiClient';
+import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
 
 type NotificationType =
@@ -74,6 +75,7 @@ export const useNotificationStore = create<NotificationState>((set) => ({
         unreadCount: Math.max(0, state.unreadCount - 1),
       }));
     } catch (err: any) {
+      silentCatch('notificationStore.markAsRead', err);
       console.error('markAsRead failed:', err.message);
     }
   },
@@ -87,6 +89,7 @@ export const useNotificationStore = create<NotificationState>((set) => ({
         unreadCount: 0,
       }));
     } catch (err: any) {
+      silentCatch('notificationStore.markAllAsRead', err);
       console.error('markAllAsRead failed:', err.message);
     }
   },
@@ -101,8 +104,8 @@ export const useNotificationStore = create<NotificationState>((set) => ({
           unreadCount: removed && !removed.isRead ? state.unreadCount - 1 : state.unreadCount,
         };
       });
-    } catch {
-      // Keep notification in local state — API call failed, don't optimistically remove
+    } catch (err) {
+      silentCatch('notificationStore.delete', err);
     }
   },
 
