@@ -56,7 +56,7 @@ export default function GoogleSignInSection() {
   }, [location.hash]);
 
   const handleClick = () => {
-    const redirectUri = `${window.location.origin}/login`;
+    const redirectUri = window.location.href;
     const url = buildGoogleAuthUrl(redirectUri);
     window.location.href = url;
   };
