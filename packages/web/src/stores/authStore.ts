@@ -195,11 +195,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       saveAuthToStorage({ accessToken, userId, email: email || '', displayName, role, isGoogleUser: false });
 
       set({
+        userId,
+        email: email || '',
+        displayName: displayName || null,
+        accessToken,
+        encryptedPek,
+        role: role || 'user',
         isAuthenticated: true,
         isLoading: false,
         isInitialized: true,
         pek,
         pekMissing: false,
+        isGoogleUser: false,
       });
 
       broadcastLogin(userId);

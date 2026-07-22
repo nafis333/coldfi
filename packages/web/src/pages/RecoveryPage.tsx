@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { computeAuthKeyHash, deriveWrappingKey, encryptPEK, importKey, generateSalt, uint8ArrayToBase64 } from '../lib/crypto';
+import { storage, PEK_STORAGE_KEY } from '../lib/authPersistence';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-const PEK_STORAGE_KEY = 'coldfi:pek';
 
 function zeroBytes(arr: Uint8Array) {
   for (let i = 0; i < arr.length; i++) arr[i] = 0;
@@ -96,7 +96,7 @@ export default function RecoveryPage() {
       }
 
       const pek = await importKey(pekBytes);
-      localStorage.setItem(PEK_STORAGE_KEY, uint8ArrayToBase64(pekBytes));
+      storage().setItem(PEK_STORAGE_KEY, uint8ArrayToBase64(pekBytes));
       zeroBytes(pekBytes);
       rawPekRef.current = null;
 
