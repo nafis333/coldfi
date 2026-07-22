@@ -57,7 +57,7 @@ export default function DashboardPage() {
   const defaultCurrency = useAuthStore((s) => s.defaultCurrency || 'BDT');
   const [hasLoaded, setHasLoaded] = useState(() => personalBlob !== null);
 
-  const { groups, groupDataVersions, fetchGroups } = useGroupStore();
+  const { groups, groupDataVersions, isLoading: groupsLoading, fetchGroups } = useGroupStore();
 
   useEffect(() => {
     if (!hasLoaded) {
@@ -66,8 +66,8 @@ export default function DashboardPage() {
   }, [fetchPersonalBlob, hasLoaded]);
 
   useEffect(() => {
-    if (groups.length === 0) fetchGroups();
-  }, [fetchGroups, groups.length]);
+    if (groups.length === 0 && !groupsLoading) fetchGroups();
+  }, [fetchGroups, groups.length, groupsLoading]);
 
   const data = useOverview();
 
