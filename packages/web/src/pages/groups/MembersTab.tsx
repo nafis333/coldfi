@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
+import { useGroupSettlementStore } from '../../stores/groupSettlementStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
 
@@ -27,8 +28,11 @@ interface TabContext {
 export default function MembersTab() {
   const { groupId, group, currentUserId } = useOutletContext<TabContext>();
   const { leaveGroup, removeMember, updateMemberRole } = useGroupStore();
+  const { forceSettleLeavingMember } = useGroupSettlementStore();
   const navigate = useNavigate();
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaveConfirmed, setLeaveConfirmed] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
 
   const activeMembers = group.members.filter((m) => !m.leftAt);
@@ -38,6 +42,11 @@ export default function MembersTab() {
   const balances = group.balances ?? [];
   const defaultCurrency = group.defaultCurrency || useAuthStore.getState().defaultCurrency;
 
+  const currentUserBalance = balances.find((b) => b.userId === currentUserId);
+  const hasOutstandingDebts = currentUserBalance ? (
+    Object.keys(currentUserBalance.owesTo).length > 0 || Object.keys(currentUserBalance.owedBy).length > 0
+  ) : false;
+
   function memberBalance(userId: string) {
     return balances.find((b) => b.userId === userId);
   }
@@ -45,7 +54,7 @@ export default function MembersTab() {
   function balanceLabel(userId: string): { text: string; className: string } {
     const bal = memberBalance(userId);
     if (!bal) return { text: formatCurrency(0, defaultCurrency), className: 'text-neutral-500' };
-    if (bal.net > 0) return { text: `+${formatCurrency(bal.net, defaultCurrency) || '0'}`, className: 'text-success-600 dark:text-success-400' };
+    if (bal.net > 0) return { text: `+${formatCurrency(bal.net, defaultCurrency)}`, className: 'text-success-600 dark:text-success-400' };
     if (bal.net < 0) return { text: `-${formatCurrency(Math.abs(bal.net), defaultCurrency)}`, className: 'text-danger-500 dark:text-danger-400' };
     return { text: formatCurrency(0, defaultCurrency), className: 'text-neutral-500' };
   }
@@ -73,18 +82,25 @@ export default function MembersTab() {
   }
 
   async function handleLeave() {
+    setLeaving(true);
     try {
+      if (hasOutstandingDebts) {
+        await forceSettleLeavingMember(groupId, currentUserId);
+      }
       await leaveGroup(groupId);
       navigate('/groups', { replace: true });
     } catch (e) {
       silentCatch('MembersTab.leave', e);
+    } finally {
+      setLeaving(false);
     }
   }
 
   async function handleRemove(targetUserId: string) {
-    if (!window.confirm('Remove this member? Their past splits stay in expenses but they will no longer have access.')) return;
+    if (!window.confirm(`Remove ${group.members.find((m) => m.userId === targetUserId)?.displayName}? Their past splits stay in expenses but they will no longer have access.`)) return;
     setRemovingUserId(targetUserId);
     try {
+      await forceSettleLeavingMember(groupId, targetUserId);
       await removeMember(groupId, targetUserId);
     } catch (e) {
       silentCatch('MembersTab.remove', e);
@@ -147,6 +163,11 @@ export default function MembersTab() {
           {!isFormer && breakdownText(member.userId) && (
             <p className="mt-1 text-xs text-neutral-400 truncate">{breakdownText(member.userId)}</p>
           )}
+          {isFormer && (
+            <p className="mt-1 text-xs text-neutral-400 italic">
+              Settled on leave
+            </p>
+          )}
         </div>
         {!isFormer && (
           <div className="text-right shrink-0">
@@ -175,10 +196,57 @@ export default function MembersTab() {
         <button onClick={() => setConfirmLeave(true)} className="btn-danger w-full mt-4">Leave Group</button>
       ) : (
         <div className="rounded-xl border border-danger-200 dark:border-danger-800 bg-danger-50 dark:bg-danger-900/20 p-4 mt-4">
-          <p className="text-sm font-medium text-danger-700 dark:text-danger-300 mb-3">Are you sure you want to leave this group?</p>
+          <p className="text-sm font-semibold text-danger-700 dark:text-danger-300 mb-2">Leave this group?</p>
+
+          {hasOutstandingDebts && (
+            <div className="mb-4 space-y-2">
+              <div className="rounded-lg border border-danger-300 dark:border-danger-700 bg-danger-100 dark:bg-danger-900/40 p-3">
+                <div className="flex items-start gap-2">
+                  <svg className="h-5 w-5 text-danger-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-danger-700 dark:text-danger-300">
+                      You have outstanding balances that will be auto-settled on leave
+                    </p>
+                    <p className="mt-1 text-xs text-danger-600 dark:text-danger-400">
+                      {breakdownText(currentUserId)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-danger-600 dark:text-danger-400">
+                All your outstanding debts will be auto-approved as settled. Other members will be notified.
+                This cannot be undone.
+              </p>
+            </div>
+          )}
+
+          {!hasOutstandingDebts && (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+              You have no outstanding balances. Leaving will clear your access to this group.
+            </p>
+          )}
+
+          <label className="flex items-start gap-2.5 mb-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={leaveConfirmed}
+              onChange={(e) => setLeaveConfirmed(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-danger-600 focus:ring-danger-500"
+            />
+            <span className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+              {hasOutstandingDebts
+                ? 'I understand that all my outstanding balances will be auto-settled and I will permanently lose access to this group.'
+                : 'I understand that I will permanently lose access to this group and all its data.'}
+            </span>
+          </label>
+
           <div className="flex gap-2">
-            <button onClick={handleLeave} className="btn-danger flex-1">Confirm Leave</button>
-            <button onClick={() => setConfirmLeave(false)} className="btn-ghost flex-1">Cancel</button>
+            <button onClick={handleLeave} disabled={!leaveConfirmed || leaving} className="btn-danger flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
+              {leaving ? 'Processing...' : 'Confirm Leave'}
+            </button>
+            <button onClick={() => { setConfirmLeave(false); setLeaveConfirmed(false); }} className="btn-ghost flex-1">Cancel</button>
           </div>
         </div>
       )}

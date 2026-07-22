@@ -418,7 +418,8 @@ export async function updateMemberRole(
 
 export async function leaveGroup(
   groupId: string,
-  userId: string
+  userId: string,
+  force?: boolean
 ): Promise<{ leftAt: string; adminTransferredTo?: string }> {
   return transaction(async (client) => {
     const memberResult = await client.query(

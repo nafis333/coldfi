@@ -173,26 +173,28 @@ export default function GroupInvoicesTab() {
     setSettleAllLoading(true);
     setActionMsg(null);
     try {
-      const debts: { fromUserId: string; toUserId: string; amount: number }[] = [];
-      for (const bal of balances) {
-        for (const [otherId, amt] of Object.entries(bal.owesTo)) {
-          if (amt > 0.01) debts.push({ fromUserId: bal.userId, toUserId: otherId, amount: amt });
-        }
-      }
-      if (debts.length === 0) {
+      const optimized = generateMinimalTransfers(balances, defaultCurrency);
+      if (optimized.transfers.length === 0) {
         setActionMsg({ text: 'No outstanding debts to settle', isError: false });
         setTimeout(() => setActionMsg(null), 3000);
         return;
       }
-      for (const d of debts) {
+      for (const t of optimized.transfers) {
         try {
-          await proposeSettlement(groupId, { fromUserId: d.fromUserId, toUserId: d.toUserId, amount: Math.round(d.amount * 100) / 100 });
+          await proposeSettlement(groupId, {
+            fromUserId: t.fromUserId,
+            toUserId: t.toUserId,
+            amount: Math.round(t.amount * 100) / 100,
+          });
         } catch (e) {
           silentCatch('GroupInvoicesTab.settleAll', e);
         }
       }
       await useGroupStore.getState().fetchGroupById(groupId);
-      setActionMsg({ text: `${debts.length} settlement${debts.length > 1 ? 's' : ''} proposed`, isError: false });
+      setActionMsg({
+        text: `${optimized.transfers.length} optimized settlement${optimized.transfers.length > 1 ? 's' : ''} proposed`,
+        isError: false,
+      });
       setTimeout(() => setActionMsg(null), 3000);
     } catch (e) {
       setActionMsg({ text: e instanceof Error ? e.message : 'Failed to settle all', isError: true });
@@ -277,7 +279,7 @@ export default function GroupInvoicesTab() {
               );
             })}
           </div>
-          <p className="text-xs text-neutral-400">Use "Settle All" above to create settlement proposals for these transfers</p>
+          <p className="text-xs text-neutral-400">These are the minimum number of transfers needed to settle all debts. Click "Settle All" to propose them.</p>
         </div>
       )}
 

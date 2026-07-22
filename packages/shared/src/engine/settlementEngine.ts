@@ -12,6 +12,25 @@ export interface ProposeSettlementInput {
   note?: string;
 }
 
+export function forceSettleOnLeave(input: ProposeSettlementInput): SettlementProposal {
+  const now = new Date().toISOString();
+  return {
+    id: input.id,
+    groupId: input.groupId,
+    fromUserId: input.fromUserId,
+    toUserId: input.toUserId,
+    amount: input.amount,
+    currency: input.currency,
+    status: SettlementStatus.APPROVED,
+    proposedAt: now,
+    approvedAt: now,
+    note: input.note || 'Auto-settled on member leave',
+    relatedExpenseIds: input.relatedExpenseIds || [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function proposeSettlement(input: ProposeSettlementInput): SettlementProposal {
   const now = new Date().toISOString();
   return {

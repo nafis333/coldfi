@@ -180,8 +180,9 @@ export async function groupRoutes(app: FastifyInstance) {
   app.post('/:groupId/leave', { preHandler: [requireGroupAccess] }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
     const { groupId } = request.params as { groupId: string };
+    const { force } = request.body as { force?: boolean } || {};
 
-    const result = await groupService.leaveGroup(groupId, userId);
+    const result = await groupService.leaveGroup(groupId, userId, force);
 
     try { emitToGroup(groupId, 'member-left', { groupId, userId, leftAt: result.leftAt, adminTransferredTo: result.adminTransferredTo }); } catch {}
 
