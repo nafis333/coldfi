@@ -80,7 +80,7 @@ export default function LoginPage() {
 
   if (need2FA) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50 dark:bg-neutral-900 px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-100 dark:bg-neutral-900 px-4 py-12">
         <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-xl font-bold text-white shadow-md">CF</div>
