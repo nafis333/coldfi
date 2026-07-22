@@ -56,7 +56,7 @@ export default function GoogleSignInSection() {
   }, [location.hash]);
 
   const handleClick = () => {
-    const redirectUri = window.location.href;
+    const redirectUri = `${window.location.origin}${window.location.pathname === '/register' ? '/register' : '/login'}`;
     const url = buildGoogleAuthUrl(redirectUri);
     window.location.href = url;
   };
@@ -103,10 +103,6 @@ export default function GoogleSignInSection() {
         </svg>
         Sign in with Google
       </button>
-
-      <p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500 text-center">
-        You&apos;ll be redirected to Google to sign in. No scripts loaded from Google on this page.
-      </p>
     </div>
   );
 }
