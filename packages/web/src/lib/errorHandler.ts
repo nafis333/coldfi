@@ -68,7 +68,7 @@ export function categorizeError(error: unknown, context?: string): CriticalError
       category: 'ServerError',
       message: msg,
       title: 'Server Error',
-      detail: 'The server encountered an internal error and could not complete your request.',
+      detail: context ? `${context} — The server encountered an internal error.` : 'The server encountered an internal error and could not complete your request.',
       action: 'Please try again later. If the problem persists, contact support.',
       retryable: true,
     };
@@ -81,7 +81,7 @@ export function categorizeError(error: unknown, context?: string): CriticalError
       category: 'ServerError',
       message: msg,
       title: 'Not Found',
-      detail: 'The requested resource could not be found on the server.',
+      detail: context ? `${context} — Not found.` : 'The requested resource could not be found on the server.',
       action: 'Check the URL and try again.',
       retryable: false,
     };
@@ -94,7 +94,7 @@ export function categorizeError(error: unknown, context?: string): CriticalError
       category: 'ServerError',
       message: msg,
       title: 'Rate Limit Exceeded',
-      detail: 'You have made too many requests in a short period.',
+      detail: context ? `${context} — Too many requests.` : 'You have made too many requests in a short period.',
       action: 'Wait a moment and try again.',
       retryable: true,
     };
