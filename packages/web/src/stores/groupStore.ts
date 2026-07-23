@@ -20,8 +20,6 @@ import {
   getGroupKey,
   cacheGroupKey,
   clearGroupKeyCache,
-  hashPassphrase,
-  generateSalt,
   modifySyncBlob,
   toEngineExpenses,
   toEngineSettlements,
@@ -58,15 +56,14 @@ interface GroupState {
 
   fetchGroups: () => Promise<void>;
   fetchGroupById: (id: string) => Promise<void>;
-  createGroup: (name: string, passphrase: string) => Promise<string>;
-  joinGroup: (inviteCode: string, passphrase: string) => Promise<void>;
+  createGroup: (name: string) => Promise<string>;
+  joinGroup: (inviteCode: string) => Promise<void>;
   leaveGroup: (groupId: string) => Promise<void>;
   removeMember: (groupId: string, targetUserId: string) => Promise<void>;
   updateMemberRole: (groupId: string, targetUserId: string, role: 'admin' | 'member') => Promise<void>;
   generateInvite: (groupId: string) => Promise<{ code: string; inviteId: string; expiresIn: string; maxUses: number }>;
   fetchInvites: (groupId: string) => Promise<{ invites: Array<{ id: string; code: string; use_count: number; max_uses: number; expires_at: string; is_active: boolean; created_at: string }> }>;
   revokeInvite: (groupId: string, inviteId: string) => Promise<void>;
-  changePassphrase: (groupId: string, newPassphrase: string) => Promise<void>;
   updateGroupSettings: (groupId: string, settings: { name?: string; defaultCurrency?: string }) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
   addGroupCategory: (groupId: string, category: Pick<GroupCategory, 'name' | 'icon' | 'color'>) => Promise<void>;
@@ -78,19 +75,25 @@ interface GroupState {
   clearError: () => void;
 }
 
+async function fetchGroupEncryptionKey(groupId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/group/${groupId}/encryption-key`, {
+      headers: { 'Authorization': `Bearer ${useAuthStore.getState().accessToken || ''}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.encryptionKey || null;
+    }
+  } catch { /* encryption key not available */ }
+  return null;
+}
+
 async function computeGroupBalance(groupId: string, userId: string): Promise<number | null> {
   try {
     let gk = getGroupKey(groupId);
     if (!gk) {
-      try {
-        const ppRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/group/${groupId}/passphrase`, {
-          headers: { 'Authorization': `Bearer ${useAuthStore.getState().accessToken || ''}` },
-        });
-        if (ppRes.ok) {
-          const ppData = await ppRes.json();
-          if (ppData.passphrase) gk = await cacheGroupKey(groupId, ppData.passphrase);
-        }
-      } catch { /* passphrase not available */ }
+      const ek = await fetchGroupEncryptionKey(groupId);
+      if (ek) gk = await cacheGroupKey(groupId, ek);
     }
     if (!gk) return null;
 
@@ -148,7 +151,6 @@ export const useGroupStore = create<GroupState>((set) => ({
       const data = await res.json();
       set({ groups: data.groups, isLoading: false });
 
-      // Lazy-compute balances for each group in the background
       const currentUserId = useAuthStore.getState().userId || '';
       for (const g of data.groups as GroupSummary[]) {
         computeGroupBalance(g.id, currentUserId).then((balance) => {
@@ -194,13 +196,8 @@ export const useGroupStore = create<GroupState>((set) => ({
         if (syncData.encryptedBlob) {
           let gk = getGroupKey(id);
           if (!gk) {
-            try {
-              const ppRes = await apiClient(`/api/group/${id}/passphrase`);
-              if (ppRes.ok) {
-                const ppData = await ppRes.json();
-                if (ppData.passphrase) gk = await cacheGroupKey(id, ppData.passphrase);
-              }
-            } catch { silentCatch('groupStore.passphraseFetch', null); }
+            const ek = await fetchGroupEncryptionKey(id);
+            if (ek) gk = await cacheGroupKey(id, ek);
           }
           if (gk) {
             try {
@@ -210,19 +207,16 @@ export const useGroupStore = create<GroupState>((set) => ({
               expenses = parsed.expenses || [];
               groupCategories = parsed.categories || [];
             } catch (err) {
-              // Try fetching fresh passphrase — key may be stale after rotation
+              // Key may be stale after rotation — try fetching fresh encryption key
               try {
-                const ppRes = await apiClient(`/api/group/${id}/passphrase`);
-                if (ppRes.ok) {
-                  const ppData = await ppRes.json();
-                  if (ppData.passphrase) {
-                    const newKey = await cacheGroupKey(id, ppData.passphrase);
-                    const decrypted = await decryptData(newKey, syncData.encryptedBlob);
-                    const parsed: any = migrateGroupBlob(JSON.parse(decrypted));
-                    settlements = parsed.settlements || [];
-                    expenses = parsed.expenses || [];
-                    groupCategories = parsed.categories || [];
-                  }
+                const ek = await fetchGroupEncryptionKey(id);
+                if (ek) {
+                  const newKey = await cacheGroupKey(id, ek);
+                  const decrypted = await decryptData(newKey, syncData.encryptedBlob);
+                  const parsed: any = migrateGroupBlob(JSON.parse(decrypted));
+                  settlements = parsed.settlements || [];
+                  expenses = parsed.expenses || [];
+                  groupCategories = parsed.categories || [];
                 }
               } catch { silentCatch('groupStore.blobDecrypt', err); }
             }
@@ -269,14 +263,12 @@ export const useGroupStore = create<GroupState>((set) => ({
     }
   },
 
-  createGroup: async (name: string, passphrase: string) => {
+  createGroup: async (name: string) => {
     if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
     set({ isLoading: true, error: null });
 
     try {
-      const salt = generateSalt();
-      const passphraseVerifier = await hashPassphrase(passphrase, salt);
       const defaultCurrency = useAuthStore.getState().defaultCurrency;
 
       const res = await apiClient('/api/group/create', {
@@ -284,7 +276,7 @@ export const useGroupStore = create<GroupState>((set) => ({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, passphraseVerifier, salt, passphrase, defaultCurrency }),
+        body: JSON.stringify({ name, defaultCurrency }),
       });
 
       if (!res.ok) {
@@ -295,7 +287,9 @@ export const useGroupStore = create<GroupState>((set) => ({
       const data = await res.json();
       set({ isLoading: false });
 
-      await cacheGroupKey(data.groupId, passphrase);
+      // Fetch encryption key for this group
+      const ek = await fetchGroupEncryptionKey(data.groupId);
+      if (ek) await cacheGroupKey(data.groupId, ek);
 
       const cgActorId = useAuthStore.getState().userId || '';
       const cgActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
@@ -320,27 +314,18 @@ export const useGroupStore = create<GroupState>((set) => ({
     }
   },
 
-  joinGroup: async (inviteCode: string, passphrase: string) => {
+  joinGroup: async (inviteCode: string) => {
     if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
     set({ isLoading: true, error: null });
 
     try {
-      const infoRes = await apiClient(`/api/group/invite/${inviteCode}`);
-
-      if (!infoRes.ok) {
-        throw new Error('Group not found or invalid invite code');
-      }
-
-      const groupInfo = await infoRes.json();
-      const passphraseVerifier = await hashPassphrase(passphrase, groupInfo.salt);
-
       const res = await apiClient('/api/group/join', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ inviteCode, passphraseVerifier }),
+        body: JSON.stringify({ inviteCode }),
       });
 
       if (!res.ok) {
@@ -351,7 +336,9 @@ export const useGroupStore = create<GroupState>((set) => ({
       const data = await res.json();
       set({ isLoading: false });
 
-      await cacheGroupKey(data.groupId, passphrase);
+      // Fetch encryption key for the newly joined group
+      const ek = await fetchGroupEncryptionKey(data.groupId);
+      if (ek) await cacheGroupKey(data.groupId, ek);
 
       const jgActorId = useAuthStore.getState().userId || '';
       const jgActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
@@ -380,7 +367,6 @@ export const useGroupStore = create<GroupState>((set) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Decrypt blob with old key before leaving
       const gk = getGroupKey(groupId);
       let decrypted: string | null = null;
       let vectorClock: Record<string, number> = {};
@@ -408,8 +394,8 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       const result = await res.json();
 
-      if (result.newPassphrase) {
-        const newKey = await cacheGroupKey(groupId, result.newPassphrase);
+      if (result.newEncryptionKey) {
+        const newKey = await cacheGroupKey(groupId, result.newEncryptionKey);
         if (decrypted) {
           const reEncrypted = await encryptData(newKey, decrypted);
           let saved = false;
@@ -457,7 +443,6 @@ export const useGroupStore = create<GroupState>((set) => ({
   removeMember: async (groupId: string, targetUserId: string) => {
     if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
-    // Decrypt blob with old key before removal
     const gk = getGroupKey(groupId);
     let decrypted: string | null = null;
     let vectorClock: Record<string, number> = {};
@@ -479,9 +464,8 @@ export const useGroupStore = create<GroupState>((set) => ({
 
     const result = await res.json();
 
-    // Re-encrypt blob with new passphrase-derived key (retry loop)
-    if (result.newPassphrase) {
-      const newKey = await cacheGroupKey(groupId, result.newPassphrase);
+    if (result.newEncryptionKey) {
+      const newKey = await cacheGroupKey(groupId, result.newEncryptionKey);
       if (decrypted) {
         const reEncrypted = await encryptData(newKey, decrypted);
         let saved = false;
@@ -574,29 +558,6 @@ export const useGroupStore = create<GroupState>((set) => ({
       if (!res.ok) throw new Error('Failed to revoke invite code');
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to revoke invite' });
-      throw error;
-    }
-  },
-
-  changePassphrase: async (groupId: string, newPassphrase: string) => {
-    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
-    try {
-      const salt = generateSalt();
-      const newPassphraseVerifier = await hashPassphrase(newPassphrase, salt);
-
-      const res = await apiClient(`/api/group/${groupId}/passphrase`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ newPassphraseVerifier, newSalt: salt, newPassphrase }),
-      });
-
-      if (!res.ok) throw new Error('Failed to change passphrase');
-
-      await cacheGroupKey(groupId, newPassphrase);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'Failed to change passphrase' });
       throw error;
     }
   },

@@ -1,6 +1,6 @@
 import { silentCatch } from './errorHandler';
 import { apiClient } from './apiClient';
-import { encryptData, decryptData, deriveGroupKey } from './crypto';
+import { encryptData, decryptData, importKey } from './crypto';
 import { useAuthStore } from '../stores/authStore';
 import { migrateGroupBlob, GroupExpense, SettlementProposal, PaymentMethod, SplitMode, ExpenseStatus, SettlementStatus, computeNetBalances } from '@coldfi/shared';
 
@@ -134,8 +134,9 @@ export function getGroupKey(groupId: string): CryptoKey | undefined {
   return groupKeyCache.get(groupId);
 }
 
-export function cacheGroupKey(groupId: string, passphrase: string): Promise<CryptoKey> {
-  return deriveGroupKey(passphrase, groupId).then((key) => {
+export function cacheGroupKey(groupId: string, keyHex: string): Promise<CryptoKey> {
+  const keyBytes = hexToBytes(keyHex);
+  return importKey(keyBytes).then((key) => {
     groupKeyCache.set(groupId, key);
     return key;
   });
@@ -155,20 +156,6 @@ export function hexToBytes(hex: string): Uint8Array {
     bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
   }
   return bytes;
-}
-
-export async function hashPassphrase(passphrase: string, saltHex: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const salt = hexToBytes(saltHex);
-  const key = await crypto.subtle.importKey('raw', encoder.encode(passphrase), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' }, key, 256);
-  return bytesToHex(new Uint8Array(bits));
-}
-
-export function generateSalt(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return bytesToHex(bytes);
 }
 
 export async function modifySyncBlob(

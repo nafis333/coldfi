@@ -9,7 +9,6 @@ interface Props {
 export default function JoinGroupModal({ onClose }: Props) {
   const { joinGroup } = useGroupStore();
   const [inviteCode, setInviteCode] = useState('');
-  const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [groupInfo, setGroupInfo] = useState<{ name: string } | null>(null);
@@ -44,11 +43,10 @@ export default function JoinGroupModal({ onClose }: Props) {
     e.preventDefault();
     setError('');
     if (!inviteCode.trim()) { setError('Invite code is required'); return; }
-    if (!passphrase) { setError('Passphrase is required'); return; }
 
     setLoading(true);
     try {
-      await joinGroup(inviteCode.trim(), passphrase);
+      await joinGroup(inviteCode.trim());
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join group');
@@ -75,11 +73,6 @@ export default function JoinGroupModal({ onClose }: Props) {
                 Joining: {groupInfo.name}
               </p>
             )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Group Passphrase</label>
-            <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)}
-              className="input-field mt-1" placeholder="Shared secret from group creator" />
           </div>
           {error && <div className="rounded-lg border border-danger-200 dark:border-danger-700 bg-danger-50 dark:bg-danger-700/20 p-3"><p className="text-sm text-danger-700 dark:text-danger-300">{error}</p></div>}
           <button type="submit" disabled={loading} className="btn-primary w-full">

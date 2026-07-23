@@ -29,20 +29,18 @@ export async function groupRoutes(app: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        required: ['name', 'passphraseVerifier', 'salt'],
+        required: ['name'],
         properties: {
           name: { type: 'string', minLength: 1 },
-          passphraseVerifier: { type: 'string', minLength: 1 },
-          salt: { type: 'string', minLength: 1 },
           defaultCurrency: { type: 'string', minLength: 3, maxLength: 3 },
         },
       },
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
-    const { name, passphraseVerifier, salt, passphrase, defaultCurrency = 'BDT' } = request.body as any;
+    const { name, defaultCurrency = 'BDT' } = request.body as any;
 
-    const result = await groupService.createGroup(name, passphraseVerifier, salt, defaultCurrency, userId, passphrase);
+    const result = await groupService.createGroup(name, defaultCurrency, userId);
 
     try { emitToGroup(result.groupId, 'group-created', { groupId: result.groupId, name: result.name, createdBy: userId }); } catch {}
 
@@ -84,18 +82,17 @@ export async function groupRoutes(app: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        required: ['inviteCode', 'passphraseVerifier'],
+        required: ['inviteCode'],
         properties: {
           inviteCode: { type: 'string', minLength: 1 },
-          passphraseVerifier: { type: 'string', minLength: 1 },
         },
       },
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
-    const { inviteCode, passphraseVerifier } = request.body as any;
+    const { inviteCode } = request.body as { inviteCode: string };
 
-    const result = await groupService.joinGroup(inviteCode, passphraseVerifier, userId);
+    const result = await groupService.joinGroup(inviteCode, userId);
 
     try { emitToGroup(result.groupId, 'member-joined', { groupId: result.groupId, userId, memberIndex: result.memberIndex, role: 'member' }); } catch {}
 
@@ -114,34 +111,9 @@ export async function groupRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  app.get('/:groupId/passphrase', { preHandler: [requireGroupAccess] }, async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/:groupId/encryption-key', { preHandler: [requireGroupAccess] }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { groupId } = request.params as { groupId: string };
-    const result = await groupService.getGroupPassphrase(groupId);
-    return reply.send(result);
-  });
-
-  app.put('/:groupId/passphrase', {
-    preHandler: [requireGroupAccess, requireGroupAdmin],
-    schema: {
-      body: {
-        type: 'object',
-        required: ['newPassphraseVerifier', 'newSalt'],
-        properties: {
-          newPassphraseVerifier: { type: 'string', minLength: 1 },
-          newSalt: { type: 'string', minLength: 1 },
-          newPassphrase: { type: 'string' },
-        },
-      },
-    },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const { groupId } = request.params as { groupId: string };
-    const { newPassphraseVerifier, newSalt, newPassphrase } = request.body as { newPassphraseVerifier: string; newSalt: string; newPassphrase?: string };
-    const userId = request.user.userId;
-
-    const result = await groupService.changeGroupPassphrase(groupId, newPassphraseVerifier, newSalt, newPassphrase);
-
-    try { emitToGroup(groupId, 'passphrase-changed', { groupId, updatedBy: userId, newSalt }); } catch {}
-
+    const result = await groupService.getGroupEncryptionKey(groupId);
     return reply.send(result);
   });
 
@@ -235,7 +207,7 @@ export async function groupRoutes(app: FastifyInstance) {
 
     try { emitToGroup(groupId, 'member-left', { groupId, userId, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo }); } catch {}
 
-    return reply.send({ success: true, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo, newPassphrase: r.newPassphrase, newSalt: r.newSalt });
+    return reply.send({ success: true, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo, newEncryptionKey: r.newEncryptionKey });
   });
 
   app.delete('/:groupId', { preHandler: [requireGroupAccess, requireGroupAdmin] }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -269,7 +241,7 @@ export async function groupRoutes(app: FastifyInstance) {
 
     try { emitToGroup(groupId, 'member-left', { groupId, userId: targetUserId, removedBy: userId, leftAt: r.leftAt }); } catch {}
 
-    return reply.send({ success: true, leftAt: r.leftAt, newPassphrase: r.newPassphrase, newSalt: r.newSalt });
+    return reply.send({ success: true, leftAt: r.leftAt, newEncryptionKey: r.newEncryptionKey });
   });
 
   app.patch('/:groupId/members/:targetUserId/role', {

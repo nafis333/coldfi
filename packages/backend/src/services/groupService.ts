@@ -2,17 +2,8 @@ import crypto from 'crypto';
 import { query, transaction } from '../db/pool';
 import { AppError } from '../errors';
 
-function generatePassphrase(): string {
-  return crypto.randomBytes(24).toString('base64url').slice(0, 24);
-}
-
-function hashPassphrase(passphrase: string, salt: string): string {
-  const key = crypto.pbkdf2Sync(passphrase, salt, 600000, 32, 'sha256');
-  return key.toString('hex');
-}
-
-function generateSalt(): string {
-  return crypto.randomBytes(16).toString('hex');
+function generateEncryptionKey(): string {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 export async function listUserGroups(userId: string): Promise<any[]> {
@@ -47,17 +38,17 @@ export async function getGroupDetail(groupId: string, userId: string): Promise<a
   }
 
   const result = await query(
-    `SELECT id, name, group_salt FROM groups WHERE id = $1`,
+    `SELECT id, name FROM groups WHERE id = $1`,
     [groupId]
   );
 
   const group = result.rows[0];
-  return { id: group.id, name: group.name, salt: group.group_salt };
+  return { id: group.id, name: group.name };
 }
 
 export async function lookupInvite(code: string): Promise<any> {
     const result = await query(
-      `SELECT g.id, g.name, g.group_salt
+      `SELECT g.id, g.name
        FROM invite_codes ic
        JOIN groups g ON g.id = ic.group_id
        WHERE ic.code = $1 AND ic.is_active = TRUE
@@ -71,25 +62,23 @@ export async function lookupInvite(code: string): Promise<any> {
     }
 
     const group = result.rows[0];
-    return { id: group.id, name: group.name, salt: group.group_salt };
+    return { id: group.id, name: group.name };
 }
 
 export async function createGroup(
   name: string,
-  passphraseVerifier: string,
-  salt: string,
   defaultCurrency: string,
-  userId: string,
-  passphrase?: string
+  userId: string
 ): Promise<{ groupId: string; name: string; memberIndex: number; role: string }> {
   const groupId = crypto.randomUUID();
   const memberId = crypto.randomUUID();
+  const encryptionKey = generateEncryptionKey();
 
   await transaction(async (client) => {
     await client.query(
-      `INSERT INTO groups (id, name, passphrase, passphrase_verifier, group_salt, group_data_enc, default_currency, created_by, created_at, updated_at)
+      `INSERT INTO groups (id, name, encryption_key, passphrase_verifier, group_salt, group_data_enc, default_currency, created_by, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-      [groupId, name.trim(), passphrase || null, passphraseVerifier, salt, Buffer.from(''), defaultCurrency, userId]
+      [groupId, name.trim(), encryptionKey, '', '', Buffer.from(''), defaultCurrency, userId]
     );
 
     await client.query(
@@ -111,11 +100,11 @@ export async function createInvite(
 
   await query(
     `INSERT INTO invite_codes (id, group_id, code, created_by, expires_at, max_uses)
-     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days', 10)`,
+     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days', 0)`,
     [inviteId, groupId, code, userId]
   );
 
-  return { inviteId, code, expiresIn: '7d', maxUses: 10 };
+  return { inviteId, code, expiresIn: '7d', maxUses: 0 };
 }
 
 export async function getInvites(groupId: string): Promise<any[]> {
@@ -139,16 +128,14 @@ export async function revokeInvite(inviteId: string, groupId: string): Promise<v
 
 export async function joinGroup(
   inviteCode: string,
-  passphraseVerifier: string,
   userId: string
 ): Promise<{ groupId: string; memberIndex: number }> {
   const memberId = crypto.randomUUID();
 
   return transaction(async (client) => {
     const inviteResult = await client.query(
-      `SELECT ic.group_id, g.passphrase_verifier
+      `SELECT ic.group_id
        FROM invite_codes ic
-       JOIN groups g ON g.id = ic.group_id
        WHERE ic.code = $1 AND ic.is_active = TRUE
          AND (ic.expires_at IS NULL OR ic.expires_at > NOW())
          AND (ic.max_uses = 0 OR ic.use_count < ic.max_uses)
@@ -160,12 +147,7 @@ export async function joinGroup(
       throw new AppError('ERR_INVITE_INVALID', 'Invite code not found or expired', 404);
     }
 
-    const { group_id: groupId, passphrase_verifier } = inviteResult.rows[0];
-    const a = Buffer.from(passphrase_verifier);
-    const b = Buffer.from(passphraseVerifier);
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      throw new AppError('ERR_WRONG_PASSPHRASE', 'Invalid passphrase', 403);
-    }
+    const groupId = inviteResult.rows[0].group_id;
 
     const existing = await client.query(
       `SELECT id, left_at, member_index FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
@@ -182,7 +164,6 @@ export async function joinGroup(
       if (!row.left_at) {
         throw new AppError('ERR_CONFLICT', 'Already a member of this group', 409);
       }
-      // Re-activate former member
       await client.query(
         `UPDATE group_members SET left_at = NULL, role = 'member', joined_at = NOW() WHERE id = $1`,
         [row.id]
@@ -222,43 +203,10 @@ export async function getBalanceSummary(groupId: string, userId: string): Promis
   };
 }
 
-export async function getGroupPassphrase(groupId: string): Promise<{ passphrase: string }> {
-  const result = await query(`SELECT passphrase FROM groups WHERE id = $1`, [groupId]);
+export async function getGroupEncryptionKey(groupId: string): Promise<{ encryptionKey: string }> {
+  const result = await query(`SELECT encryption_key FROM groups WHERE id = $1`, [groupId]);
   if (result.rows.length === 0) throw new AppError('ERR_NOT_FOUND', 'Group not found', 404);
-  return { passphrase: result.rows[0].passphrase || '' };
-}
-
-export async function changeGroupPassphrase(
-  groupId: string,
-  newPassphraseVerifier: string,
-  newSalt: string,
-  newPassphrase?: string
-): Promise<{ success: boolean }> {
-  if (newPassphrase) {
-    await query(
-      `UPDATE groups SET passphrase = $1, passphrase_verifier = $2, group_salt = $3, updated_at = NOW() WHERE id = $4`,
-      [newPassphrase, newPassphraseVerifier, newSalt, groupId]
-    );
-  } else {
-    await query(
-      `UPDATE groups SET passphrase_verifier = $1, group_salt = $2, updated_at = NOW() WHERE id = $3`,
-      [newPassphraseVerifier, newSalt, groupId]
-    );
-  }
-  return { success: true };
-}
-
-export async function rotateGroupPassphrase(groupId: string): Promise<{ passphrase: string; salt: string }> {
-  const passphrase = generatePassphrase();
-  const salt = generateSalt();
-  const verifier = hashPassphrase(passphrase, salt);
-
-  await query(
-    `UPDATE groups SET passphrase = $1, passphrase_verifier = $2, group_salt = $3, updated_at = NOW() WHERE id = $4`,
-    [passphrase, verifier, salt, groupId]
-  );
-
-  return { passphrase, salt };
+  return { encryptionKey: result.rows[0].encryption_key };
 }
 
 export async function updateGroup(
@@ -289,7 +237,7 @@ export async function updateGroup(
 }
 
 export async function getGroupMembers(groupId: string): Promise<any> {
-  const groupResult = await query(`SELECT name FROM groups WHERE id = $1`, [groupId]);
+  const groupResult = await query(`SELECT name, default_currency FROM groups WHERE id = $1`, [groupId]);
 
   if (groupResult.rows.length === 0) {
     throw new AppError('ERR_GROUP_NOT_FOUND', 'Group not found', 404);
@@ -316,6 +264,7 @@ export async function getGroupMembers(groupId: string): Promise<any> {
   return {
     id: groupId,
     name: groupResult.rows[0].name,
+    defaultCurrency: groupResult.rows[0].default_currency,
     members,
     myBalance: 0,
   };
@@ -403,11 +352,27 @@ export async function syncGroupBlob(
   });
 }
 
+async function deactivateAndCreateInvite(client: any, groupId: string, userId: string): Promise<void> {
+  // Deactivate all existing invites
+  await client.query(
+    `UPDATE invite_codes SET is_active = FALSE WHERE group_id = $1`,
+    [groupId]
+  );
+  // Create a new invite
+  const code = crypto.randomBytes(6).toString('base64url');
+  const inviteId = crypto.randomUUID();
+  await client.query(
+    `INSERT INTO invite_codes (id, group_id, code, created_by, expires_at, max_uses)
+     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days', 0)`,
+    [inviteId, groupId, code, userId]
+  );
+}
+
 export async function removeMember(
   groupId: string,
   targetUserId: string,
   adminUserId: string
-): Promise<{ leftAt: string }> {
+): Promise<{ leftAt: string; newEncryptionKey: string }> {
   return transaction(async (client) => {
     const result = await client.query(
       `SELECT id, role, left_at FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
@@ -416,7 +381,6 @@ export async function removeMember(
     if (result.rows.length === 0) throw new AppError('ERR_NOT_FOUND', 'Member not found', 404);
     if (result.rows[0].left_at) throw new AppError('ERR_CONFLICT', 'Already left', 400);
 
-    // Check requesting user is still admin
     const adminRes = await client.query(
       `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL`,
       [groupId, adminUserId]
@@ -424,10 +388,8 @@ export async function removeMember(
     if (adminRes.rows.length === 0 || adminRes.rows[0].role !== 'admin') {
       throw new AppError('ERR_FORBIDDEN', 'Admin access required', 403);
     }
-    // Cannot remove self this way
     if (targetUserId === adminUserId) throw new AppError('ERR_VALIDATION', 'Use leave endpoint to leave', 400);
 
-    // If target is the only admin, transfer to the earliest-joined remaining member
     if (result.rows[0].role === 'admin') {
       const remainingAdmins = await client.query(
         `SELECT user_id FROM group_members WHERE group_id = $1 AND left_at IS NULL AND role = 'admin' AND user_id != $2
@@ -453,16 +415,15 @@ export async function removeMember(
       [result.rows[0].id]
     );
 
-    // Rotate passphrase
-    const newPassphrase = generatePassphrase();
-    const newSalt = generateSalt();
-    const newVerifier = hashPassphrase(newPassphrase, newSalt);
+    // Rotate encryption key + regenerate invites
+    const newKey = generateEncryptionKey();
     await client.query(
-      `UPDATE groups SET passphrase = $1, passphrase_verifier = $2, group_salt = $3, updated_at = NOW() WHERE id = $4`,
-      [newPassphrase, newVerifier, newSalt, groupId]
+      `UPDATE groups SET encryption_key = $1, updated_at = NOW() WHERE id = $2`,
+      [newKey, groupId]
     );
+    await deactivateAndCreateInvite(client, groupId, adminUserId);
 
-    return { leftAt: new Date().toISOString(), newPassphrase, newSalt };
+    return { leftAt: new Date().toISOString(), newEncryptionKey: newKey };
   });
 }
 
@@ -515,7 +476,7 @@ export async function deleteGroup(groupId: string, userId: string): Promise<{ su
 export async function leaveGroup(
   groupId: string,
   userId: string
-): Promise<{ leftAt: string; adminTransferredTo?: string }> {
+): Promise<{ leftAt: string; adminTransferredTo?: string; newEncryptionKey: string }> {
   return transaction(async (client) => {
     const memberResult = await client.query(
       `SELECT id, role, left_at FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
@@ -536,7 +497,6 @@ export async function leaveGroup(
       [member.id]
     );
 
-    // If leaving admin was the only admin, transfer to next member
     let adminTransferredTo: string | undefined;
     if (member.role === 'admin') {
       const remainingAdmins = await client.query(
@@ -545,7 +505,6 @@ export async function leaveGroup(
         [groupId, userId]
       );
       if (remainingAdmins.rows.length === 0) {
-        // No other admin — promote the earliest-joined remaining member
         const nextMember = await client.query(
           `SELECT user_id FROM group_members WHERE group_id = $1 AND left_at IS NULL ORDER BY joined_at ASC LIMIT 1`,
           [groupId]
@@ -560,16 +519,15 @@ export async function leaveGroup(
       }
     }
 
-    // Rotate passphrase
-    const newPassphrase = generatePassphrase();
-    const newSalt = generateSalt();
-    const newVerifier = hashPassphrase(newPassphrase, newSalt);
+    // Rotate encryption key + regenerate invites
+    const newKey = generateEncryptionKey();
     await client.query(
-      `UPDATE groups SET passphrase = $1, passphrase_verifier = $2, group_salt = $3, updated_at = NOW() WHERE id = $4`,
-      [newPassphrase, newVerifier, newSalt, groupId]
+      `UPDATE groups SET encryption_key = $1, updated_at = NOW() WHERE id = $2`,
+      [newKey, groupId]
     );
+    await deactivateAndCreateInvite(client, groupId, userId);
 
-    return { leftAt: new Date().toISOString(), adminTransferredTo, newPassphrase, newSalt };
+    return { leftAt: new Date().toISOString(), adminTransferredTo, newEncryptionKey: newKey };
   });
 }
 

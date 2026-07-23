@@ -55,7 +55,6 @@ export type AuthErrorCode =
   | 'ERR_NO_REFRESH_TOKEN'
   | 'ERR_TEMP_TOKEN_EXPIRED'
   | 'ERR_INVALID_2FA'
-  | 'ERR_WRONG_PASSPHRASE'
   | 'ERR_INVALID_RECOVERY'
   | 'ERR_RECOVERY_FAILED'
   | 'ERR_GOOGLE_NOT_CONFIGURED'
@@ -170,7 +169,6 @@ export const ERROR_CODES = {
   ERR_EXTERNAL_SERVICE: { status: 502, message: 'External service error' },
   ERR_GROUP_FULL: { status: 400, message: 'Group is full' },
   ERR_ALREADY_MEMBER: { status: 400, message: 'Already a group member' },
-  ERR_WRONG_PASSPHRASE: { status: 403, message: 'Invalid group passphrase' },
   ERR_NO_ACTIVE_MEMBERS: { status: 400, message: 'No active members to split with' },
   ERR_2FA_NOT_SETUP: { status: 400, message: 'Two-factor auth not set up' },
   ERR_INVALID_PASSWORD: { status: 401, message: 'Current password is incorrect' },

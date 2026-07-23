@@ -44,7 +44,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
 
     try {
       const gk = getGroupKey(groupId);
-      if (!gk) throw new Error('Group key not available. Please re-enter the group passphrase.');
+      if (!gk) throw new Error('Group key not available.');
 
       const { useGroupStore } = await import('./groupStore');
       const state = useGroupStore.getState();
