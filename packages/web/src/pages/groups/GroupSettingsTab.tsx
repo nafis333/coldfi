@@ -31,7 +31,15 @@ function generatePassphrase(): string {
 export default function GroupSettingsTab() {
   const navigate = useNavigate();
   const { groupId } = useOutletContext<{ groupId: string }>();
-  const { currentGroup, generateInvite, fetchInvites, revokeInvite, updateGroupSettings, fetchGroupById, deleteGroup } = useGroupStore();
+  const { currentGroup, generateInvite, revokeInvite, updateGroupSettings, fetchGroupById, deleteGroup } = useGroupStore();
+  const accessToken = useAuthStore.getState().accessToken;
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+  async function authFetch(url: string) {
+    return fetch(`${API_BASE}${url}`, {
+      headers: { 'Authorization': `Bearer ${accessToken || ''}` },
+    });
+  }
   const [invites, setInvites] = useState<InviteCode[]>([]);
   const [groupName, setGroupName] = useState(currentGroup?.name || '');
   const [currency, setCurrency] = useState(currentGroup?.defaultCurrency || useAuthStore.getState().defaultCurrency);
@@ -56,15 +64,18 @@ export default function GroupSettingsTab() {
 
   async function loadInvites() {
     try {
-      const data = await fetchInvites(groupId);
-      setInvites(data.invites);
+      const res = await authFetch(`/api/group/${groupId}/invites`);
+      if (res.ok) {
+        const data = await res.json();
+        setInvites(data.invites);
+      }
     } catch (err) { silentCatch('GroupSettingsTab.loadInvites', err); }
   }
 
   async function loadPassphrase() {
     setPassphraseLoading(true);
     try {
-      const res = await apiClient(`/api/group/${groupId}/passphrase`);
+      const res = await authFetch(`/api/group/${groupId}/passphrase`);
       if (res.ok) {
         const data = await res.json();
         setPassphrase(data.passphrase || '');
