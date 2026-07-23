@@ -2,8 +2,10 @@ import { useState, useMemo } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { useGroupStore } from '../../stores/groupStore';
+import { useGroupExpenseStore } from '../../stores/groupExpenseStore';
 import { formatCurrency } from '@coldfi/shared';
 import { downloadReceiptPDF, type ReceiptData } from '../../lib/receiptPDF';
+import { silentCatch } from '../../lib/errorHandler';
 import TimeRangeFilter from './TimeRangeFilter';
 
 interface GroupExpenseData {
@@ -16,7 +18,7 @@ interface GroupExpenseData {
   createdAt: string;
   displayId?: string;
   splits: { userId: string; amount: number }[];
-  itemizedItems?: { name: string; amount: number; assignedTo: string[] }[];
+  itemized?: { name: string; amount: number; assignedTo: string[] }[];
 }
 
 interface Member {
@@ -83,7 +85,7 @@ export default function ExpensesTab() {
 
   function handleDownloadReceipt(expense: GroupExpenseData) {
     const mySplit = expense.splits.find((s) => s.userId === currentUserId);
-    const items = expense.itemizedItems?.map((i) => ({ name: i.name, amount: i.amount })) || [];
+    const items = expense.itemized?.map((i) => ({ name: i.name, amount: i.amount })) || [];
     const splits = expense.splits.map((s) => ({
       name: memberName(groupMembers.length > 0 ? groupMembers : group.members, s.userId),
       amount: s.amount,
@@ -103,6 +105,14 @@ export default function ExpensesTab() {
       splits,
     };
     downloadReceiptPDF(receiptData);
+  }
+
+  const deleteExpense = useGroupExpenseStore((s) => s.deleteGroupExpense);
+  const isDeleting = useGroupExpenseStore((s) => s.isLoading);
+
+  function handleDelete(expenseId: string) {
+    if (!window.confirm('Are you sure you want to delete this expense? This cannot be undone.')) return;
+    deleteExpense(groupId, expenseId).catch((err) => silentCatch('ExpensesTab.delete', err));
   }
 
   const allExpenses = (group.expenses ?? [])
@@ -155,7 +165,7 @@ export default function ExpensesTab() {
           />
           <div className="space-y-2">
             {displayed.map((expense) => {
-              const items = expense.itemizedItems;
+              const items = expense.itemized;
               const hasItems = items && items.length > 0;
               const isExpanded = expandedId === expense.id;
 
@@ -193,11 +203,27 @@ export default function ExpensesTab() {
                       <p className="text-base font-bold text-neutral-900 dark:text-white">{formatCurrency(expense.amount, defaultCurrency)}</p>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDownloadReceipt(expense); }}
-                        className="btn-ghost p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                        title="Download receipt"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                      </button>
+                          className="btn-ghost p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                          title="Download receipt"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        </button>
+                        <Link
+                          to={`/groups/${groupId}/expenses/${expense.id}/edit`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="btn-ghost p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          title="Edit expense"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        </Link>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(expense.id); }}
+                          disabled={isDeleting}
+                          className="btn-ghost p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-40"
+                          title="Delete expense"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
                       {hasItems && (
                         <svg className={`h-4 w-4 text-neutral-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -208,7 +234,7 @@ export default function ExpensesTab() {
 
                   {isExpanded && hasItems && (
                     <div className="border-t border-neutral-100 dark:border-neutral-700/60 bg-neutral-50/60 dark:bg-neutral-800/30 animate-fade-in">
-                      {items!.map((item, idx) => (
+                      {items!.map((item: { name: string; amount: number; assignedTo: string[] }, idx: number) => (
                         <div key={idx} className="flex items-center justify-between px-4 py-2.5 text-sm border-b border-neutral-100 dark:border-neutral-700/30 last:border-b-0">
                           <div className="flex-1 min-w-0">
                             <span className="text-neutral-700 dark:text-neutral-300">{item.name}</span>

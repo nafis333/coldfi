@@ -70,6 +70,9 @@ export function useWebSocket() {
     socket.on('member-left', (data: { groupId: string }) => {
       useGroupStore.getState().incrementGroupDataVersion(data.groupId);
     });
+    socket.on('passphrase-changed', (data: { groupId: string }) => {
+      useGroupStore.getState().incrementGroupDataVersion(data.groupId);
+    });
 
     socket.on('notification', (data: {
       id: string;

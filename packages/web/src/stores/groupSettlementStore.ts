@@ -16,8 +16,10 @@ import {
   findDuplicateProposal as engineFindDuplicate,
   getValidTransitions as engineGetValidTransitions,
   SettlementStatus,
+  GroupLogEventType,
 } from '@coldfi/shared';
 import { onLogout } from '../lib/resetStores';
+import { useLogStore } from './logStore';
 
 interface GroupSettlementState {
   isLoading: boolean;
@@ -72,7 +74,19 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
 
       await useGroupStore.getState().fetchGroupById(groupId);
       set({ isLoading: false });
-      createGroupNotification('settlement_proposed', 'Settlement Proposed', `${data.amount.toFixed(2)} settlement proposed`, groupId);
+      const sRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
+      createGroupNotification('settlement_proposed', 'Settlement Proposed', `${data.amount.toFixed(2)} settlement proposed`, groupId, undefined, sRecipients);
+      const sActorId = useAuthStore.getState().userId || '';
+      const sActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.SETTLEMENT_PROPOSED,
+        actorId: sActorId,
+        actorName: sActorName,
+        action: `Settlement proposed: ${data.amount.toFixed(2)} from user ${data.fromUserId} to ${data.toUserId}`,
+        actionType: 'settlement', details: `${data.amount.toFixed(2)} settlement proposed`,
+        targetId: data.fromUserId,
+        metadata: { amount: data.amount },
+      });
     } catch (error) {
       set({
         isLoading: false,
@@ -120,7 +134,18 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
 
       const { useGroupStore } = await import('./groupStore');
       await useGroupStore.getState().fetchGroupById(groupId);
-      createGroupNotification('settlement_marked_paid', 'Settlement Marked Paid', 'A settlement has been marked as paid', groupId, settlementId);
+      const mpRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
+      createGroupNotification('settlement_marked_paid', 'Settlement Marked Paid', 'A settlement has been marked as paid', groupId, settlementId, mpRecipients);
+      const mpActorId = useAuthStore.getState().userId || '';
+      const mpActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.SETTLEMENT_MARKED_PAID,
+        actorId: mpActorId,
+        actorName: mpActorName,
+        action: `Settlement marked paid: ${settlementId}`,
+        actionType: 'settlement', details: `Marked settlement ${settlementId} as paid`,
+        targetId: settlementId,
+      });
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to mark settlement as paid' });
@@ -161,7 +186,18 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
 
       const { useGroupStore } = await import('./groupStore');
       await useGroupStore.getState().fetchGroupById(groupId);
-      createGroupNotification('settlement_confirmed', 'Settlement Confirmed', 'A settlement has been approved', groupId, settlementId);
+      const acRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
+      createGroupNotification('settlement_confirmed', 'Settlement Confirmed', 'A settlement has been approved', groupId, settlementId, acRecipients);
+      const acActorId = useAuthStore.getState().userId || '';
+      const acActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.SETTLEMENT_APPROVED,
+        actorId: acActorId,
+        actorName: acActorName,
+        action: `Settlement approved: ${settlementId}`,
+        actionType: 'settlement', details: `Approved settlement ${settlementId}`,
+        targetId: settlementId,
+      });
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to accept settlement' });
@@ -202,7 +238,18 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
 
       const { useGroupStore } = await import('./groupStore');
       await useGroupStore.getState().fetchGroupById(groupId);
-      createGroupNotification('settlement_rejected', 'Settlement Rejected', 'A settlement has been rejected', groupId, settlementId);
+      const rjRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
+      createGroupNotification('settlement_rejected', 'Settlement Rejected', 'A settlement has been rejected', groupId, settlementId, rjRecipients);
+      const rjActorId = useAuthStore.getState().userId || '';
+      const rjActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.SETTLEMENT_REJECTED,
+        actorId: rjActorId,
+        actorName: rjActorName,
+        action: `Settlement rejected: ${settlementId}`,
+        actionType: 'settlement', details: `Rejected settlement ${settlementId}`,
+        targetId: settlementId,
+      });
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to reject settlement' });
@@ -239,7 +286,18 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
 
       const { useGroupStore } = await import('./groupStore');
       await useGroupStore.getState().fetchGroupById(groupId);
-      createGroupNotification('settlement_rejected', 'Settlement Cancelled', 'A settlement proposal was cancelled', groupId, settlementId);
+      const cnRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
+      createGroupNotification('settlement_cancelled', 'Settlement Cancelled', 'A settlement proposal was cancelled', groupId, settlementId, cnRecipients);
+      const cnActorId = useAuthStore.getState().userId || '';
+      const cnActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.SETTLEMENT_CANCELLED,
+        actorId: cnActorId,
+        actorName: cnActorName,
+        action: `Settlement cancelled: ${settlementId}`,
+        actionType: 'settlement', details: `Cancelled settlement ${settlementId}`,
+        targetId: settlementId,
+      });
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to cancel settlement' });

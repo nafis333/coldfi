@@ -1,20 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGroupStore } from '../../stores/groupStore';
-import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
+import type { GroupSummary } from '../../lib/groupSync';
 import CreateGroupModal from '../../components/groups/CreateGroupModal';
 import JoinGroupModal from '../../components/groups/JoinGroupModal';
 
-interface GroupSummary {
-  id: string;
-  name: string;
-  memberCount: number;
-  yourBalance: number;
-}
-
 function GroupCard({ group, onSelect }: { group: GroupSummary; onSelect: () => void }) {
-  const defaultCurrency = useAuthStore((s) => s.defaultCurrency);
+  const currency = group.defaultCurrency;
   return (
     <button
       onClick={onSelect}
@@ -33,7 +26,7 @@ function GroupCard({ group, onSelect }: { group: GroupSummary; onSelect: () => v
       </div>
       <div className="ml-3 text-right">
         <p className={`text-base font-bold ${group.yourBalance >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-500 dark:text-danger-400'}`}>
-          {group.yourBalance >= 0 ? '+' : ''}{formatCurrency(Math.abs(group.yourBalance), defaultCurrency)}
+          {group.yourBalance >= 0 ? '+' : ''}{formatCurrency(Math.abs(group.yourBalance), currency)}
         </p>
       </div>
     </button>
@@ -43,7 +36,6 @@ function GroupCard({ group, onSelect }: { group: GroupSummary; onSelect: () => v
 export default function GroupsPage() {
   const navigate = useNavigate();
   const { groups, fetchGroups, isLoading } = useGroupStore();
-  const defaultCurrency = useAuthStore((s) => s.defaultCurrency);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 

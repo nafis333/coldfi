@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGroupStore } from '../../stores/groupStore';
 import { useGroupExpenseStore } from '../../stores/groupExpenseStore';
@@ -34,21 +34,71 @@ function validateItem(item: ItemRow, membersCount: number): string {
 }
 
 export default function GroupExpenseForm() {
-  const { id: groupId } = useParams<{ id: string }>();
+  const { id: groupId, expenseId } = useParams<{ id: string; expenseId?: string }>();
   const navigate = useNavigate();
   const { currentGroup } = useGroupStore();
-  const { createGroupExpense } = useGroupExpenseStore();
+  const { createGroupExpense, updateGroupExpense } = useGroupExpenseStore();
 
   const members = currentGroup?.members ?? [];
+  const memberIds = members.map((m) => m.userId);
+  const isEditing = !!expenseId;
+
+  const existingExpense = useMemo(() => {
+    if (!expenseId || !currentGroup) return undefined;
+    return currentGroup.expenses.find((e) => e.id === expenseId);
+  }, [expenseId, currentGroup]);
 
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
-  const [payerId, setPayerId] = useState(members.length > 0 ? members[0]!.userId : '');
+  const [payerId, setPayerId] = useState('');
 
   const [items, setItems] = useState<ItemRow[]>([]);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      if (members.length > 0 && !payerId) setPayerId(members[0]!.userId);
+      return;
+    }
+    if (!existingExpense) return;
+    setDescription(existingExpense.description);
+    setCategory(existingExpense.category);
+    setPayerId(existingExpense.payerId);
+    if (existingExpense.itemized && existingExpense.itemized.length > 0) {
+      setItems(existingExpense.itemized.map((i) => {
+        const splitValues: Record<string, string> = {};
+        if (i.splitValues) for (const [k, v] of Object.entries(i.splitValues)) splitValues[k] = String(v);
+        else if (i.splitMode && i.splitMode !== 'equal' && i.assignedTo) {
+          const defaultVal = i.splitMode === 'percentage' ? (100 / i.assignedTo.length).toFixed(1) : (i.amount / i.assignedTo.length).toFixed(2);
+          for (const pid of i.assignedTo) splitValues[pid] = defaultVal;
+        }
+        return {
+          id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name: i.name,
+          amount: String(i.amount),
+          participants: i.assignedTo || [...memberIds],
+          splitMode: i.splitMode || 'equal',
+          splitValues,
+          selected: false,
+          validationError: '',
+        };
+      }));
+    } else {
+      const itemAmount = existingExpense.amount;
+      setItems([{
+        id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: '',
+        amount: String(itemAmount),
+        participants: [...memberIds],
+        splitMode: 'equal',
+        splitValues: {},
+        selected: false,
+        validationError: '',
+      }]);
+    }
+  }, [expenseId, existingExpense, members, isEditing, memberIds, payerId]);
 
   const totalAmount = useMemo(() =>
     items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0),
@@ -215,17 +265,24 @@ export default function GroupExpenseForm() {
         return { name: i.name, amount: parseFloat(i.amount) || 0, assignedTo: i.participants, splitMode: i.splitMode, splitValues: i.splitMode !== 'equal' ? splitValues : undefined };
       });
 
-      await createGroupExpense(groupId!, {
-        amount: total, description: description.trim(), category, payerId,
-        splits: finalSplits, itemized: itemizedData, splitMode: EngineSplitMode.RATIO,
-      });
+      if (isEditing && expenseId) {
+        await updateGroupExpense(groupId!, expenseId, {
+          amount: total, description: description.trim(), category, payerId,
+          splits: finalSplits, itemized: itemizedData,
+        });
+      } else {
+        await createGroupExpense(groupId!, {
+          amount: total, description: description.trim(), category, payerId,
+          splits: finalSplits, itemized: itemizedData, splitMode: EngineSplitMode.RATIO,
+        });
+      }
       navigate(`/groups/${groupId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create expense');
+      setError(err instanceof Error ? err.message : `Failed to ${isEditing ? 'update' : 'create'} expense`);
     } finally {
       setSubmitting(false);
     }
-  }, [description, category, payerId, items, createGroupExpense, groupId, navigate, members]);
+  }, [description, category, payerId, items, createGroupExpense, updateGroupExpense, groupId, navigate, members, isEditing, expenseId]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -235,7 +292,7 @@ export default function GroupExpenseForm() {
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white">Add Group Expense</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white">{isEditing ? 'Edit Group Expense' : 'Add Group Expense'}</h1>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">{currentGroup?.name}</p>
           </div>
         </div>
@@ -300,8 +357,8 @@ export default function GroupExpenseForm() {
         <div className="flex items-center gap-3 pt-2">
           <button type="submit" disabled={submitting || items.length === 0} className="btn-primary">
             {submitting ? (
-              <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Creating...</span>
-            ) : 'Create Expense'}
+              <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> {isEditing ? 'Updating...' : 'Creating...'}</span>
+            ) : isEditing ? 'Update Expense' : 'Create Expense'}
           </button>
           <button type="button" onClick={() => navigate(`/groups/${groupId}`)} className="btn-ghost">Cancel</button>
         </div>

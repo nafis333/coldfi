@@ -12,9 +12,10 @@ import {
   migrateGroupBlob,
 } from '../lib/groupSync';
 import { decryptData } from '../lib/crypto';
-import { SplitMode } from '@coldfi/shared';
+import { SplitMode, GroupLogEventType } from '@coldfi/shared';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
+import { useLogStore } from './logStore';
 
 interface GroupExpenseState {
   groupExpensesCache: Record<string, { name: string; expenses: GroupExpenseData[]; currency: string }>;
@@ -22,6 +23,8 @@ interface GroupExpenseState {
   error: string | null;
 
   createGroupExpense: (groupId: string, data: GroupExpenseInput) => Promise<void>;
+  deleteGroupExpense: (groupId: string, expenseId: string) => Promise<void>;
+  updateGroupExpense: (groupId: string, expenseId: string, data: Partial<GroupExpenseInput>) => Promise<void>;
   fetchAllGroupExpenses: () => Promise<void>;
   clearError: () => void;
 }
@@ -92,6 +95,8 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
 
       let created = false;
       let lastError: Error | null = null;
+      let latestDisplayId = '';
+      let latestExpenseId = '';
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const syncRes = await apiClient(`/api/group/${groupId}/sync`);
@@ -115,6 +120,8 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
           if (groupData.expenses.some((e) => e.id === expenseId)) {
             throw new Error('Expense ID collision — please retry');
           }
+          latestDisplayId = displayId;
+          latestExpenseId = expenseId;
           groupData.expenses.push({
             ...data,
             date: now.split('T')[0],
@@ -156,13 +163,91 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       if (!created) throw lastError || new Error('Failed to create expense after retries');
       set({ isLoading: false });
       useGroupStore.getState().fetchGroupById(groupId).catch((err) => { silentCatch('groupExpenseStore.refreshGroup', err); });
-      createGroupNotification('expense_added', 'Expense Added', `New expense of ${data.amount} ${defaultCurrency}`, groupId);
+      const gExpNotificationRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
+      createGroupNotification('expense_added', 'Expense Added', `New expense of ${data.amount} ${defaultCurrency}`, groupId, undefined, gExpNotificationRecipients);
+      const actorId = useAuthStore.getState().userId || '';
+      const actorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.EXPENSE_ADDED,
+        actorId,
+        actorName,
+        action: `Added expense: ${data.description}`,
+        actionType: 'expense',
+        details: `${data.amount} ${defaultCurrency} via ${shortName}`,
+        targetId: latestExpenseId,
+        metadata: { amount: data.amount, description: data.description, category: data.category },
+      });
     } catch (error) {
       set({
         isLoading: false,
         error: error instanceof Error ? error.message : 'Failed to create expense',
       });
       throw error;
+    }
+  },
+
+  deleteGroupExpense: async (groupId: string, expenseId: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    const gk = getGroupKey(groupId);
+    if (!gk) throw new Error('Group key not available');
+    set({ isLoading: true, error: null });
+    try {
+      let deletedDesc = '';
+      await modifySyncBlob(groupId, gk, (groupData) => {
+        const found = groupData.expenses.find((e) => e.id === expenseId);
+        if (found) deletedDesc = found.description;
+        groupData.expenses = groupData.expenses.filter((e) => e.id !== expenseId);
+      });
+      const { useGroupStore } = await import('./groupStore');
+      await useGroupStore.getState().fetchGroupById(groupId);
+      set({ isLoading: false });
+      const delActorId = useAuthStore.getState().userId || '';
+      const delActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.EXPENSE_DELETED,
+        actorId: delActorId,
+        actorName: delActorName,
+        action: `Deleted expense: ${deletedDesc || expenseId}`,
+        actionType: 'expense',
+        details: `Deleted expense ${expenseId}`,
+        targetId: expenseId,
+      });
+    } catch (err) {
+      set({ isLoading: false, error: err instanceof Error ? err.message : 'Failed to delete expense' });
+      throw err;
+    }
+  },
+
+  updateGroupExpense: async (groupId: string, expenseId: string, data: Partial<GroupExpenseInput>) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    const gk = getGroupKey(groupId);
+    if (!gk) throw new Error('Group key not available');
+    set({ isLoading: true, error: null });
+    try {
+      let oldDesc = '';
+      await modifySyncBlob(groupId, gk, (groupData) => {
+        const idx = groupData.expenses.findIndex((e) => e.id === expenseId);
+        if (idx === -1) throw new Error('Expense not found');
+        oldDesc = groupData.expenses[idx]!.description;
+        groupData.expenses[idx] = { ...groupData.expenses[idx], ...data, updatedAt: new Date().toISOString() };
+      });
+      const { useGroupStore } = await import('./groupStore');
+      await useGroupStore.getState().fetchGroupById(groupId);
+      set({ isLoading: false });
+      const updActorId = useAuthStore.getState().userId || '';
+      const updActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.EXPENSE_EDITED,
+        actorId: updActorId,
+        actorName: updActorName,
+        action: `Edited expense: ${oldDesc || expenseId}`,
+        actionType: 'expense',
+        details: `Updated expense ${expenseId}`,
+        targetId: expenseId,
+      });
+    } catch (err) {
+      set({ isLoading: false, error: err instanceof Error ? err.message : 'Failed to update expense' });
+      throw err;
     }
   },
 

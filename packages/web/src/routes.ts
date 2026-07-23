@@ -34,6 +34,8 @@ const NotificationPreferencesSettings = lazy(() => import('./pages/settings/Noti
 const ImportPage = lazy(() => import('./pages/import/ImportPage'));
 const GroupOverviewTab = lazy(() => import('./pages/groups/GroupOverviewTab'));
 const GroupInvoicesTab = lazy(() => import('./pages/groups/GroupInvoicesTab'));
+const GroupAnalyticsTab = lazy(() => import('./pages/groups/GroupAnalyticsTab'));
+const ExMembersTab = lazy(() => import('./pages/groups/ExMembersTab'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminMonitoringPage = lazy(() => import('./pages/admin/AdminMonitoringPage'));
@@ -70,6 +72,7 @@ export const routes = [
       { path: 'budgets', element: wrap(BudgetViewPage) },
       { path: 'groups', element: wrap(GroupListPage) },
       { path: 'groups/:id/expenses/new', element: wrap(GroupExpenseForm) },
+      { path: 'groups/:id/expenses/:expenseId/edit', element: wrap(GroupExpenseForm) },
       {
         path: 'groups/:id',
         element: wrap(GroupDetailPage),
@@ -77,6 +80,8 @@ export const routes = [
           { index: true, element: wrap(GroupOverviewTab) },
           { path: 'expenses', element: wrap(ExpensesTab) },
           { path: 'invoices', element: wrap(GroupInvoicesTab) },
+          { path: 'analytics', element: wrap(GroupAnalyticsTab) },
+          { path: 'ex-members', element: wrap(ExMembersTab) },
           { path: 'activity', element: wrap(ActivityLogTab) },
           { path: 'statement', element: wrap(PersonalLogTab) },
           { path: 'members', element: wrap(MembersTab) },

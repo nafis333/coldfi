@@ -4,6 +4,8 @@ import { apiClient } from '../lib/apiClient';
 import { encryptData, decryptData } from '../lib/crypto';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
+import { useLogStore } from './logStore';
+import { GroupLogEventType } from '@coldfi/shared';
 import {
   computeNetBalances,
   migrateGroupBlob,
@@ -66,6 +68,7 @@ interface GroupState {
   revokeInvite: (groupId: string, inviteId: string) => Promise<void>;
   changePassphrase: (groupId: string, newPassphrase: string) => Promise<void>;
   updateGroupSettings: (groupId: string, settings: { name?: string; defaultCurrency?: string }) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<void>;
   addGroupCategory: (groupId: string, category: Pick<GroupCategory, 'name' | 'icon' | 'color'>) => Promise<void>;
   removeGroupCategory: (groupId: string, categoryId: string) => Promise<void>;
   addMemberFromSocket: (groupId: string, member: GroupMember) => void;
@@ -73,6 +76,48 @@ interface GroupState {
   updateGroupFromSocket: (group: GroupSummary) => void;
   incrementGroupDataVersion: (groupId: string) => void;
   clearError: () => void;
+}
+
+async function computeGroupBalance(groupId: string, userId: string): Promise<number | null> {
+  try {
+    let gk = getGroupKey(groupId);
+    if (!gk) {
+      const ppRes = await apiClient(`/api/group/${groupId}/passphrase`);
+      if (ppRes.ok) {
+        const ppData = await ppRes.json();
+        if (ppData.passphrase) gk = await cacheGroupKey(groupId, ppData.passphrase);
+      }
+    }
+    if (!gk) return null;
+
+    const syncRes = await apiClient(`/api/group/${groupId}/sync`);
+    if (!syncRes.ok || !gk) return null;
+    const syncData = await syncRes.json();
+    if (!syncData.encryptedBlob) return null;
+
+    const decrypted = await decryptData(gk, syncData.encryptedBlob);
+    const parsed: GroupSyncData = migrateGroupBlob(JSON.parse(decrypted)) as unknown as GroupSyncData;
+    const expenses = parsed.expenses || [];
+    const settlements = parsed.settlements || [];
+
+    const memberIdsSet = new Set<string>([userId]);
+    for (const exp of expenses) {
+      memberIdsSet.add(exp.payerId);
+      for (const s of exp.splits) memberIdsSet.add(s.userId);
+    }
+    for (const st of settlements) {
+      memberIdsSet.add(st.fromUserId);
+      memberIdsSet.add(st.toUserId);
+    }
+    const memberIds = Array.from(memberIdsSet);
+
+    const engineExpenses = toEngineExpenses(expenses, groupId, 'USD');
+    const engineSettlements = toEngineSettlements(settlements);
+    const balances = computeNetBalances(engineExpenses, engineSettlements, memberIds);
+    return balances.find((b) => b.userId === userId)?.net ?? 0;
+  } catch {
+    return null;
+  }
 }
 
 export const useGroupStore = create<GroupState>((set) => ({
@@ -96,6 +141,20 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       const data = await res.json();
       set({ groups: data.groups, isLoading: false });
+
+      // Lazy-compute balances for each group in the background
+      const currentUserId = useAuthStore.getState().userId || '';
+      for (const g of data.groups as GroupSummary[]) {
+        computeGroupBalance(g.id, currentUserId).then((balance) => {
+          if (balance !== null) {
+            set((state) => ({
+              groups: state.groups.map((grp) =>
+                grp.id === g.id ? { ...grp, yourBalance: balance } : grp
+              ),
+            }));
+          }
+        }).catch(() => {});
+      }
     } catch (error) {
       set({
         isLoading: false,
@@ -127,7 +186,16 @@ export const useGroupStore = create<GroupState>((set) => ({
       if (syncRes.ok) {
         const syncData = await syncRes.json();
         if (syncData.encryptedBlob) {
-          const gk = getGroupKey(id);
+          let gk = getGroupKey(id);
+          if (!gk) {
+            try {
+              const ppRes = await apiClient(`/api/group/${id}/passphrase`);
+              if (ppRes.ok) {
+                const ppData = await ppRes.json();
+                if (ppData.passphrase) gk = await cacheGroupKey(id, ppData.passphrase);
+              }
+            } catch { silentCatch('groupStore.passphraseFetch', null); }
+          }
           if (gk) {
             try {
               const decrypted = await decryptData(gk, syncData.encryptedBlob);
@@ -135,7 +203,23 @@ export const useGroupStore = create<GroupState>((set) => ({
               settlements = parsed.settlements || [];
               expenses = parsed.expenses || [];
               groupCategories = parsed.categories || [];
-            } catch (err) { silentCatch('groupStore.blobDecrypt', err); }
+            } catch (err) {
+              // Try fetching fresh passphrase — key may be stale after rotation
+              try {
+                const ppRes = await apiClient(`/api/group/${id}/passphrase`);
+                if (ppRes.ok) {
+                  const ppData = await ppRes.json();
+                  if (ppData.passphrase) {
+                    const newKey = await cacheGroupKey(id, ppData.passphrase);
+                    const decrypted = await decryptData(newKey, syncData.encryptedBlob);
+                    const parsed: any = migrateGroupBlob(JSON.parse(decrypted));
+                    settlements = parsed.settlements || [];
+                    expenses = parsed.expenses || [];
+                    groupCategories = parsed.categories || [];
+                  }
+                }
+              } catch { silentCatch('groupStore.blobDecrypt', err); }
+            }
           }
         }
       }
@@ -194,7 +278,7 @@ export const useGroupStore = create<GroupState>((set) => ({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, passphraseVerifier, salt, defaultCurrency }),
+        body: JSON.stringify({ name, passphraseVerifier, salt, passphrase, defaultCurrency }),
       });
 
       if (!res.ok) {
@@ -206,6 +290,16 @@ export const useGroupStore = create<GroupState>((set) => ({
       set({ isLoading: false });
 
       await cacheGroupKey(data.groupId, passphrase);
+
+      const cgActorId = useAuthStore.getState().userId || '';
+      const cgActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(data.groupId, {
+        eventType: GroupLogEventType.MEMBER_JOINED,
+        actorId: cgActorId,
+        actorName: cgActorName,
+        action: `Created group: ${name}`,
+        actionType: 'settings', details: 'Group created',
+      });
 
       const state = useGroupStore.getState();
       await state.fetchGroups();
@@ -253,6 +347,16 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       await cacheGroupKey(data.groupId, passphrase);
 
+      const jgActorId = useAuthStore.getState().userId || '';
+      const jgActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(data.groupId, {
+        eventType: GroupLogEventType.MEMBER_JOINED,
+        actorId: jgActorId,
+        actorName: jgActorName,
+        action: `Joined group via invite`,
+        actionType: 'member', details: `Joined group ${data.groupId}`,
+      });
+
       const state = useGroupStore.getState();
       await state.fetchGroups();
     } catch (error) {
@@ -270,6 +374,23 @@ export const useGroupStore = create<GroupState>((set) => ({
     set({ isLoading: true, error: null });
 
     try {
+      // Decrypt blob with old key before leaving
+      const gk = getGroupKey(groupId);
+      let decrypted: string | null = null;
+      let vectorClock: Record<string, number> = {};
+      if (gk) {
+        try {
+          const syncRes = await apiClient(`/api/group/${groupId}/sync`);
+          if (syncRes.ok) {
+            const syncData = await syncRes.json();
+            vectorClock = syncData.vectorClock || {};
+            if (syncData.encryptedBlob) {
+              decrypted = await decryptData(gk, syncData.encryptedBlob);
+            }
+          }
+        } catch { /* blob not accessible */ }
+      }
+
       const res = await apiClient(`/api/group/${groupId}/leave`, {
         method: 'POST',
       });
@@ -279,7 +400,42 @@ export const useGroupStore = create<GroupState>((set) => ({
         throw new Error(data.error || 'Failed to leave group');
       }
 
-      set({ isLoading: false });
+      const result = await res.json();
+
+      if (result.newPassphrase) {
+        const newKey = await cacheGroupKey(groupId, result.newPassphrase);
+        if (decrypted) {
+          const reEncrypted = await encryptData(newKey, decrypted);
+          let saved = false;
+          for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+            const saveRes = await apiClient(`/api/group/${groupId}/sync`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ encryptedBlob: reEncrypted, vectorClock }),
+            });
+            if (saveRes.ok) {
+              saved = true;
+            } else if (saveRes.status === 409 && attempt < 2) {
+              const refresh = await apiClient(`/api/group/${groupId}/sync`);
+              if (refresh.ok) {
+                const sd = await refresh.json();
+                vectorClock = sd.vectorClock || {};
+              }
+            }
+          }
+        }
+      }
+
+      set({ isLoading: false, currentGroup: null });
+
+      const lgActorId = useAuthStore.getState().userId || '';
+      const lgActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.MEMBER_LEFT,
+        actorId: lgActorId,
+        actorName: lgActorName,
+        action: `Left group`,
+        actionType: 'member', details: 'Left group voluntarily',
+      });
 
       const state = useGroupStore.getState();
       await state.fetchGroups();
@@ -294,8 +450,64 @@ export const useGroupStore = create<GroupState>((set) => ({
 
   removeMember: async (groupId: string, targetUserId: string) => {
     if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+
+    // Decrypt blob with old key before removal
+    const gk = getGroupKey(groupId);
+    let decrypted: string | null = null;
+    let vectorClock: Record<string, number> = {};
+    if (gk) {
+      try {
+        const syncRes = await apiClient(`/api/group/${groupId}/sync`);
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          vectorClock = syncData.vectorClock || {};
+          if (syncData.encryptedBlob) {
+            decrypted = await decryptData(gk, syncData.encryptedBlob);
+          }
+        }
+      } catch { /* blob not accessible */ }
+    }
+
     const res = await apiClient(`/api/group/${groupId}/members/${targetUserId}`, { method: 'DELETE' });
     if (!res.ok) { const data = await res.json(); throw new Error(data.message || 'Failed to remove member'); }
+
+    const result = await res.json();
+
+    // Re-encrypt blob with new passphrase-derived key (retry loop)
+    if (result.newPassphrase) {
+      const newKey = await cacheGroupKey(groupId, result.newPassphrase);
+      if (decrypted) {
+        const reEncrypted = await encryptData(newKey, decrypted);
+        let saved = false;
+        for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+          const saveRes = await apiClient(`/api/group/${groupId}/sync`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ encryptedBlob: reEncrypted, vectorClock }),
+          });
+          if (saveRes.ok) {
+            saved = true;
+          } else if (saveRes.status === 409 && attempt < 2) {
+            const refresh = await apiClient(`/api/group/${groupId}/sync`);
+            if (refresh.ok) {
+              const sd = await refresh.json();
+              vectorClock = sd.vectorClock || {};
+            }
+          }
+        }
+      }
+    }
+
+    const rmActorId = useAuthStore.getState().userId || '';
+    const rmActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+    useLogStore.getState().addLogEntry(groupId, {
+      eventType: GroupLogEventType.MEMBER_REMOVED,
+      actorId: rmActorId,
+      actorName: rmActorName,
+      action: `Removed member: ${targetUserId}`,
+      actionType: 'member', details: `Removed user ${targetUserId} from group`,
+      targetId: targetUserId,
+    });
+
     await useGroupStore.getState().fetchGroupById(groupId);
   },
 
@@ -307,6 +519,17 @@ export const useGroupStore = create<GroupState>((set) => ({
       body: JSON.stringify({ role }),
     });
     if (!res.ok) { const data = await res.json(); throw new Error(data.message || 'Failed to update role'); }
+    const urActorId = useAuthStore.getState().userId || '';
+    const urActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+    useLogStore.getState().addLogEntry(groupId, {
+      eventType: GroupLogEventType.ADMIN_ACTION,
+      actorId: urActorId,
+      actorName: urActorName,
+      action: `Changed role of ${targetUserId} to ${role}`,
+      actionType: 'settings', details: `Updated member ${targetUserId} role to ${role}`,
+      targetId: targetUserId,
+      metadata: { role },
+    });
     await useGroupStore.getState().fetchGroupById(groupId);
   },
 
@@ -360,7 +583,7 @@ export const useGroupStore = create<GroupState>((set) => ({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ newPassphraseVerifier, newSalt: salt }),
+        body: JSON.stringify({ newPassphraseVerifier, newSalt: salt, newPassphrase }),
       });
 
       if (!res.ok) throw new Error('Failed to change passphrase');
@@ -389,6 +612,26 @@ export const useGroupStore = create<GroupState>((set) => ({
     }
   },
 
+  deleteGroup: async (groupId: string) => {
+    if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
+    set({ isLoading: true, error: null });
+    try {
+      const res = await apiClient(`/api/group/${groupId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to delete group');
+      }
+      set({ currentGroup: null, isLoading: false });
+      const state = useGroupStore.getState();
+      await state.fetchGroups();
+    } catch (error) {
+      set({ isLoading: false, error: error instanceof Error ? error.message : 'Failed to delete group' });
+      throw error;
+    }
+  },
+
   addGroupCategory: async (groupId, category) => {
     try {
       if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
@@ -403,6 +646,17 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       await modifySyncBlob(groupId, gk, (groupData) => {
         groupData.categories.push(newCat);
+      });
+
+      const caActorId = useAuthStore.getState().userId || '';
+      const caActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.CATEGORY_ADDED,
+        actorId: caActorId,
+        actorName: caActorName,
+        action: `Added category: ${category.name}`,
+        actionType: 'settings', details: `Added category "${category.name}"`,
+        metadata: { categoryName: category.name },
       });
 
       await useGroupStore.getState().fetchGroupById(groupId);
@@ -421,6 +675,16 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       await modifySyncBlob(groupId, gk, (groupData) => {
         groupData.categories = groupData.categories.filter((c) => c.id !== categoryId);
+      });
+
+      const cdActorId = useAuthStore.getState().userId || '';
+      const cdActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
+      useLogStore.getState().addLogEntry(groupId, {
+        eventType: GroupLogEventType.CATEGORY_DELETED,
+        actorId: cdActorId,
+        actorName: cdActorName,
+        action: `Removed category`,
+        actionType: 'settings', details: `Removed category ${categoryId}`,
       });
 
       await useGroupStore.getState().fetchGroupById(groupId);

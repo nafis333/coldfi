@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
 import { useAuthStore } from '../../stores/authStore';
+import { apiClient } from '../../lib/apiClient';
+import { getGroupKey, cacheGroupKey } from '../../lib/groupSync';
+import { useGroupExpenseStore } from '../../stores/groupExpenseStore';
+import { encryptData, decryptData } from '../../lib/crypto';
+import { migrateGroupBlob } from '../../lib/groupSync';
 
 interface InviteCode {
   id: string;
@@ -14,27 +19,58 @@ interface InviteCode {
   created_at: string;
 }
 
+function generatePassphrase(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let result = '';
+  const arr = new Uint8Array(24);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < 24; i++) result += chars[arr[i]! % chars.length];
+  return result.match(/.{1,4}/g)!.join('-');
+}
+
 export default function GroupSettingsTab() {
+  const navigate = useNavigate();
   const { groupId } = useOutletContext<{ groupId: string }>();
-  const { currentGroup, generateInvite, fetchInvites, revokeInvite, changePassphrase, updateGroupSettings } = useGroupStore();
+  const { currentGroup, generateInvite, fetchInvites, revokeInvite, updateGroupSettings, fetchGroupById, deleteGroup } = useGroupStore();
   const [invites, setInvites] = useState<InviteCode[]>([]);
-  const [newPassphrase, setNewPassphrase] = useState('');
-  const [confirmPassphrase, setConfirmPassphrase] = useState('');
   const [groupName, setGroupName] = useState(currentGroup?.name || '');
   const [currency, setCurrency] = useState(currentGroup?.defaultCurrency || useAuthStore.getState().defaultCurrency);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [showPassphrase, setShowPassphrase] = useState(false);
+  const [passphraseLoading, setPassphraseLoading] = useState(false);
 
   useEffect(() => {
     loadInvites();
+    loadPassphrase();
   }, [groupId]);
+
+  useEffect(() => {
+    if (currentGroup) {
+      setGroupName(currentGroup.name);
+      setCurrency(currentGroup.defaultCurrency || useAuthStore.getState().defaultCurrency);
+    }
+  }, [currentGroup]);
 
   async function loadInvites() {
     try {
       const data = await fetchInvites(groupId);
       setInvites(data.invites);
     } catch (err) { silentCatch('GroupSettingsTab.loadInvites', err); }
+  }
+
+  async function loadPassphrase() {
+    setPassphraseLoading(true);
+    try {
+      const res = await apiClient(`/api/group/${groupId}/passphrase`);
+      if (res.ok) {
+        const data = await res.json();
+        setPassphrase(data.passphrase || '');
+      }
+    } catch (err) { silentCatch('GroupSettingsTab.loadPassphrase', err); }
+    finally { setPassphraseLoading(false); }
   }
 
   async function handleGenerate() {
@@ -59,19 +95,50 @@ export default function GroupSettingsTab() {
     }
   }
 
-  async function handleChangePassphrase(e: React.FormEvent) {
-    e.preventDefault();
-    if (newPassphrase.length < 8) { setErr('Passphrase must be at least 8 characters'); return; }
-    if (newPassphrase !== confirmPassphrase) { setErr('Passphrases do not match'); return; }
+  async function handleRotatePassphrase() {
+    if (!window.confirm('Rotating the passphrase will re-encrypt group data. All members will need the new passphrase. Continue?')) return;
     try {
       setErr('');
-      setLoading('passphrase');
-      await changePassphrase(groupId, newPassphrase);
-      setMsg('Passphrase changed successfully');
-      setNewPassphrase('');
-      setConfirmPassphrase('');
+      setLoading('rotate');
+      const gk = getGroupKey(groupId);
+      if (!gk) throw new Error('Group key not available');
+
+      const syncRes = await apiClient(`/api/group/${groupId}/sync`);
+      if (!syncRes.ok) throw new Error('Failed to fetch group data');
+      const syncData = await syncRes.json();
+      const vectorClock = syncData.vectorClock || {};
+
+      let decryptedBlob: string | null = null;
+      if (syncData.encryptedBlob) {
+        decryptedBlob = await decryptData(gk, syncData.encryptedBlob);
+      }
+
+      const newPassphrase = generatePassphrase();
+      const { hashPassphrase, generateSalt } = await import('../../lib/groupSync');
+      const salt = generateSalt();
+      const verifier = await hashPassphrase(newPassphrase, salt);
+
+      const putRes = await apiClient(`/api/group/${groupId}/passphrase`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassphraseVerifier: verifier, newSalt: salt }),
+      });
+      if (!putRes.ok) throw new Error('Failed to update passphrase');
+
+      const newKey = await cacheGroupKey(groupId, newPassphrase);
+      if (decryptedBlob) {
+        const reEncrypted = await encryptData(newKey, decryptedBlob);
+        const saveRes = await apiClient(`/api/group/${groupId}/sync`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encryptedBlob: reEncrypted, vectorClock }),
+        });
+        if (!saveRes.ok) throw new Error('Failed to save re-encrypted blob');
+      }
+
+      setPassphrase(newPassphrase);
+      setShowPassphrase(true);
+      setMsg('Passphrase rotated successfully. Share the new passphrase with group members.');
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed');
+      setErr(e instanceof Error ? e.message : 'Failed to rotate passphrase');
     } finally {
       setLoading('');
     }
@@ -112,6 +179,42 @@ export default function GroupSettingsTab() {
         </div>
       )}
 
+      {/* Group Passphrase */}
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-1">Group Passphrase</h3>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+          Share this passphrase with new members so they can join. It auto-rotates when someone leaves.
+        </p>
+
+        {passphraseLoading ? (
+          <p className="text-sm text-neutral-400">Loading...</p>
+        ) : (
+          <>
+            {showPassphrase ? (
+              <div className="flex items-center gap-3 mb-4">
+                <code className="text-lg font-mono font-bold text-primary-600 dark:text-primary-400 select-all tracking-wider bg-neutral-50 dark:bg-neutral-700/30 px-4 py-2 rounded-lg">
+                  {passphrase}
+                </code>
+                <button onClick={() => copyToClipboard(passphrase)} className="btn-ghost text-sm py-1 px-3">Copy</button>
+                <button onClick={() => setShowPassphrase(false)} className="btn-ghost text-sm py-1 px-3">Hide</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 mb-4">
+                <button onClick={() => setShowPassphrase(true)} className="btn-secondary text-sm">Show Passphrase</button>
+              </div>
+            )}
+
+            <button
+              onClick={handleRotatePassphrase}
+              disabled={loading === 'rotate'}
+              className="btn-ghost text-sm text-warning-600 dark:text-warning-400 border border-warning-200 dark:border-warning-700 hover:bg-warning-50 dark:hover:bg-warning-900/20"
+            >
+              {loading === 'rotate' ? 'Rotating...' : 'Rotate Passphrase'}
+            </button>
+          </>
+        )}
+      </div>
+
       {/* Invite Codes */}
       <div className="card p-6">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Invite Codes</h3>
@@ -148,37 +251,6 @@ export default function GroupSettingsTab() {
         </button>
       </div>
 
-      {/* Change Passphrase */}
-      <div className="card p-6">
-        <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Change Passphrase</h3>
-        <form onSubmit={handleChangePassphrase} className="space-y-4 max-w-sm">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">New Passphrase</label>
-            <input
-              type="password"
-              value={newPassphrase}
-              onChange={(e) => setNewPassphrase(e.target.value)}
-              className="input-field"
-              placeholder="Min 8 characters"
-              minLength={8}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Confirm Passphrase</label>
-            <input
-              type="password"
-              value={confirmPassphrase}
-              onChange={(e) => setConfirmPassphrase(e.target.value)}
-              className="input-field"
-              placeholder="Re-enter passphrase"
-            />
-          </div>
-          <button type="submit" disabled={loading === 'passphrase'} className="btn-primary">
-            {loading === 'passphrase' ? 'Updating...' : 'Change Passphrase'}
-          </button>
-        </form>
-      </div>
-
       {/* Group Settings */}
       <div className="card p-6">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Group Settings</h3>
@@ -208,6 +280,31 @@ export default function GroupSettingsTab() {
           </button>
         </form>
       </div>
+
+      {/* Danger Zone */}
+      {currentGroup?.members.find(m => m.userId === useAuthStore.getState().userId)?.role === 'admin' && (
+        <div className="card p-6 border border-danger-200 dark:border-danger-700">
+          <h3 className="text-lg font-semibold text-danger-600 dark:text-danger-400 mb-2">Danger Zone</h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+            Deleting this group is irreversible. All data will be permanently removed.
+          </p>
+          <button
+            onClick={async () => {
+              if (!window.confirm('Are you sure you want to delete this group? This action cannot be undone.')) return;
+              if (!window.confirm('FINAL WARNING: All group data including expenses, settlements, and member records will be permanently deleted. Proceed?')) return;
+              try {
+                await deleteGroup(groupId);
+                navigate('/groups');
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : 'Failed to delete group');
+              }
+            }}
+            className="btn-danger text-sm"
+          >
+            Delete Group
+          </button>
+        </div>
+      )}
     </div>
   );
 }

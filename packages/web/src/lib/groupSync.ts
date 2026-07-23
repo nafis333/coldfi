@@ -10,6 +10,7 @@ export interface GroupSummary {
   id: string;
   name: string;
   memberCount: number;
+  defaultCurrency: string;
   yourBalance: number;
 }
 
@@ -70,6 +71,7 @@ export interface GroupExpenseData {
   itemized?: ItemizedEntry[];
   displayId?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface SettlementInput {
@@ -108,10 +110,22 @@ export interface GroupCategory {
   color: string;
 }
 
+export interface LogEntryStored {
+  id: string;
+  timestamp: string;
+  actorName: string;
+  action: string;
+  actionType: 'expense' | 'settlement' | 'member' | 'settings';
+  details: string;
+  hash: string;
+  previousHash: string;
+}
+
 export interface GroupSyncData {
   expenses: GroupExpenseData[];
   settlements: SettlementData[];
   categories: GroupCategory[];
+  logs?: LogEntryStored[];
 }
 
 const groupKeyCache = new Map<string, CryptoKey>();
@@ -175,6 +189,7 @@ export async function modifySyncBlob(
         expenses: [],
         settlements: [],
         categories: [],
+        logs: [],
       };
       if (syncData.encryptedBlob) {
         const decrypted = await decryptData(groupKey, syncData.encryptedBlob);
@@ -183,6 +198,7 @@ export async function modifySyncBlob(
           expenses: parsed.expenses || [],
           settlements: parsed.settlements || [],
           categories: parsed.categories || [],
+          logs: parsed.logs || [],
         };
       }
 
@@ -219,13 +235,13 @@ export async function modifySyncBlob(
   throw lastError || new Error('Failed to modify sync data after retries');
 }
 
-export async function createGroupNotification(type: string, title: string, body: string, groupId: string, settlementId?: string) {
+export async function createGroupNotification(type: string, title: string, body: string, groupId: string, settlementId?: string, recipientIds?: string[]) {
   if (!useAuthStore.getState().accessToken) return;
   try {
     await apiClient('/api/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, title, body, groupId, settlementId }),
+      body: JSON.stringify({ type, title, body, groupId, settlementId, recipientIds }),
     });
   } catch (err) { silentCatch('groupSync.notification', err); }
 }

@@ -116,9 +116,6 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const { type, title, body, groupId, expenseId, settlementId, recipientIds } = request.body as any;
 
     if (Array.isArray(recipientIds) && recipientIds.length > 0) {
-      if (!recipientIds.every((id: string) => id === userId) && request.user.role !== 'owner') {
-        throw new ForbiddenError('Only admins may send notifications to other users');
-      }
       await createNotificationForMultipleUsers(recipientIds, { type, title, body, groupId, expenseId, settlementId });
     } else {
       await createNotification({ userId, type, title, body, groupId, expenseId, settlementId });
