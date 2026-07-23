@@ -72,9 +72,9 @@ export default function ItemRowEditor({
       {participantDropdown && (
         <div className="mb-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-2 max-h-40 overflow-y-auto shadow-sm animate-fade-in">
           <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-neutral-100 dark:border-neutral-700 mb-1 pb-2">
-            <button type="button" onClick={() => onToggleAllParticipants(item.id, true)} className="text-xs font-medium text-primary-600 hover:text-primary-700">Select All</button>
+            <button type="button" onClick={() => onToggleAllParticipants(item.id, true)} className="text-xs font-medium text-primary-600 hover:text-primary-700">All</button>
             <span className="text-neutral-300 dark:text-neutral-600">·</span>
-            <button type="button" onClick={() => onToggleAllParticipants(item.id, false)} className="text-xs text-neutral-500 hover:text-neutral-700">Clear</button>
+            <button type="button" onClick={() => onToggleAllParticipants(item.id, false)} className="text-xs text-neutral-500 hover:text-neutral-700">None</button>
           </div>
           {members.map((m) => (
             <label key={m.userId} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700/50 cursor-pointer transition-colors">
