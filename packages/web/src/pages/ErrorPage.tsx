@@ -37,7 +37,7 @@ export default function ErrorPage() {
   const navigate = useNavigate();
   const criticalError = useErrorStore((s) => s.criticalError);
   const clearCriticalError = useErrorStore((s) => s.clearCriticalError);
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
   const [error, setError] = useState<CriticalError | null>(criticalError);
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export default function ErrorPage() {
 
           <button
             onClick={() => setShowDetails(!showDetails)}
-            className="mb-4 flex w-full items-center justify-between rounded-xl bg-white/40 dark:bg-neutral-800/40 px-4 py-2.5 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+            className="mb-4 flex w-full items-center justify-between rounded-xl bg-neutral-200/60 dark:bg-neutral-700/60 px-4 py-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
           >
             <span>Technical Details</span>
             <svg className={`h-4 w-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -93,6 +93,8 @@ export default function ErrorPage() {
               <p className="mb-1 text-neutral-400">Type: <span className="text-cyan-400">{error.type}</span></p>
               <p className="mb-1 text-neutral-400">Category: <span className="text-cyan-400">{error.category}</span></p>
               <p className="mb-1 text-neutral-400">Time: <span className="text-cyan-400">{new Date(error.timestamp).toLocaleString()}</span></p>
+              <p className="mb-1 text-neutral-400">Message: <span className="text-yellow-400">{error.message}</span></p>
+              <p className="mb-1 text-neutral-400">URL: <span className="text-yellow-400">{error.detail}</span></p>
               {error.stack && (
                 <>
                   <p className="mb-1 mt-3 text-neutral-400">Stack:</p>
@@ -128,6 +130,21 @@ export default function ErrorPage() {
               Go Home
             </button>
           </div>
+          <button
+            onClick={(e) => {
+              const text = `Error: ${error.title}\nType: ${error.type}\nCategory: ${error.category}\nTime: ${error.timestamp}\nMessage: ${error.message}\nURL: ${error.detail}\nStack:\n${error.stack || 'N/A'}`;
+              navigator.clipboard.writeText(text).then(() => {
+                const el = document.createElement('div');
+                el.className = 'mt-3 text-xs text-center text-neutral-500 dark:text-neutral-400';
+                el.textContent = 'Copied to clipboard';
+                (e.target as HTMLElement)?.parentElement?.appendChild(el);
+                setTimeout(() => el.remove(), 2000);
+              }).catch(() => {});
+            }}
+            className="mt-3 w-full text-xs text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+          >
+            Copy Error Details
+          </button>
         </div>
       </div>
     </div>
