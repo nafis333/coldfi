@@ -82,16 +82,22 @@ async function computeGroupBalance(groupId: string, userId: string): Promise<num
   try {
     let gk = getGroupKey(groupId);
     if (!gk) {
-      const ppRes = await apiClient(`/api/group/${groupId}/passphrase`);
-      if (ppRes.ok) {
-        const ppData = await ppRes.json();
-        if (ppData.passphrase) gk = await cacheGroupKey(groupId, ppData.passphrase);
-      }
+      try {
+        const ppRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/group/${groupId}/passphrase`, {
+          headers: { 'Authorization': `Bearer ${useAuthStore.getState().accessToken || ''}` },
+        });
+        if (ppRes.ok) {
+          const ppData = await ppRes.json();
+          if (ppData.passphrase) gk = await cacheGroupKey(groupId, ppData.passphrase);
+        }
+      } catch { /* passphrase not available */ }
     }
     if (!gk) return null;
 
-    const syncRes = await apiClient(`/api/group/${groupId}/sync`);
-    if (!syncRes.ok || !gk) return null;
+    const syncRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/group/${groupId}/sync`, {
+      headers: { 'Authorization': `Bearer ${useAuthStore.getState().accessToken || ''}` },
+    });
+    if (!syncRes.ok) return null;
     const syncData = await syncRes.json();
     if (!syncData.encryptedBlob) return null;
 
