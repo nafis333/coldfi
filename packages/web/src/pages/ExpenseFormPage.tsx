@@ -187,55 +187,68 @@ export default function ExpenseFormPage() {
             </label>
             <button type="button" onClick={addItem} className="btn-ghost text-xs py-1 px-2">+ Add Item</button>
           </div>
-          <div className="space-y-2">
-            {items.map((item, idx) => (
-              <div key={item.id} className="flex items-start gap-2">
-                <div className="flex-1">
-                  <input
-                    type="text" placeholder="Item name"
-                    value={item.name}
-                    onChange={(e) => updateItem(item.id, 'name', e.target.value)}
-                    className={`input-field ${itemError(idx, 'name') ? 'border-danger-500' : ''}`}
-                  />
-                  {itemError(idx, 'name') && <p className="mt-0.5 text-xs text-danger-600">{itemError(idx, 'name')}</p>}
-                </div>
-                <div className="w-32 shrink-0">
-                  <div className="relative">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
-                      <span className="text-neutral-400 text-xs">{getCurrencySymbol(defaultCurrency)}</span>
-                    </div>
-                    <input
-                      type="number" step="0.01" min="0" placeholder="0.00"
-                      value={item.amount}
-                      onChange={(e) => updateItem(item.id, 'amount', e.target.value)}
-                      className={`input-field pl-6 ${itemError(idx, 'amount') ? 'border-danger-500' : ''}`}
-                    />
-                  </div>
-                  {itemError(idx, 'amount') && <p className="mt-0.5 text-xs text-danger-600">{itemError(idx, 'amount')}</p>}
-                </div>
-                <button
-                  type="button" onClick={() => removeItem(item.id)}
-                  className="mt-1.5 shrink-0 text-neutral-400 hover:text-danger-500 transition-colors"
-                  aria-label="Remove item"
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-            ))}
+          <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-700">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-neutral-50 dark:bg-neutral-800 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                  <th className="px-3 py-2 text-left">Name</th>
+                  <th className="px-3 py-2 text-right w-40">Amount</th>
+                  <th className="px-3 py-2 text-center w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-700">
+                {items.map((item, idx) => (
+                  <tr key={item.id} className="group hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors">
+                    <td className="px-3 py-1.5">
+                      <input
+                        type="text" placeholder="Item name"
+                        value={item.name}
+                        onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                        className={`w-full border-0 bg-transparent px-0 py-1.5 text-sm text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-0 ${itemError(idx, 'name') ? 'text-danger-600' : ''}`}
+                      />
+                      {itemError(idx, 'name') && <p className="text-xs text-danger-600">{itemError(idx, 'name')}</p>}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center">
+                          <span className="text-neutral-400 text-xs">{getCurrencySymbol(defaultCurrency)}</span>
+                        </div>
+                        <input
+                          type="number" step="0.01" min="0" placeholder="0.00"
+                          value={item.amount}
+                          onChange={(e) => updateItem(item.id, 'amount', e.target.value)}
+                          className={`w-full border-0 bg-transparent px-3.5 py-1.5 text-right text-sm text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-0 ${itemError(idx, 'amount') ? 'text-danger-600' : ''}`}
+                        />
+                      </div>
+                      {itemError(idx, 'amount') && <p className="text-xs text-danger-600 text-right">{itemError(idx, 'amount')}</p>}
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      <button
+                        type="button" onClick={() => removeItem(item.id)}
+                        className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-danger-500 transition-all"
+                        aria-label="Remove item"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-neutral-50 dark:bg-neutral-800">
+                  <td className="px-3 py-2.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">Total</td>
+                  <td className="px-3 py-2.5 text-right text-base font-bold text-neutral-900 dark:text-white">
+                    {getCurrencySymbol(defaultCurrency)}{totalAmount.toFixed(2)}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
           {errors.items && <p className="mt-1 text-xs text-danger-600">{errors.items}</p>}
         </div>
-
-        {items.some((i) => parseFloat(i.amount) > 0) && (
-          <div className="flex items-center justify-between rounded-lg bg-neutral-50 dark:bg-neutral-700/30 px-4 py-3">
-            <span className="text-sm text-neutral-500">Total</span>
-            <span className="text-xl font-bold text-neutral-900 dark:text-white">
-              {getCurrencySymbol(defaultCurrency)}{totalAmount.toFixed(2)}
-            </span>
-          </div>
-        )}
 
         <CategoryPicker
           value={form.categoryId}
