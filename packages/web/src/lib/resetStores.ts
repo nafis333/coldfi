@@ -1,4 +1,3 @@
-import { silentCatch } from './errorHandler';
 const resetFns: Set<() => void> = new Set();
 
 export function onLogout(fn: () => void): void {
@@ -7,6 +6,8 @@ export function onLogout(fn: () => void): void {
 
 export function resetAllStores(): void {
   for (const fn of resetFns) {
-    try { fn(); } catch (err) { silentCatch('resetStores.resetAll', err); }
+    try { fn(); } catch (err) {
+      console.error('resetStores.resetAll', err);
+    }
   }
 }
