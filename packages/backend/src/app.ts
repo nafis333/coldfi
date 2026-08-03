@@ -8,6 +8,7 @@ import jwt from '@fastify/jwt';
 import { config } from './config';
 import { AppError, AuthError, ValidationError } from './errors';
 import { captureError } from './services/errorCapture';
+import { assertUserNotRestricted } from './services/userRestrictions';
 import { requestMetrics } from './middleware/requestMetrics';
 import { ipBlocker } from './middleware/ipBlocker';
 import websocketPlugin from './plugins/websocket';
@@ -88,6 +89,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     } catch (err) {
       throw new AuthError('ERR_UNAUTHORIZED', 'Invalid or expired token');
     }
+    await assertUserNotRestricted(request.user.userId);
   });
 
   app.addHook('onRequest', ipBlocker);

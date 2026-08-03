@@ -61,21 +61,41 @@ export function detectSettlementOverlap(
   return warnings;
 }
 
+export function currencyBucket(currency?: string | null): string {
+  const c = (currency || '').trim().toUpperCase();
+  return c || 'default';
+}
+
 export function computeNetBalances(
   expenses: GroupExpense[],
   settlements: SettlementProposal[],
   memberIds: string[]
 ): DetailedBalance[] {
-  const pairwise: Record<string, Record<string, number>> = {};
+  // pairwise[currency][from][to] — debts are tracked per currency so that a
+  // settlement never clears debt in a different currency (S6).
+  const pairwise: Record<string, Record<string, Record<string, number>>> = {};
 
-  for (const id of memberIds) {
-    pairwise[id] = {};
-    for (const other of memberIds) {
-      if (other !== id) {
-        pairwise[id][other] = 0;
+  function initMemberPairs(currency: string) {
+    if (!pairwise[currency]) pairwise[currency] = {};
+    for (const id of memberIds) {
+      if (!pairwise[currency][id]) pairwise[currency][id] = {};
+      for (const other of memberIds) {
+        if (other !== id && pairwise[currency][id]![other] === undefined) {
+          pairwise[currency][id]![other] = 0;
+        }
       }
     }
   }
+
+  function bucketHasDebt(currency: string): boolean {
+    const pairs = pairwise[currency];
+    if (!pairs) return false;
+    return Object.values(pairs).some((owed) =>
+      Object.values(owed).some((amt) => amt > 0)
+    );
+  }
+
+  initMemberPairs('default');
 
   const expenseById = new Map(expenses.map((e) => [e.id, e]));
 
@@ -84,55 +104,73 @@ export function computeNetBalances(
     if (typeof expense.amount !== 'number' || isNaN(expense.amount) || expense.amount <= 0) continue;
 
     const paidBy = expense.paidBy;
-    if (!pairwise[paidBy]) continue;
+    if (!memberIds.includes(paidBy)) continue;
+
+    const currency = currencyBucket(expense.currency);
+    initMemberPairs(currency);
 
     for (const split of expense.splits) {
       if (split.isPaid) continue;
-      if (!pairwise[split.memberId]) continue;
+      if (!memberIds.includes(split.memberId)) continue;
 
       const amount = getSplitAmount(expense, split);
       if (amount <= 0) continue;
 
-      pairwise[split.memberId]![paidBy] =
-        (pairwise[split.memberId]![paidBy] || 0) + amount;
+      pairwise[currency]![split.memberId]![paidBy] =
+        (pairwise[currency]![split.memberId]![paidBy] || 0) + amount;
     }
   }
 
   for (const settlement of settlements) {
     if (settlement.status !== SettlementStatus.APPROVED) continue;
-    if (!pairwise[settlement.fromUserId] || !pairwise[settlement.toUserId]) continue;
+    if (!memberIds.includes(settlement.fromUserId) || !memberIds.includes(settlement.toUserId)) continue;
+
+    let currency = currencyBucket(settlement.currency);
+    // Legacy settlements carry no currency — apply them against the only
+    // currency that has outstanding debt when the default bucket is empty.
+    if (currency === 'default' && !bucketHasDebt('default')) {
+      const nonDefaultWithDebt = Object.keys(pairwise).filter(
+        (c) => c !== 'default' && bucketHasDebt(c)
+      );
+      if (nonDefaultWithDebt.length === 1) {
+        currency = nonDefaultWithDebt[0]!;
+      }
+    }
+    initMemberPairs(currency);
 
     const from = settlement.fromUserId;
     const to = settlement.toUserId;
     const amount = settlement.amount;
 
-    const currentDebt = pairwise[from]![to] || 0;
+    const currentDebt = pairwise[currency]![from]![to] || 0;
     const remaining = currentDebt - amount;
 
     if (remaining >= 0) {
-      pairwise[from]![to] = remaining;
+      pairwise[currency]![from]![to] = remaining;
     } else {
-      pairwise[from]![to] = 0;
-      pairwise[to]![from] = (pairwise[to]![from] || 0) + Math.abs(remaining);
+      pairwise[currency]![from]![to] = 0;
+      pairwise[currency]![to]![from] = (pairwise[currency]![to]![from] || 0) + Math.abs(remaining);
     }
   }
 
-  for (const a of memberIds) {
-    for (const b of memberIds) {
-      if (a === b) continue;
-      const aOwesB = pairwise[a]![b] || 0;
-      const bOwesA = pairwise[b]![a] || 0;
-      if (aOwesB > 0 && bOwesA > 0) {
-        const net = aOwesB - bOwesA;
-        if (net > 0) {
-          pairwise[a]![b] = net;
-          pairwise[b]![a] = 0;
-        } else if (net < 0) {
-          pairwise[b]![a] = -net;
-          pairwise[a]![b] = 0;
-        } else {
-          pairwise[a]![b] = 0;
-          pairwise[b]![a] = 0;
+  for (const bucket of Object.values(pairwise)) {
+    for (const a of memberIds) {
+      for (const b of memberIds) {
+        if (a === b) continue;
+        const aOwesB = bucket[a]![b] || 0;
+        const bOwesA = bucket[b]![a] || 0;
+        if (aOwesB > 0 && bOwesA > 0) {
+          const net = aOwesB - bOwesA;
+          if (net > 0) {
+            bucket[a]![b] = net;
+            bucket[b]![a] = 0;
+          } else if (net < 0) {
+            bucket[b]![a] = -net;
+            bucket[a]![b] = 0;
+          } else {
+            bucket[a]![b] = 0;
+            bucket[b]![a] = 0;
+          }
         }
       }
     }
@@ -148,8 +186,12 @@ export function computeNetBalances(
 
     for (const other of memberIds) {
       if (other === id) continue;
-      const owes = pairwise[id]![other] || 0;
-      const owed = pairwise[other]![id] || 0;
+      let owes = 0;
+      let owed = 0;
+      for (const bucket of Object.values(pairwise)) {
+        owes += bucket[id]![other] || 0;
+        owed += bucket[other]![id] || 0;
+      }
 
       if (owes > 0) {
         owesTo[other] = Math.round(owes * 100) / 100;

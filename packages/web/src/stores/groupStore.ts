@@ -265,7 +265,7 @@ export const useGroupStore = create<GroupState>((set) => ({
           settlements,
           expenses,
           groupCategories,
-          myBalance: data.myBalance ?? 0,
+          myBalance: balances.find((b) => b.userId === useAuthStore.getState().userId)?.net ?? data.myBalance ?? 0,
           balances,
         },
         isLoading: false,

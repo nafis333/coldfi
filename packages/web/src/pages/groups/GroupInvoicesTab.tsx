@@ -182,8 +182,21 @@ export default function GroupInvoicesTab() {
       updatedAt: e.createdAt,
       createdBy: e.paidBy || e.payerId || '',
     }));
-    return computeNetBalances(mockExpenses, [], allMemberIds);
-  }, [filteredExpenses, group.members, defaultCurrency, groupId]);
+    const settlementInputs = (group.settlements || []).map((s: any) => ({
+      id: s.id,
+      groupId,
+      fromUserId: s.fromUserId,
+      toUserId: s.toUserId,
+      amount: s.amount,
+      currency: s.currency || null,
+      status: s.status as SettlementStatus,
+      relatedExpenseIds: [],
+      proposedAt: s.proposedAt || s.createdAt,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt || s.createdAt,
+    }));
+    return computeNetBalances(mockExpenses, settlementInputs, allMemberIds);
+  }, [filteredExpenses, group.members, defaultCurrency, groupId, group.settlements]);
 
   const activeBalances = useMemo(() =>
     balances.filter((b) => activeMemberIds.includes(b.userId)),
@@ -207,6 +220,8 @@ export default function GroupInvoicesTab() {
         setTimeout(() => setActionMsg(null), 3000);
         return;
       }
+      let proposed = 0;
+      let failed = 0;
       for (const t of optimized.transfers) {
         try {
           await proposeSettlement(groupId, {
@@ -214,15 +229,24 @@ export default function GroupInvoicesTab() {
             toUserId: t.toUserId,
             amount: Math.round(t.amount * 100) / 100,
           });
+          proposed++;
         } catch (e) {
+          failed++;
           silentCatch('GroupInvoicesTab.settleAll', e);
         }
       }
       await useGroupStore.getState().fetchGroupById(groupId);
-      setActionMsg({
-        text: `${optimized.transfers.length} optimized settlement${optimized.transfers.length > 1 ? 's' : ''} proposed`,
-        isError: false,
-      });
+      if (failed > 0) {
+        setActionMsg({
+          text: `${proposed} of ${optimized.transfers.length} settlement${optimized.transfers.length !== 1 ? 's' : ''} proposed (${failed} failed)`,
+          isError: true,
+        });
+      } else {
+        setActionMsg({
+          text: `${proposed} optimized settlement${proposed !== 1 ? 's' : ''} proposed`,
+          isError: false,
+        });
+      }
       setTimeout(() => setActionMsg(null), 3000);
     } catch (e) {
       setActionMsg({ text: e instanceof Error ? e.message : 'Failed to settle all', isError: true });

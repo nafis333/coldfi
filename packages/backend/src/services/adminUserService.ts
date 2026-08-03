@@ -1,4 +1,5 @@
 import { query, transaction } from '../db/pool';
+import { invalidateRestrictionCache } from './userRestrictions';
 
 export interface PaginatedResult<T> {
   items: T[];
@@ -32,6 +33,7 @@ export async function suspendUser(
     await client.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
   });
 
+  invalidateRestrictionCache(userId);
   return expiresAt;
 }
 
@@ -54,6 +56,8 @@ export async function banUser(
     );
     await client.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
   });
+
+  invalidateRestrictionCache(userId);
 }
 
 export async function restoreUser(userId: string): Promise<void> {
@@ -62,6 +66,7 @@ export async function restoreUser(userId: string): Promise<void> {
      WHERE user_id = $1 AND lifted_at IS NULL`,
     [userId]
   );
+  invalidateRestrictionCache(userId);
 }
 
 export async function deleteUser(userId: string, adminId: string): Promise<void> {
@@ -82,16 +87,18 @@ export async function deleteUser(userId: string, adminId: string): Promise<void>
     await client.query('UPDATE alert_history SET acknowledged_by = NULL WHERE acknowledged_by = $1', [userId]);
     await client.query('UPDATE config_change_log SET changed_by = NULL WHERE changed_by = $1', [userId]);
     await client.query('UPDATE group_members SET left_at = NOW() WHERE user_id = $1 AND left_at IS NULL', [userId]);
+    await client.query('UPDATE group_sync SET updated_by = NULL WHERE updated_by = $1', [userId]);
     await client.query('DELETE FROM notifications WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM push_subscriptions_web WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM notification_reminders WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM notification_preferences WHERE user_id = $1', [userId]);
-    await client.query('DELETE FROM group_sync WHERE updated_by = $1', [userId]);
     await client.query('DELETE FROM user_restrictions WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM user_activity_log WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM users WHERE id = $1', [userId]);
   });
+
+  invalidateRestrictionCache(userId);
 }
 
 export async function getAnonymizedUsers(filters: { page?: number; limit?: number; status?: string; search?: string }): Promise<PaginatedResult<any>> {

@@ -60,7 +60,7 @@ export async function cleanupBannedUsers(): Promise<number> {
         await client.query('DELETE FROM push_subscriptions_web WHERE user_id = $1', [row.user_id]);
         await client.query('DELETE FROM notification_reminders WHERE user_id = $1', [row.user_id]);
         await client.query('DELETE FROM notification_preferences WHERE user_id = $1', [row.user_id]);
-        await client.query('DELETE FROM group_sync WHERE updated_by = $1', [row.user_id]);
+        await client.query('UPDATE group_sync SET updated_by = NULL WHERE updated_by = $1', [row.user_id]);
         await client.query('DELETE FROM user_restrictions WHERE user_id = $1', [row.user_id]);
         await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [row.user_id]);
         await client.query('DELETE FROM user_activity_log WHERE user_id = $1', [row.user_id]);

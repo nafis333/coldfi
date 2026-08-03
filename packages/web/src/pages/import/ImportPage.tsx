@@ -4,7 +4,8 @@ import Papa from 'papaparse';
 import { usePersonalStore } from '../../stores/personalStore';
 import { usePersonalExpenseStore } from '../../stores/personalExpenseStore';
 import { useAuthStore } from '../../stores/authStore';
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
+import { localDateString } from '../../lib/dates';
 
 interface CSVRow {
   [key: string]: string;
@@ -27,9 +28,10 @@ const DEFAULT_MAPPING: ColumnMapping = {
 const STEPS = ['Upload', 'Map Columns', 'Preview', 'Confirm'] as const;
 
 function normalizeDate(raw: string): string {
-  if (!raw) return new Date().toISOString().split('T')[0];
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
+  const today = localDateString(new Date());
+  if (!raw) return today;
+  const d = parseLocalDate(raw);
+  if (isNaN(d.getTime())) return today;
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

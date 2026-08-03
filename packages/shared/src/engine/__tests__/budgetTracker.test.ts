@@ -80,6 +80,13 @@ describe('computeBudgetStatus', () => {
     expect(result.remaining).toBe(200);
     expect(result.percentUsed).toBe(0);
   });
+
+  it('includes expenses on the last day of the period (S5)', () => {
+    const expenses = [makeExpense({ amount: 100, date: '2024-06-30' })];
+    const budget = makeBudget();
+    const result = computeBudgetStatus(budget, expenses);
+    expect(result.spent).toBe(100);
+  });
 });
 
 describe('computeBudgetSummary', () => {

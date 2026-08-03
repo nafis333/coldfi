@@ -9,6 +9,7 @@ import ReceiptUpload from '../components/ReceiptUpload';
 import CategoryPicker from './expenses/CategoryPicker';
 import type { ReceiptFile } from '../lib/receipt';
 import type { ExpenseItem } from '../lib/personalSync';
+import { localDateString } from '../lib/dates';
 
 interface ItemRow {
   id: string; name: string; amount: string;
@@ -51,7 +52,7 @@ export default function ExpenseFormPage() {
   const [items, setItems] = useState<ItemRow[]>(() => itemsFromExpense());
   const [form, setForm] = useState(() => ({
     categoryId: existingExpense?.categoryId || '',
-    date: existingExpense?.date || new Date().toISOString().split('T')[0],
+    date: existingExpense?.date || localDateString(new Date()),
     payee: existingExpense?.payee || '',
     note: existingExpense?.note || '',
     receiptUri: existingExpense?.receiptUri || '',
@@ -62,7 +63,7 @@ export default function ExpenseFormPage() {
       setItems(itemsFromExpense());
       setForm({
         categoryId: existingExpense.categoryId || '',
-        date: existingExpense.date || new Date().toISOString().split('T')[0],
+        date: existingExpense.date || localDateString(new Date()),
         payee: existingExpense.payee || '',
         note: existingExpense.note || '',
         receiptUri: existingExpense.receiptUri || '',
@@ -278,7 +279,7 @@ export default function ExpenseFormPage() {
             type="date"
             value={form.date}
             onChange={(e) => setField('date', e.target.value)}
-            max={new Date().toISOString().split('T')[0]}
+            max={localDateString(new Date())}
             className={`input-field mt-1 ${errors.date ? 'border-danger-500 focus:border-danger-500 focus:ring-danger-500/20' : ''}`}
           />
           {errors.date && <p className="mt-1 text-xs text-danger-600">{errors.date}</p>}

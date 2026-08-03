@@ -1,5 +1,6 @@
 import { BudgetStatus, BudgetType } from '../types/enums';
 import type { PersonalBudget, PersonalExpense } from '../types/personal';
+import { parseLocalDate } from '../utils/dates';
 
 export interface BudgetStatusResult {
   budgetId: string;
@@ -21,10 +22,12 @@ export function computeBudgetStatus(
   const periodExpenses = expenses.filter((e) => {
     if (e.categoryId !== budget.categoryId) return false;
     if (e.currency !== budget.currency) return false;
-    const expenseDate = new Date(e.date);
-    const periodStart = new Date(budget.periodStart);
-    const periodEnd = new Date(budget.periodEnd);
-    return expenseDate >= periodStart && expenseDate <= periodEnd;
+    // Date-only strings must be compared by local calendar day; the end day is inclusive.
+    const expenseDate = parseLocalDate(e.date);
+    const periodStart = parseLocalDate(budget.periodStart);
+    const periodEndExclusive = parseLocalDate(budget.periodEnd);
+    periodEndExclusive.setDate(periodEndExclusive.getDate() + 1);
+    return expenseDate >= periodStart && expenseDate < periodEndExclusive;
   });
 
   const spent = periodExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -49,15 +52,15 @@ export function computeBudgetStatus(
   const status = determineStatus(percentUsed);
 
   const now = new Date();
-  const periodStart = new Date(budget.periodStart);
-  const periodEnd = new Date(budget.periodEnd);
+  const periodStart = parseLocalDate(budget.periodStart);
+  const periodEnd = parseLocalDate(budget.periodEnd);
 
   let projectedTotal = spent;
   let projectedPercent = percentUsed;
   let projectedStatus = status;
 
   if (now > periodStart && now < periodEnd) {
-    const totalDays = (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
+    const totalDays = (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24) + 1;
     const elapsedDays = (now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
 
     if (elapsedDays > 0) {

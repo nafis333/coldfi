@@ -76,6 +76,7 @@ export interface GroupExpenseData {
   updatedAt?: string;
   category?: string;
   payerId?: string;
+  currency?: string;
 }
 
 export interface SettlementInput {
@@ -253,7 +254,7 @@ export function toEngineExpenses(
       id: e.id,
       groupId,
       amount: e.amount,
-      currency: defaultCurrency,
+      currency: e.currency || defaultCurrency,
       categoryId,
       description: e.description,
       date: e.date || e.createdAt,

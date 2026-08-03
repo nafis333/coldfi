@@ -23,3 +23,6 @@ opencode.json
 # OS artifacts
 Thumbs.db
 Desktop.ini
+
+# TypeScript build info
+*.tsbuildinfo

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { monthBounds } from '../../lib/dates';
 
 interface BudgetData {
   id: string;
@@ -39,13 +40,14 @@ interface BudgetFormModalProps {
 export default function BudgetFormModal({ editingId, budgets, categories, onClose, onSave }: BudgetFormModalProps) {
   const existing = editingId ? budgets.find((b) => b.id === editingId) : null;
   const now = new Date();
+  const currentMonth = monthBounds(now);
   const [categoryId, setCategoryId] = useState(existing?.categoryId || '');
   const [amount, setAmount] = useState(existing?.amount?.toString() || '');
   const [alertThreshold, setAlertThreshold] = useState(existing?.alertThreshold?.toString() || '80');
   const [rollover, setRollover] = useState(existing?.rollover || false);
   const [budgetType, setBudgetType] = useState<'monthly' | 'custom'>(existing?.type === 'custom' ? 'custom' : 'monthly');
-  const [periodStart, setPeriodStart] = useState(existing?.periodStart || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-  const [periodEnd, setPeriodEnd] = useState(existing?.periodEnd || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+  const [periodStart, setPeriodStart] = useState(existing?.periodStart || currentMonth.start);
+  const [periodEnd, setPeriodEnd] = useState(existing?.periodEnd || currentMonth.end);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 

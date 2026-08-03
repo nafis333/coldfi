@@ -249,4 +249,93 @@ describe('calculateSplits', () => {
     expect(splits.find((r) => r.memberId === 'b')!.amount).toBe(50); // 40/2 + 60/2
     expect(splits.find((r) => r.memberId === 'c')!.amount).toBe(30); // 60/2
   });
+
+  // S19: NaN totals must not produce NaN splits
+  it('should reject NaN total amounts (S19)', () => {
+    const { splits } = calculateSplits({
+      totalAmount: NaN,
+      splitMode: SplitMode.RATIO,
+      memberIds: ['a', 'b'],
+    });
+    expect(splits).toHaveLength(0);
+  });
+
+  // S3: zero-sum ratios must not produce NaN amounts
+  it('should fall back to equal split when all ratios are zero (S3)', () => {
+    const { splits } = calculateSplits({
+      totalAmount: 100,
+      splitMode: SplitMode.RATIO,
+      memberIds: ['a', 'b'],
+      ratios: { a: 0, b: 0 },
+    });
+    expect(splits.find((r) => r.memberId === 'a')!.amount).toBe(50);
+    expect(splits.find((r) => r.memberId === 'b')!.amount).toBe(50);
+  });
+
+  // S3: missing members with zero specified total
+  it('should fall back to equal split when ratios sum to zero with missing members (S3)', () => {
+    const { splits } = calculateSplits({
+      totalAmount: 90,
+      splitMode: SplitMode.RATIO,
+      memberIds: ['a', 'b', 'c'],
+      ratios: { a: 0, b: 0 },
+    });
+    splits.forEach((r) => expect(r.amount).toBeCloseTo(30));
+  });
+
+  // S4: negative ratios are clamped, not dropped
+  it('should clamp negative ratios to 0 and keep total consistent (S4)', () => {
+    const { splits } = calculateSplits({
+      totalAmount: 100,
+      splitMode: SplitMode.RATIO,
+      memberIds: ['a', 'b'],
+      ratios: { a: -0.3, b: 0.7 },
+    });
+    const total = splits.reduce((s, r) => s + r.amount, 0);
+    expect(total).toBe(100);
+    expect(splits.find((r) => r.memberId === 'a')!.amount).toBe(0);
+    splits.forEach((r) => expect(Number.isNaN(r.amount)).toBe(false));
+  });
+
+  // S12: ratios for non-members must not produce splits for them
+  it('should ignore ratios for non-member ids (S12)', () => {
+    const { splits } = calculateSplits({
+      totalAmount: 100,
+      splitMode: SplitMode.RATIO,
+      memberIds: ['a', 'b'],
+      ratios: { a: 0.3, b: 0.3, z: 0.4 },
+    });
+    expect(splits.some((r) => r.memberId === 'z')).toBe(false);
+    const total = splits.reduce((s, r) => s + r.amount, 0);
+    expect(total).toBe(100);
+  });
+
+  // S11: fixed amounts for non-members must not distort scaling
+  it('should ignore fixed amounts for non-member ids (S11)', () => {
+    const { splits } = calculateSplits({
+      totalAmount: 100,
+      splitMode: SplitMode.FIXED,
+      memberIds: ['a', 'b'],
+      fixedAmounts: { a: 20, b: 30, z: 1000 },
+    });
+    const total = splits.reduce((s, r) => s + r.amount, 0);
+    expect(total).toBe(100);
+  });
+
+  // S10: itemized exact split with zero specified amounts falls back to equal
+  it('should fall back to equal split for exact itemized items with zero amounts (S10)', () => {
+    const { splits } = calculateSplits({
+      totalAmount: 60,
+      splitMode: 'itemized' as SplitMode,
+      memberIds: ['a', 'b'],
+      itemizedItems: [
+        {
+          id: '1', name: 'Item', amount: 60, assignedTo: ['a', 'b'],
+          splitMode: 'exact', splitAmounts: { a: 0, b: 0 },
+        },
+      ],
+    });
+    expect(splits.find((r) => r.memberId === 'a')!.amount).toBe(30);
+    expect(splits.find((r) => r.memberId === 'b')!.amount).toBe(30);
+  });
 });

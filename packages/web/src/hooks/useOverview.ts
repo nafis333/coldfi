@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { usePersonalStore } from '../stores/personalStore';
 import { useAuthStore } from '../stores/authStore';
+import { localDateString, monthBounds } from '../lib/dates';
 import type { BudgetStatusResult } from '@coldfi/shared';
 
 export interface OverviewData {
@@ -36,8 +37,7 @@ export function useOverview(): OverviewData {
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const { start: monthStart, end: monthEnd } = monthBounds(now);
 
   const thisMonthExpenses = useMemo(
     () => expenses.filter((e: any) => e.date >= monthStart && e.date <= monthEnd),
@@ -92,7 +92,7 @@ export function useOverview(): OverviewData {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(n);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = localDateString(d);
       const total = defaultCurrencyExpenses.filter((e: any) => e.date === dateStr).reduce((s: number, e: any) => s + e.amount, 0);
       last7.push({ date: dateStr, total, label: d.toLocaleDateString('en', { weekday: 'short' }) });
     }

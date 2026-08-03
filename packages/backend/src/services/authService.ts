@@ -5,6 +5,7 @@ import { config } from '../config';
 import { AuthError, ValidationError, ConflictError, NotFoundError } from '../errors';
 import { isValidEmail } from '@coldfi/shared';
 import { setTempToken } from './redis';
+import { assertUserNotRestricted } from './userRestrictions';
 import { encryptServerKey, generateRecoveryCode, hashRecoveryCode } from './cryptoUtils';
 import { generateTokens } from './tokenService';
 import { OAuth2Client } from 'google-auth-library';
@@ -129,6 +130,8 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
 
   const user = userResult.rows[0];
 
+  await assertUserNotRestricted(user.id);
+
   // locked_until is the single source of truth for lockout (also enforced on token refresh).
   const lockedUntil = user.locked_until ? new Date(user.locked_until) : null;
   if (lockedUntil && lockedUntil.getTime() > Date.now()) {
@@ -242,6 +245,14 @@ export async function googleLogin(
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
+      if (user.google_id && user.google_id !== googleId) {
+        throw new AuthError(
+          'ERR_GOOGLE_ACCOUNT_MISMATCH',
+          'This email is already linked to a different Google account. Sign in with that account or reset your password.',
+          409
+        );
+      }
+      await assertUserNotRestricted(user.id);
       if (!user.google_id) {
         await client.query(
           `UPDATE users SET google_id = $1, display_name = COALESCE(NULLIF($2, ''), display_name), updated_at = NOW() WHERE id = $3`,

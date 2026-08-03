@@ -124,6 +124,16 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.user.userId;
     const { type, title, body, groupId, expenseId, settlementId, recipientIds } = request.body as any;
 
+      if (groupId) {
+        const senderResult = await query(
+          `SELECT user_id FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL`,
+          [groupId, userId]
+        );
+        if (senderResult.rows.length === 0) {
+          throw new ForbiddenError('You are not a member of this group');
+        }
+      }
+
       if (Array.isArray(recipientIds) && recipientIds.length > 0) {
         if (recipientIds.includes(userId)) {
           throw new ValidationError('Cannot send notification to yourself via recipientIds');

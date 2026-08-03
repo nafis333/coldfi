@@ -1,5 +1,13 @@
+export function parseLocalDate(value: string | Date): Date {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split('-').map(Number);
+    return new Date(y!, m! - 1, d!);
+  }
+  return typeof value === 'string' ? new Date(value) : value;
+}
+
 export function formatDate(date: string | Date, format: 'short' | 'long' | 'iso' = 'short', locale?: string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = parseLocalDate(date);
   const loc = locale ?? 'en-US';
   switch (format) {
     case 'short':
@@ -23,7 +31,7 @@ export function parseDate(value: string): Date | null {
 }
 
 export function getMonthRange(date: string | Date): { start: string; end: string } {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = parseLocalDate(date);
   const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1));
   const end = new Date(Date.UTC(d.getFullYear(), d.getMonth() + 1, 0));
   return {

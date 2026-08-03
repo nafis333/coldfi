@@ -71,7 +71,10 @@ export default function DashboardPage() {
 
   const data = useOverview();
 
-  const recentExpenses = useMemo(() => expenses.slice(0, 5), [expenses]);
+  const recentExpenses = useMemo(
+    () => expenses.filter((e) => (e.currency || defaultCurrency) === defaultCurrency).slice(0, 5),
+    [expenses, defaultCurrency]
+  );
 
   const categoryMap = useMemo(() => {
     const map: Record<string, { name: string; icon: string; color: string }> = {};

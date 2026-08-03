@@ -36,6 +36,12 @@ export function getMetricsStartTime(): number {
   return metricsStartTime;
 }
 
+function redactSensitiveUrl(url: string): string {
+  return url
+    .replace(/\/invite\/[^/?#]+/gi, '/invite/[REDACTED]')
+    .replace(/([?&](?:code|inviteCode|token)=)[^&]+/gi, '$1[REDACTED]');
+}
+
 export async function requestMetrics(request: FastifyRequest, reply: FastifyReply) {
   const requestId = crypto.randomUUID();
   const start = Date.now();
@@ -80,7 +86,7 @@ export async function requestMetrics(request: FastifyRequest, reply: FastifyRepl
         INSERT INTO slow_queries (query_text, duration_ms, caller, user_id, occurred_at)
         VALUES ($1, $2, $3, $4, NOW())
       `, [
-        `${request.method} ${request.url}`,
+        `${request.method} ${redactSensitiveUrl(request.url)}`,
         duration,
         endpoint,
         userId || null,
@@ -91,7 +97,7 @@ export async function requestMetrics(request: FastifyRequest, reply: FastifyRepl
 
     if (statusCode >= 500) {
       captureError(
-        new Error(`${statusCode} ${request.method} ${request.url}`),
+        new Error(`${statusCode} ${request.method} ${redactSensitiveUrl(request.url)}`),
         endpoint,
         userId,
         requestId

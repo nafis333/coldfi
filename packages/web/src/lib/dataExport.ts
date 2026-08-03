@@ -11,19 +11,32 @@ interface ExportPayload {
   data: {
     expenses: any[];
     groups: any[];
+    budgets: any[];
+    categories: any[];
+    incomeLogs: any[];
+    savingsTargets: any[];
+    recurringBills: any[];
   };
 }
 
 export async function exportEncryptedBackup(password: string): Promise<void> {
   const userId = useAuthStore.getState().userId ?? 'unknown';
-  const expenses = usePersonalStore.getState().expenses;
+  const { expenses, budgets, categories, incomeLogs, savingsTargets, personalBlob } = usePersonalStore.getState();
   const groups = useGroupStore.getState().groups;
 
   const payload: ExportPayload = {
     version: 1,
     exportedAt: new Date().toISOString(),
     userId,
-    data: { expenses, groups },
+    data: {
+      expenses,
+      groups,
+      budgets,
+      categories,
+      incomeLogs,
+      savingsTargets,
+      recurringBills: personalBlob?.recurringBills ?? [],
+    },
   };
 
   const saltRaw = generateSalt(16);
@@ -74,7 +87,7 @@ export async function importEncryptedBackup(file: File, password: string): Promi
     throw new Error('Invalid backup data');
   }
 
-  const { expenses, groups } = payload.data;
+  const { expenses, budgets, categories, incomeLogs, savingsTargets, recurringBills } = payload.data;
   const { accessToken } = useAuthStore.getState();
   if (!accessToken) throw new Error('Not authenticated');
 
@@ -83,6 +96,20 @@ export async function importEncryptedBackup(file: File, password: string): Promi
   for (const expense of expenses ?? []) {
     await expenseStore.addExpense(expense);
   }
+
+  // Restore the remaining blob slices in a single encrypted save
+  const personalStore = usePersonalStore.getState();
+  const currentBlob = personalStore.personalBlob;
+  const restored: any = {
+    ...(currentBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] }),
+    budgets: budgets ?? [],
+    categories: categories ?? [],
+    incomeLogs: incomeLogs ?? [],
+    savingsTargets: savingsTargets ?? [],
+    recurringBills: recurringBills ?? [],
+  };
+  await personalStore.savePersonalBlob(restored);
+  await personalStore.fetchPersonalBlob();
 
   // Groups are referenced by ID; queue a full re-sync
   try { await useGroupStore.getState().fetchGroups(); } catch {}

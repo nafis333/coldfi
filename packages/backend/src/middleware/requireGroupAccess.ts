@@ -12,8 +12,8 @@ export async function requireGroupAccess(request: FastifyRequest, reply: Fastify
     throw new ForbiddenError('Group ID required');
   }
 
-  const result = await query<{ id: string; role: string; member_index: number }>(
-    `SELECT gm.id, gm.role, gm.member_index
+  const result = await query<{ id: string; role: string; member_index: number; group_active: boolean }>(
+    `SELECT gm.id, gm.role, gm.member_index, g.is_active AS group_active
      FROM group_members gm
      JOIN groups g ON g.id = gm.group_id
      WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.left_at IS NULL`,
@@ -24,11 +24,15 @@ export async function requireGroupAccess(request: FastifyRequest, reply: Fastify
     throw new ForbiddenError('Not a member of this group');
   }
 
-  const row = result.rows[0]!;
+  const membership = result.rows[0]!;
+  if (membership.group_active === false) {
+    throw new ForbiddenError('This group has been deleted');
+  }
+
   request.memberInfo = {
-    memberId: row.id,
+    memberId: membership.id,
     groupId,
-    role: row.role as 'admin' | 'member' | 'viewer',
-    memberIndex: row.member_index,
+    role: membership.role as 'admin' | 'member' | 'viewer',
+    memberIndex: membership.member_index,
   };
 }

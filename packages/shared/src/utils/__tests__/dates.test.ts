@@ -22,6 +22,11 @@ describe('date utils', () => {
     it('should accept string input', () => {
       expect(formatDate('2024-06-01', 'iso')).toBe('2024-06-01');
     });
+
+    it('should parse date-only strings as local dates, not UTC midnight', () => {
+      expect(formatDate('2024-01-01', 'iso')).toBe('2024-01-01');
+      expect(formatDate('2024-01-01', 'long', 'en-US')).toContain('2024');
+    });
   });
 
   describe('parseDate', () => {
@@ -42,6 +47,12 @@ describe('date utils', () => {
       expect(range.start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(range.end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(range.start.localeCompare(range.end)).toBeLessThan(0);
+    });
+
+    it('should keep the calendar month for date-only strings regardless of local timezone offset', () => {
+      const range = getMonthRange('2024-01-01');
+      expect(range.start).toBe('2024-01-01');
+      expect(range.end).toBe('2024-01-31');
     });
   });
 

@@ -3,6 +3,7 @@ import { usePersonalStore } from '../stores/personalStore';
 import { usePersonalBudgetStore } from '../stores/personalBudgetStore';
 import { useAuthStore } from '../stores/authStore';
 import { silentCatch } from '../lib/errorHandler';
+import { monthBounds } from '../lib/dates';
 import { formatCurrency } from '@coldfi/shared';
 import BudgetFormModal from './budget/BudgetFormModal';
 import type { BudgetFormData } from './budget/BudgetFormModal';
@@ -39,17 +40,25 @@ export default function BudgetViewPage() {
     return m;
   }, [categories]);
 
-  const totalBudgeted = useMemo(() => budgetStatuses.reduce((s, b) => s + b.budgetAmount, 0), [budgetStatuses]);
-  const totalSpent = useMemo(() => budgetStatuses.reduce((s, b) => s + b.spent, 0), [budgetStatuses]);
-  const overallPercent = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
-
   const now = useMemo(() => new Date(), []);
-  const monthStart = useMemo(() => new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0], [now]);
-  const monthEnd = useMemo(() => new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0], [now]);
+  const { start: monthStart, end: monthEnd } = useMemo(() => monthBounds(now), [now]);
+
+  const defaultCurrencyBudgetStatuses = useMemo(() => {
+    const currencyMap = new Map(budgets.map((b) => [b.id, b.currency]));
+    return budgetStatuses.filter((bs) => {
+      const currency = currencyMap.get(bs.budgetId);
+      return !currency || currency === defaultCurrency;
+    });
+  }, [budgetStatuses, budgets, defaultCurrency]);
+
+  const totalBudgeted = useMemo(() => defaultCurrencyBudgetStatuses.reduce((s, b) => s + b.budgetAmount, 0), [defaultCurrencyBudgetStatuses]);
+  const totalSpent = useMemo(() => defaultCurrencyBudgetStatuses.reduce((s, b) => s + b.spent, 0), [defaultCurrencyBudgetStatuses]);
+  const overallPercent = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
 
   const categoryBreakdown = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const exp of expenses) {
+      if (exp.currency !== defaultCurrency) continue;
       if (exp.date.slice(0, 10) >= monthStart && exp.date.slice(0, 10) <= monthEnd) {
         totals[exp.categoryId] = (totals[exp.categoryId] || 0) + exp.amount;
       }
@@ -57,7 +66,7 @@ export default function BudgetViewPage() {
     return Object.entries(totals)
       .map(([id, t]) => ({ categoryId: id, total: t, category: categoryMap[id] }))
       .sort((a, b) => b.total - a.total);
-  }, [expenses, categoryMap, monthStart, monthEnd]);
+  }, [expenses, categoryMap, monthStart, monthEnd, defaultCurrency]);
 
   const maxBreakdown = categoryBreakdown[0]?.total || 1;
 
@@ -93,13 +102,13 @@ export default function BudgetViewPage() {
       </div>
 
       <div className="space-y-3">
-        {budgetStatuses.length === 0 ? (
+        {defaultCurrencyBudgetStatuses.length === 0 ? (
           <div className="card px-5 py-12 text-center">
             <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400 dark:text-neutral-500">No budgets yet</p>
             <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">Create a budget to start tracking your spending limits</p>
             <button onClick={() => setShowForm(true)} className="btn-secondary mt-4">Create Budget</button>
           </div>
-        ) : budgetStatuses.map((status) => {
+        ) : defaultCurrencyBudgetStatuses.map((status) => {
           const cat = categoryMap[status.categoryId];
           const budget = budgets.find((b) => b.id === status.budgetId);
           const si = getStatusLabel(status.percentUsed);

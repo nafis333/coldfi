@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 
 export interface ReceiptItem {
   name: string;
@@ -23,7 +23,7 @@ export interface ReceiptData {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 

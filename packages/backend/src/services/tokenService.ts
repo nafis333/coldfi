@@ -3,6 +3,7 @@ import { query, transaction } from '../db/pool';
 import { config, parseExpirySeconds } from '../config';
 import { AuthError } from '../errors';
 import { decryptServerKey, hashToken } from './cryptoUtils';
+import { assertUserNotRestricted } from './userRestrictions';
 import { logger } from './logger';
 import jwt from 'jsonwebtoken';
 
@@ -101,6 +102,8 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenPai
         throw new AuthError('ERR_USER_LOCKED', 'Account is locked. Please try again later.', 423);
       }
     }
+
+    await assertUserNotRestricted(storedToken.user_id);
 
     const updateResult = await client.query(
       `UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL`,

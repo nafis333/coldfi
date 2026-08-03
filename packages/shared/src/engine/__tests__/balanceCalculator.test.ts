@@ -97,6 +97,76 @@ describe('computeNetBalances', () => {
     expect(balances[0]!.net).toBe(0);
     expect(balances[1]!.net).toBe(0);
   });
+
+  it('should not apply a settlement against debt in a different currency', () => {
+    const expenses = [
+      makeExpense({
+        id: 'exp-usd',
+        amount: 100,
+        currency: 'USD',
+        splits: [
+          { memberId: 'alice', ratio: 0.5, isPaid: false },
+          { memberId: 'bob', ratio: 0.5, isPaid: false },
+        ],
+      }),
+    ];
+    const settlements = [
+      makeSettlement({ id: 'set-inr', amount: 50, currency: 'INR' }),
+    ];
+    const balances = computeNetBalances(expenses, settlements, ['alice', 'bob']);
+
+    const bob = balances.find((b) => b.userId === 'bob')!;
+    expect(bob.owesTo['alice']).toBe(50);
+  });
+
+  it('should apply a settlement to the only currency with debt when settlement has no currency', () => {
+    const expenses = [
+      makeExpense({
+        id: 'exp-bdt',
+        amount: 100,
+        currency: 'BDT',
+        splits: [
+          { memberId: 'alice', ratio: 0.5, isPaid: false },
+          { memberId: 'bob', ratio: 0.5, isPaid: false },
+        ],
+      }),
+    ];
+    const settlements = [
+      makeSettlement({ id: 'set-legacy', amount: 50, currency: '' }),
+    ];
+    const balances = computeNetBalances(expenses, settlements, ['alice', 'bob']);
+
+    const bob = balances.find((b) => b.userId === 'bob')!;
+    expect(bob.net).toBe(0);
+  });
+
+  it('should keep multi-currency debts separate', () => {
+    const expenses = [
+      makeExpense({
+        id: 'exp-bdt',
+        amount: 100,
+        currency: 'BDT',
+        splits: [
+          { memberId: 'alice', ratio: 0.5, isPaid: false },
+          { memberId: 'bob', ratio: 0.5, isPaid: false },
+        ],
+      }),
+      makeExpense({
+        id: 'exp-usd',
+        amount: 80,
+        currency: 'USD',
+        splits: [
+          { memberId: 'alice', ratio: 0.5, isPaid: false },
+          { memberId: 'bob', ratio: 0.5, isPaid: false },
+        ],
+      }),
+    ];
+    const balances = computeNetBalances(expenses, [], ['alice', 'bob']);
+
+    const bob = balances.find((b) => b.userId === 'bob')!;
+    expect(bob.net).toBe(-90);
+    expect(bob.owesTo['alice']).toBe(90);
+  });
 });
 
 describe('getTotalOwed', () => {

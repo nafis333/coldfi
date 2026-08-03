@@ -44,7 +44,7 @@ export default function ExpenseListPage() {
 
   const [tab, setTab] = useState<Tab>('personal');
 
-  function handleDownloadPersonalReceipt(expense: { id: string; amount: number; categoryId: string; date: string; payee: string | null; note: string | null }) {
+  function handleDownloadPersonalReceipt(expense: { id: string; amount: number; currency?: string; categoryId: string; date: string; payee: string | null; note: string | null }) {
     const cat = categoryMap[expense.categoryId];
     const receiptData: ReceiptData = {
       type: 'personal',
@@ -52,7 +52,7 @@ export default function ExpenseListPage() {
       date: expense.date,
       description: expense.payee || cat?.name || 'Expense',
       category: cat?.name || expense.categoryId,
-      currency: defaultCurrency,
+      currency: expense.currency || defaultCurrency,
       paidBy: currentUserEmail,
       paidByDisplay: 'You',
       totalAmount: expense.amount,

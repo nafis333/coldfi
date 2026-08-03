@@ -113,7 +113,7 @@ export async function lookupInvite(code: string): Promise<any> {
     const result = await query(
       `SELECT g.id, g.name
        FROM invite_codes ic
-       JOIN groups g ON g.id = ic.group_id
+       JOIN groups g ON g.id = ic.group_id AND g.is_active = TRUE
        WHERE ic.code = $1 AND ic.is_active = TRUE
          AND (ic.expires_at IS NULL OR ic.expires_at > NOW())
          AND (ic.max_uses = 0 OR ic.use_count < ic.max_uses)`,
@@ -199,6 +199,7 @@ export async function joinGroup(
     const inviteResult = await client.query(
       `SELECT ic.group_id
        FROM invite_codes ic
+       JOIN groups g ON g.id = ic.group_id AND g.is_active = TRUE
        WHERE ic.code = $1 AND ic.is_active = TRUE
          AND (ic.expires_at IS NULL OR ic.expires_at > NOW())
          AND (ic.max_uses = 0 OR ic.use_count < ic.max_uses)
@@ -319,7 +320,7 @@ export async function getGroupMembers(groupId: string): Promise<any> {
   const members = membersResult.rows.map((row: any) => ({
     userId: row.user_id,
     displayName: row.display_name,
-    email: row.email,
+    email: row.left_at ? null : row.email,
     role: row.role,
     balance: 0,
     joinedAt: row.joined_at,
@@ -532,6 +533,7 @@ export async function deleteGroup(groupId: string, userId: string): Promise<{ su
       throw new AppError('ERR_FORBIDDEN', 'Admin access required', 403);
     }
     await client.query(`UPDATE groups SET is_active = FALSE, updated_at = NOW() WHERE id = $1`, [groupId]);
+    await client.query(`UPDATE invite_codes SET is_active = FALSE WHERE group_id = $1`, [groupId]);
     return { success: true };
   });
 }
@@ -603,7 +605,12 @@ function detectConflict(
   for (const key of allKeys) {
     const sv = serverClock[key] || 0;
     const cv = clientClock[key] || 0;
-    if (sv > cv && cv > 0) serverHasNewer = true;
+    // A client that is missing a key the server has (cv === 0) is stale —
+    // it must fetch and merge before uploading, otherwise a fresh device
+    // would silently overwrite the group blob with empty data.
+    if (sv > cv) serverHasNewer = true;
+    // Only treat extra client progress as newer when the server already
+    // knew about this key (true concurrent divergence, not a fresh upload).
     if (cv > sv && sv > 0) clientHasNewer = true;
   }
 

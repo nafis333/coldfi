@@ -27,6 +27,8 @@ import SpendingAlertsSection from './analytics/SpendingAlertsSection';
 import BudgetComparisonSection from './analytics/BudgetComparisonSection';
 import EmptyAnalyticsState from './analytics/EmptyAnalyticsState';
 import GroupDataWarning from './analytics/GroupDataWarning';
+import { localDateString } from '../lib/dates';
+import { parseLocalDate } from '@coldfi/shared';
 
 interface StoreExpense {
   id: string; amount: number; currency: string; categoryId: string;
@@ -117,15 +119,17 @@ export default function AnalyticsPage() {
       case '1y': start = new Date(now); start.setFullYear(start.getFullYear() - 1); break;
       default: start = new Date(now); start.setMonth(start.getMonth() - 1); break;
     }
-    return { start: start.toISOString().split('T')[0], end: now.toISOString().split('T')[0] };
+    return { start: localDateString(start), end: localDateString(now) };
   }, [period]);
 
   const prevRange = useMemo(() => {
-    const now = toStartOfDay(new Date());
-    const durationMs = new Date(periodRange.end).getTime() - new Date(periodRange.start).getTime();
-    const prevEnd = new Date(new Date(periodRange.start).getTime() - 1);
+    const now = new Date();
+    const startDate = parseLocalDate(periodRange.start);
+    const endDate = parseLocalDate(periodRange.end);
+    const durationMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
     const prevStart = new Date(prevEnd.getTime() - durationMs);
-    return { start: prevStart.toISOString().split('T')[0], end: prevEnd.toISOString().split('T')[0] };
+    return { start: localDateString(prevStart), end: localDateString(prevEnd) };
   }, [periodRange]);
 
   const groupExpensesFlat: StoreExpense[] = useMemo(() => {
@@ -134,7 +138,7 @@ export default function AnalyticsPage() {
       const g = groupExpensesCache[gid]!;
       for (const e of g.expenses) {
         result.push({
-          id: `group_${gid}_${e.id}`, amount: e.amount, currency: g.currency || defaultCurrency,
+          id: `group_${gid}_${e.id}`, amount: e.amount, currency: e.currency || g.currency || defaultCurrency,
           categoryId: e.categoryId || e.category || '', date: e.date, payee: e.description,
           note: `[${g.name}] ${e.description}`, paymentMethod: null, receiptUri: null,
           isRecurring: false, createdAt: e.createdAt, updatedAt: e.createdAt,
@@ -172,7 +176,6 @@ export default function AnalyticsPage() {
 
   const engineCategories = useMemo(() => toEngineCategories(categories), [categories]);
   const engineExpenses = useMemo(() => toEngineExpenses(defaultFiltered), [defaultFiltered]);
-  const engineAllExpenses = useMemo(() => toEngineExpenses(allExpenses), [allExpenses]);
 
   const previousPeriod = useMemo(
     () => allExpenses.filter((e) => e.date >= prevRange.start && e.date <= prevRange.end),
@@ -193,7 +196,7 @@ export default function AnalyticsPage() {
   const prevTxCount = previousPeriod.length;
 
   const dailyAvg = useMemo(() => {
-    const days = Math.max(1, Math.ceil((new Date(periodRange.end).getTime() - new Date(periodRange.start).getTime()) / 86400000));
+    const days = Math.max(1, Math.round((parseLocalDate(periodRange.end).getTime() - parseLocalDate(periodRange.start).getTime()) / 86400000) + 1);
     return totalSpent / days;
   }, [totalSpent, periodRange]);
 
@@ -233,8 +236,8 @@ export default function AnalyticsPage() {
       const monthly: { label: string; amount: number }[] = [];
       for (let i = monthsToShow - 1; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const mStart = d.toISOString().split('T')[0];
-        const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+        const mStart = localDateString(d);
+        const mEnd = localDateString(new Date(d.getFullYear(), d.getMonth() + 1, 0));
         const total = defaultFiltered.filter((e) => e.date >= mStart && e.date <= mEnd).reduce((s, e) => s + e.amount, 0);
         monthly.push({ label: d.toLocaleDateString('en', { month: 'short' }), amount: total });
       }
@@ -245,7 +248,7 @@ export default function AnalyticsPage() {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const ds = d.toISOString().split('T')[0];
+      const ds = localDateString(d);
       const total = defaultFiltered.filter((e) => e.date === ds).reduce((s, e) => s + e.amount, 0);
       points.push({
         label: period === '7d' ? d.toLocaleDateString('en', { weekday: 'short' }) : String(d.getDate()),
@@ -275,10 +278,12 @@ export default function AnalyticsPage() {
 
   const spendingAlerts = useMemo(() => {
     if (allExpenses.length === 0) return [];
-    return detectUnusualSpending(engineAllExpenses, categoryNames, {
+    const defaultCurrencyExpenses = allExpenses.filter((e) => (e.currency || defaultCurrency) === defaultCurrency);
+    if (defaultCurrencyExpenses.length === 0) return [];
+    return detectUnusualSpending(toEngineExpenses(defaultCurrencyExpenses), categoryNames, {
       lookbackPeriods: 3, periodDays: 30, lowThreshold: 1.2, mediumThreshold: 1.5, highThreshold: 2.0,
     });
-  }, [allExpenses, categoryNames]);
+  }, [allExpenses, categoryNames, defaultCurrency]);
 
   const monthDays = useMemo(() => {
     const d = new Date();
@@ -287,8 +292,8 @@ export default function AnalyticsPage() {
 
   const dailyAvgThisMonth = useMemo(() => {
     const d = new Date();
-    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
-    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+    const monthStart = localDateString(new Date(d.getFullYear(), d.getMonth(), 1));
+    const monthEnd = localDateString(new Date(d.getFullYear(), d.getMonth() + 1, 0));
     const monthExps = allExpenses.filter((e) => e.date >= monthStart && e.date <= monthEnd
       && (e.currency || defaultCurrency) === defaultCurrency);
     const total = monthExps.reduce((s, e) => s + e.amount, 0);

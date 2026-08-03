@@ -58,7 +58,10 @@ export type AuthErrorCode =
   | 'ERR_INVALID_RECOVERY'
   | 'ERR_RECOVERY_FAILED'
   | 'ERR_GOOGLE_NOT_CONFIGURED'
-  | 'ERR_INVALID_GOOGLE_TOKEN';
+  | 'ERR_INVALID_GOOGLE_TOKEN'
+  | 'ERR_ACCOUNT_BANNED'
+  | 'ERR_ACCOUNT_SUSPENDED'
+  | 'ERR_GOOGLE_ACCOUNT_MISMATCH';
 
 export class AuthError extends AppError {
   constructor(

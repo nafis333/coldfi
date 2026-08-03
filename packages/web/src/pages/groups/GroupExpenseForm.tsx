@@ -41,6 +41,10 @@ export default function GroupExpenseForm() {
 
   const members = currentGroup?.members ?? [];
   const memberIds = useMemo(() => members.map((m) => m.userId), [members]);
+  const activeMemberIds = useMemo(
+    () => members.filter((m) => !m.leftAt).map((m) => m.userId),
+    [members]
+  );
   const isEditing = !!expenseId;
 
   const existingExpense = useMemo(() => {
@@ -59,7 +63,7 @@ export default function GroupExpenseForm() {
 
   useEffect(() => {
     if (!isEditing) {
-      if (members.length > 0 && !payerId) setPayerId(members[0]!.userId);
+      if (activeMemberIds.length > 0 && !payerId) setPayerId(activeMemberIds[0]!);
       return;
     }
     if (!existingExpense) return;
@@ -78,7 +82,7 @@ export default function GroupExpenseForm() {
           id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           name: i.name,
           amount: String(i.amount),
-          participants: i.assignedTo || [...memberIds],
+          participants: i.assignedTo || [...activeMemberIds],
           splitMode: i.splitMode || 'equal',
           splitValues,
           selected: false,
@@ -86,19 +90,27 @@ export default function GroupExpenseForm() {
         };
       }));
     } else {
-      const itemAmount = existingExpense.amount;
+      // No itemized data: reconstruct a single item. Preserve legacy split
+      // amounts instead of silently flattening them to an equal split (G5).
+      const splits = existingExpense.splits || [];
+      const splitMemberIds = splits.map((s) => s.userId).filter(Boolean);
+      const equalShare = splitMemberIds.length > 0 ? existingExpense.amount / splitMemberIds.length : existingExpense.amount;
+      const unequal = splits.some((s) => Math.abs(s.amount - equalShare) > 0.01);
+      const splitMode = unequal ? 'exact' : 'equal';
+      const splitValues: Record<string, string> = {};
+      if (unequal) for (const s of splits) splitValues[s.userId] = String(s.amount);
       setItems([{
         id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         name: '',
-        amount: String(itemAmount),
-        participants: [...memberIds],
-        splitMode: 'equal',
-        splitValues: {},
+        amount: String(existingExpense.amount),
+        participants: [...new Set([...splitMemberIds, ...activeMemberIds])],
+        splitMode,
+        splitValues,
         selected: false,
         validationError: '',
       }]);
     }
-  }, [expenseId, existingExpense, members, isEditing, memberIds, payerId]);
+  }, [expenseId, existingExpense, members, isEditing, memberIds, activeMemberIds, payerId]);
 
   const totalAmount = useMemo(() =>
     items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0),
@@ -108,7 +120,7 @@ export default function GroupExpenseForm() {
   function addItem() {
     setItems((prev) => [...prev, {
       id: `item_${Date.now()}_${prev.length}`, name: '', amount: '',
-      participants: members.map((m) => m.userId), splitMode: 'equal', splitValues: {},
+      participants: [...activeMemberIds], splitMode: 'equal', splitValues: {},
       selected: false, validationError: '',
     }]);
   }
@@ -141,7 +153,7 @@ export default function GroupExpenseForm() {
   function toggleAllParticipants(itemId: string, select: boolean) {
     setItems((prev) => prev.map((item) => {
       if (item.id !== itemId) return item;
-      const newParticipants = select ? [...members.map((m) => m.userId)] : [];
+      const newParticipants = select ? [...activeMemberIds] : [];
       const newSplitValues: Record<string, string> = {};
       if (select && item.splitMode !== 'equal') for (const pid of newParticipants) newSplitValues[pid] = '';
       return { ...item, participants: newParticipants, splitValues: newSplitValues, validationError: validateItem({ ...item, participants: newParticipants, splitValues: newSplitValues }, members.length) };
@@ -250,7 +262,7 @@ export default function GroupExpenseForm() {
           for (const pid of pids) splitsMap[pid] = share;
         } else {
           const scale = total / splitTotal;
-          for (const pid of Object.keys(splitsMap)) splitsMap[pid] = Math.round(Math.abs(splitsMap[pid]!) * scale * 100) / 100;
+          for (const pid of Object.keys(splitsMap)) splitsMap[pid] = Math.round(splitsMap[pid]! * scale * 100) / 100;
         }
         const roundedTotal = Object.values(splitsMap).reduce((s, v) => s + v, 0);
         const diff = Math.round((total - roundedTotal) * 100);
@@ -285,7 +297,7 @@ export default function GroupExpenseForm() {
     } finally {
       setSubmitting(false);
     }
-  }, [description, category, payerId, items, createGroupExpense, updateGroupExpense, groupId, navigate, members, isEditing, expenseId]);
+  }, [description, category, payerId, items, createGroupExpense, updateGroupExpense, groupId, navigate, members, isEditing, expenseId, activeMemberIds]);
 
   return (
     <div className="mx-auto max-w-3xl">

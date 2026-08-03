@@ -1,4 +1,4 @@
-import { computeBudgetStatus, BudgetStatus, BudgetType, type BudgetStatusResult } from '@coldfi/shared';
+import { computeBudgetStatus, BudgetStatus, BudgetType, type BudgetStatusResult, parseLocalDate } from '@coldfi/shared';
 
 export interface Category {
   id: string;
@@ -88,19 +88,32 @@ export interface PersonalBlob {
   savingsTargets?: SavingsTarget[];
 }
 
+function localDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function advancePeriod(type: string, periodStart: string, periodEnd: string): { periodStart: string; periodEnd: string } {
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
+  const start = parseLocalDate(periodStart);
+  const end = parseLocalDate(periodEnd);
   if (type === 'monthly') {
-    start.setMonth(start.getMonth() + 1);
-    end.setMonth(end.getMonth() + 1);
-  } else {
-    // Custom range: advance by the range's own duration
-    const duration = end.getTime() - start.getTime();
-    start.setTime(start.getTime() + duration);
-    end.setTime(end.getTime() + duration);
+    // Advance the calendar month without overflowing (Jan 31 → Feb 28/29).
+    const startDay = start.getDate();
+    const nextMonthFirst = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    const daysInNextMonth = new Date(nextMonthFirst.getFullYear(), nextMonthFirst.getMonth() + 1, 0).getDate();
+    const nextStart = new Date(
+      nextMonthFirst.getFullYear(),
+      nextMonthFirst.getMonth(),
+      Math.min(startDay, daysInNextMonth)
+    );
+    const nextEnd = new Date(nextStart.getFullYear(), nextStart.getMonth() + 1, 0);
+    return { periodStart: localDateString(nextStart), periodEnd: localDateString(nextEnd) };
   }
-  return { periodStart: start.toISOString().split('T')[0], periodEnd: end.toISOString().split('T')[0] };
+  // Custom range: advance by the range's own duration
+  const duration = end.getTime() - start.getTime();
+  return { periodStart: localDateString(new Date(start.getTime() + duration)), periodEnd: localDateString(new Date(end.getTime() + duration)) };
 }
 
 function toEngineBudget(b: Budget, amount: number): {
@@ -159,6 +172,12 @@ function toEngineExpenses(expenses: Expense[]): {
   }));
 }
 
+function periodEndLocal(period: { periodEnd: string }): Date {
+  const end = parseLocalDate(period.periodEnd);
+  end.setDate(end.getDate() + 1);
+  return end;
+}
+
 export function computeBudgetStatuses(
   budgets: Budget[],
   expenses: Expense[]
@@ -173,7 +192,7 @@ export function computeBudgetStatuses(
     let effective: Budget = updatedBudgets[i]!;
     let rolloverAmount = b.rollover ? (b.unusedRolloverAmount || 0) : 0;
 
-    if (b.rollover && new Date(b.periodEnd) < now) {
+    if (b.rollover && periodEndLocal(b) < now) {
       // Period ended: roll the unused amount into the next period(s), advancing
       // the range until it covers "now" (handles multi-period gaps).
       const expiredResult = computeBudgetStatus(
@@ -184,7 +203,7 @@ export function computeBudgetStatuses(
 
       let next = advancePeriod(b.type, b.periodStart, b.periodEnd);
       let guard = 0;
-      while (new Date(next.periodEnd) < now && guard < 60) {
+      while (periodEndLocal(next) < now && guard < 60) {
         next = advancePeriod(b.type, next.periodStart, next.periodEnd);
         guard++;
       }
