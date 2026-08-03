@@ -344,6 +344,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const parsed = JSON.parse(stored);
         const expiry = getJwtExpiry(parsed.accessToken);
         if (expiry && expiry > Date.now() && parsed.userId) {
+          let pek: CryptoKey | null = null;
+          const storedPek = storage().getItem(PEK_STORAGE_KEY);
+          if (storedPek) {
+            try {
+              pek = await importKey(base64ToUint8Array(storedPek));
+            } catch {
+              silentCatch('authStore.initialize.importStoredPek');
+              storage().removeItem(PEK_STORAGE_KEY);
+            }
+          }
           set({
             userId: parsed.userId,
             email: parsed.email || null,
@@ -352,7 +362,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             role: parsed.role || 'user',
             isAuthenticated: true,
             isInitialized: true,
-            pek: null,
+            pek,
             personalSalt: null,
             encryptedPek: null,
             pekMissing: false,

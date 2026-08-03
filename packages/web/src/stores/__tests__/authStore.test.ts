@@ -69,6 +69,30 @@ describe('authStore', () => {
     });
   });
 
+  describe('initialize', () => {
+    it('should restore the PEK from sessionStorage on the fast path (valid stored JWT)', async () => {
+      const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }));
+      const token = `header.${payload}.sig`;
+      sessionStorage.setItem('coldfi:auth', JSON.stringify({
+        accessToken: token,
+        userId: 'user-1',
+        email: 'test@test.com',
+        displayName: '',
+        role: 'user',
+        isGoogleUser: false,
+        storedAt: Date.now(),
+      }));
+      sessionStorage.setItem('coldfi:pek', 'dGVzdA==');
+
+      await useAuthStore.getState().initialize();
+
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+      expect(useAuthStore.getState().pek).toEqual({} as CryptoKey);
+      expect(useAuthStore.getState().userId).toBe('user-1');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('logout', () => {
     it('should reset all auth state on logout', async () => {
       useAuthStore.setState({
