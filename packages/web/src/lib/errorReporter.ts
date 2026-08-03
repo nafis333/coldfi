@@ -43,12 +43,16 @@ export function setupErrorReporter(): void {
       timestamp: critical.timestamp,
     });
     useErrorStore.getState().setCriticalError(critical);
-    window.location.href = '/error';
   });
 
   const originalConsoleError = console.error;
   console.error = (...args: unknown[]) => {
-    const message = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+    const message = args.map((a) => {
+      if (typeof a === 'object') {
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }
+      return String(a);
+    }).join(' ');
 
     if (message.length > 0 && message.length < 2000) {
       useErrorStore.getState().addError({

@@ -9,7 +9,8 @@ export interface TransferResult {
 
 export function generateMinimalTransfers(
   balances: DetailedBalance[],
-  currency: string
+  currency: string,
+  relatedExpenseIdsByUser?: Record<string, string[]>
 ): TransferResult {
   const netBalances: { userId: string; amount: number }[] = [];
 
@@ -43,12 +44,18 @@ export function generateMinimalTransfers(
     const roundedAmount = Math.round(settleAmount * 100) / 100;
 
     if (roundedAmount > 0) {
+      const expenseIds = [
+        ...new Set([
+          ...(relatedExpenseIdsByUser?.[debtor.userId] || []),
+          ...(relatedExpenseIdsByUser?.[creditor.userId] || []),
+        ]),
+      ];
       transfers.push({
         fromUserId: debtor.userId,
         toUserId: creditor.userId,
         amount: roundedAmount,
         currency,
-        relatedExpenseIds: [],
+        relatedExpenseIds: expenseIds,
       });
       totalAmount += roundedAmount;
     }

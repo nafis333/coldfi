@@ -1,7 +1,7 @@
 import { query } from '../db/pool';
 import { authenticator } from 'otplib';
 import { AuthError, ValidationError, NotFoundError, ConflictError } from '../errors';
-import { setTempToken, getTempToken } from './redis';
+import { getTempToken } from './redis';
 import { generateTokens } from './tokenService';
 
 const ISSUER_NAME = 'ColdFi';
@@ -101,7 +101,8 @@ export async function verify2FALogin(tempToken: string, code: string): Promise<a
     throw new AuthError('ERR_INVALID_2FA', 'Invalid 2FA code');
   }
 
-  return generateTokens(userId);
+  const tokens = await generateTokens(userId);
+  return tokens;
 }
 
 export async function getTwoFactorStatus(userId: string): Promise<{ enabled: boolean }> {

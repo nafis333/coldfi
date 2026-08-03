@@ -32,12 +32,12 @@ export function useOverview(): OverviewData {
   const displayName = useAuthStore((s) => s.displayName);
   const defaultCurrency = useAuthStore((s) => s.defaultCurrency || 'BDT');
 
-  const now = useMemo(() => new Date(), []);
+  const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  const monthStart = useMemo(() => now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01', [now]);
-  const monthEnd = useMemo(() => new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0], [now]);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
   const thisMonthExpenses = useMemo(
     () => expenses.filter((e: any) => e.date >= monthStart && e.date <= monthEnd),
@@ -58,7 +58,10 @@ export function useOverview(): OverviewData {
   const budgetPercent = totalBudget > 0 ? (totalBudgetedSpent / totalBudget) * 100 : 0;
   const remaining = totalBudget - totalBudgetedSpent;
 
-  const recentExpenses = useMemo(() => expenses.slice(0, 5), [expenses]);
+  const recentExpenses = useMemo(
+    () => [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5),
+    [expenses]
+  );
 
   const categoryMap = useMemo(() => {
     const map: Record<string, { name: string; icon: string; color: string }> = {};

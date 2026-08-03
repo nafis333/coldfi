@@ -9,9 +9,10 @@ interface Member {
 }
 
 interface ExpenseData {
-  id: string; amount: number; description: string; category: string;
-  payerId: string; date: string; createdAt: string;
+  id: string; amount: number; description: string; categoryId: string;
+  paidBy: string; date: string; createdAt: string;
   splits: { userId: string; amount: number }[];
+  category?: string; payerId?: string;
 }
 
 interface TabContext {
@@ -37,13 +38,13 @@ export default function ExMembersTab() {
   const allBalances = useMemo(() => {
     const allMemberIds = group.members.map((m) => m.userId);
     const engineExpenses = (group.expenses || []).map((e) => ({
-      id: e.id, groupId, amount: e.amount, currency: defaultCurrency, categoryId: e.category,
-      description: e.description, date: e.date || e.createdAt, paidBy: e.payerId,
+      id: e.id, groupId, amount: e.amount, currency: defaultCurrency, categoryId: e.categoryId || e.category || '',
+      description: e.description, date: e.date || e.createdAt, paidBy: e.paidBy || e.payerId || '',
       paymentMethod: 'cash' as const, splitMode: 'ratio' as const,
       splits: (e.splits || []).map((s) => ({
         memberId: s.userId, ratio: e.amount > 0 ? s.amount / e.amount : 0, isPaid: false, fixedAmount: s.amount,
       })),
-      status: 'unsettled' as const, isRecurring: false, createdAt: e.createdAt, updatedAt: e.createdAt, createdBy: e.payerId,
+      status: 'unsettled' as const, isRecurring: false, createdAt: e.createdAt, updatedAt: e.createdAt, createdBy: e.paidBy || e.payerId || '',
     }));
     const engineSettlements = (group.settlements || []).map((s: any) => ({
       id: s.id, groupId, fromUserId: s.fromUserId, toUserId: s.toUserId, amount: s.amount,

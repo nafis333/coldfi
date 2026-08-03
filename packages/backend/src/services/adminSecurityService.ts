@@ -145,18 +145,19 @@ export async function inspectRedisCache(pattern: string): Promise<any> {
 export async function clearRedisCache(pattern: string): Promise<number> {
   try {
     const redis = getRedis();
-    const keys: string[] = [];
     let cursor = '0';
+    let total = 0;
     do {
       const result = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
       cursor = result[0];
-      keys.push(...result[1]);
+      const batch = result[1] as string[];
+      if (batch.length > 0) {
+        await redis.del(...batch);
+        total += batch.length;
+      }
     } while (cursor !== '0');
 
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-    return keys.length;
+    return total;
   } catch (err) {
     logger.error('clearRedisCache failed', { module: 'monitoring', error: String(err) });
     return 0;

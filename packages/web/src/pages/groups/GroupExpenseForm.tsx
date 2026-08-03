@@ -40,7 +40,7 @@ export default function GroupExpenseForm() {
   const { createGroupExpense, updateGroupExpense } = useGroupExpenseStore();
 
   const members = currentGroup?.members ?? [];
-  const memberIds = members.map((m) => m.userId);
+  const memberIds = useMemo(() => members.map((m) => m.userId), [members]);
   const isEditing = !!expenseId;
 
   const existingExpense = useMemo(() => {
@@ -64,8 +64,8 @@ export default function GroupExpenseForm() {
     }
     if (!existingExpense) return;
     setDescription(existingExpense.description);
-    setCategory(existingExpense.category);
-    setPayerId(existingExpense.payerId);
+    setCategory(existingExpense.categoryId || existingExpense.category || '');
+    setPayerId(existingExpense.paidBy || existingExpense.payerId || '');
     if (existingExpense.itemized && existingExpense.itemized.length > 0) {
       setItems(existingExpense.itemized.map((i) => {
         const splitValues: Record<string, string> = {};
@@ -199,9 +199,12 @@ export default function GroupExpenseForm() {
   function revalidateAll(): Record<string, string> {
     const errors: Record<string, string> = {};
     items.forEach((item) => {
+      if (!item.name.trim()) {
+        errors[item.id] = 'Item name required';
+        return;
+      }
       const err = validateItem(item, members.length);
-      if (!item.name.trim() && !err) errors[item.id] = 'Item name required';
-      else if (err) errors[item.id] = err;
+      if (err) errors[item.id] = err;
     });
     return errors;
   }
@@ -259,20 +262,20 @@ export default function GroupExpenseForm() {
 
       const finalSplits = Object.entries(splitsMap).map(([userId, amount]) => ({ userId, amount: Math.round(amount * 100) / 100 }));
 
-      const itemizedData = items.filter((i) => i.name.trim()).map((i) => {
+      const itemizedData = items.map((i) => {
         const splitValues: Record<string, number> = {};
         if (i.splitMode !== 'equal') for (const pid of i.participants) splitValues[pid] = parseFloat(i.splitValues[pid] || '0') || 0;
-        return { name: i.name, amount: parseFloat(i.amount) || 0, assignedTo: i.participants, splitMode: i.splitMode, splitValues: i.splitMode !== 'equal' ? splitValues : undefined };
+        return { name: i.name.trim() || 'Item', amount: parseFloat(i.amount) || 0, assignedTo: i.participants, splitMode: i.splitMode, splitValues: i.splitMode !== 'equal' ? splitValues : undefined };
       });
 
       if (isEditing && expenseId) {
         await updateGroupExpense(groupId!, expenseId, {
-          amount: total, description: description.trim(), category, payerId,
+          amount: total, description: description.trim(), categoryId: category, paidBy: payerId,
           splits: finalSplits, itemized: itemizedData,
         });
       } else {
         await createGroupExpense(groupId!, {
-          amount: total, description: description.trim(), category, payerId,
+          amount: total, description: description.trim(), categoryId: category, paidBy: payerId,
           splits: finalSplits, itemized: itemizedData, splitMode: EngineSplitMode.RATIO,
         });
       }

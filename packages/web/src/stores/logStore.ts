@@ -85,12 +85,14 @@ function fromEngineEntry(engine: EngineLogEntry, logs: LogEntry[]): LogEntry {
   const meta = engine.metadata as Record<string, string> || {};
   const existing = logs.find((l) => l.id === engine.id);
   if (existing) return existing;
+  const et = String(engine.eventType);
+  const actionType: LogEntry['actionType'] = meta.actionType as LogEntry['actionType'] || (et.startsWith('expense_') ? 'expense' : et.startsWith('member_') ? 'member' : et.startsWith('settlement_') ? 'settlement' : 'expense');
   return {
     id: engine.id,
     timestamp: engine.timestamp,
     actorName: meta.actorName || engine.actorId,
-    action: meta.action || engine.eventType,
-    actionType: 'expense',
+    action: meta.action || et,
+    actionType,
     details: meta.details || '',
     hash: engine.hash,
     previousHash: engine.previousLogHash,
@@ -183,7 +185,7 @@ export const useLogStore = create<LogState>((set) => ({
           let previousHash = '';
           for (let i = 0; i < entries.length; i++) {
             const entry = entries[i]!;
-            if (i > 0 && entry.previousHash !== previousHash) brokenAt.push(i);
+            if (entry.previousHash !== previousHash) brokenAt.push(i);
             const expectedHash = await computeEntryHash({
               id: entry.id, timestamp: entry.timestamp, actorName: entry.actorName,
               action: entry.action, actionType: entry.actionType, details: entry.details,
@@ -204,7 +206,7 @@ export const useLogStore = create<LogState>((set) => ({
       let previousHash = '';
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i]!;
-        if (i > 0 && entry.previousHash !== previousHash) brokenAt.push(i);
+        if (entry.previousHash !== previousHash) brokenAt.push(i);
         const expectedHash = await computeEntryHash({
           id: entry.id, timestamp: entry.timestamp, actorName: entry.actorName,
           action: entry.action, actionType: entry.actionType, details: entry.details,
@@ -249,11 +251,12 @@ export const useLogStore = create<LogState>((set) => ({
       const syncData = await res.json();
       const vectorClock = syncData.vectorClock || {};
       let logs: LogEntry[] = [];
+      let parsedBlob: Record<string, unknown> = {};
 
       if (syncData.encryptedBlob) {
         const decrypted = await decryptData(gk, syncData.encryptedBlob);
-        const parsed = JSON.parse(decrypted);
-        logs = (parsed.logs || []).map((l: any) =>
+        parsedBlob = JSON.parse(decrypted);
+        logs = ((parsedBlob.logs || []) as any[]).map((l: any) =>
           l.hash && l.previousHash !== undefined ? l as LogEntry : fromEngineEntry(l, [])
         );
       }
@@ -292,7 +295,7 @@ export const useLogStore = create<LogState>((set) => ({
         previousHash,
       });
 
-      const serialized = JSON.stringify({ ...JSON.parse(syncData.encryptedBlob ? await decryptData(gk, syncData.encryptedBlob) : '{}'), logs });
+      const serialized = JSON.stringify({ ...parsedBlob, logs });
       const encrypted = await encryptData(gk, serialized);
 
       const putRes = await apiClient(`/api/group/${groupId}/sync`, {
@@ -314,25 +317,46 @@ export const useLogStore = create<LogState>((set) => ({
           );
         }
         const retryPrevHash = retryLogs.length > 0 ? retryLogs[retryLogs.length - 1]!.hash : '';
-        logs[logs.length - 1] = { ...logs[logs.length - 1]!, previousHash: retryPrevHash };
         const retryEngineEntry = createGroupLogEntry({
           ...engineEntry,
           previousLogHash: retryPrevHash,
         });
-        logs[logs.length - 1] = {
-          ...logs[logs.length - 1]!,
+        const mergedMeta = (engineEntry.metadata || {}) as Record<string, string>;
+        const mergedActorName = mergedMeta.actorName || engineEntry.actorId;
+        const mergedAction = mergedMeta.action || String(engineEntry.eventType);
+        const mergedActionType: LogEntry['actionType'] = mergedMeta.actionType as LogEntry['actionType'] || 'expense';
+        const retryLegacyHash = await computeEntryHash({
           id: retryEngineEntry.id,
           timestamp: retryEngineEntry.timestamp,
-          hash: retryEngineEntry.hash,
+          actorName: mergedActorName,
+          action: mergedAction,
+          actionType: mergedActionType,
+          details: mergedMeta.details || '',
+          previousHash: retryPrevHash,
+        });
+        const mergedEntry: LogEntry = {
+          id: retryEngineEntry.id,
+          timestamp: retryEngineEntry.timestamp,
+          actorName: mergedActorName,
+          action: mergedAction,
+          actionType: mergedActionType,
+          details: mergedMeta.details || '',
+          hash: retryLegacyHash,
           previousHash: retryPrevHash,
         };
-        const retrySerialized = JSON.stringify({ ...JSON.parse(retryData.encryptedBlob ? await decryptData(gk, retryData.encryptedBlob) : '{}'), logs });
+        const mergedLogs = [...retryLogs, mergedEntry];
+        const retryParsed = retryData.encryptedBlob ? JSON.parse(await decryptData(gk, retryData.encryptedBlob)) : {};
+        const retrySerialized = JSON.stringify({ ...retryParsed, logs: mergedLogs });
         const retryEncrypted = await encryptData(gk, retrySerialized);
-        await apiClient(`/api/group/${groupId}/sync`, {
+        const retryPutRes = await apiClient(`/api/group/${groupId}/sync`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ encryptedBlob: retryEncrypted, vectorClock: retryData.vectorClock }),
         });
+        if (!retryPutRes.ok) {
+          console.error('[logStore] Retry PUT failed:', retryPutRes.status);
+          return;
+        }
       }
 
       set((state) => ({ logs: [...state.logs, logs[logs.length - 1]!] }));
@@ -350,3 +374,4 @@ onLogout(() => {
     error: null,
   });
 });
+

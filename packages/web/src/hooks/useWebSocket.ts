@@ -16,27 +16,22 @@ export function useWebSocket() {
 
   const MAX_RECONNECT_ATTEMPTS = 10;
 
-  const getReconnectDelay = useCallback(() => {
-    return Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000) + Math.random() * 1000;
+  const connectRef = useRef<() => void>(() => {});
+  const scheduleReconnectRef = useRef<() => void>(() => {});
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
+    }
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    joinedRooms.current.clear();
+    reconnectAttempts.current = 0;
+    setConnectionState('disconnected');
   }, []);
 
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimer.current) return;
-    const delay = getReconnectDelay();
-    reconnectTimer.current = setTimeout(() => {
-      reconnectTimer.current = null;
-      const currentToken = useAuthStore.getState().accessToken;
-      if (!currentToken) return;
-      if (socketRef.current) {
-        socketRef.current.auth = { token: currentToken };
-        socketRef.current.connect();
-      } else {
-        connect();
-      }
-    }, delay);
-  }, [getReconnectDelay]);
-
-  const setupEventHandlers = useCallback((socket: Socket) => {
+  const setupEventHandlers = useCallback((socket: Socket, sched: () => void) => {
     socket.on('connect', () => {
       setConnectionState('connected');
       reconnectAttempts.current = 0;
@@ -49,15 +44,14 @@ export function useWebSocket() {
       setConnectionState('disconnected');
     });
 
-    socket.on('connect_error', (err) => {
-      console.error('[WS] Connection error:', err.message);
+    socket.on('connect_error', () => {
       reconnectAttempts.current++;
       if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
         socket.disconnect();
         setConnectionState('disconnected');
       } else {
         setConnectionState('reconnecting');
-        scheduleReconnect();
+        sched();
       }
     });
 
@@ -87,7 +81,7 @@ export function useWebSocket() {
     }) => {
       useNotificationStore.getState().addNotification(data as any);
     });
-  }, [scheduleReconnect]);
+  }, []);
 
   const connect = useCallback(() => {
     const currentToken = useAuthStore.getState().accessToken;
@@ -96,7 +90,7 @@ export function useWebSocket() {
     if (socketRef.current?.connected) return;
 
     setConnectionState('connecting');
-    const socketUrl = import.meta.env.VITE_WS_URL ?? 'http://localhost:3001';
+    const socketUrl = import.meta.env.VITE_WS_URL ?? '';
 
     socketRef.current = io(socketUrl, {
       auth: { token: currentToken },
@@ -105,34 +99,28 @@ export function useWebSocket() {
       timeout: 10000,
     });
 
-    setupEventHandlers(socketRef.current);
+    setupEventHandlers(socketRef.current, () => scheduleReconnectRef.current());
   }, [setupEventHandlers]);
 
-  const disconnect = useCallback(() => {
-    if (reconnectTimer.current) {
-      clearTimeout(reconnectTimer.current);
+  connectRef.current = connect;
+
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectTimer.current) return;
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000) + Math.random() * 1000;
+    reconnectTimer.current = setTimeout(() => {
       reconnectTimer.current = null;
-    }
-    socketRef.current?.disconnect();
-    socketRef.current = null;
-    joinedRooms.current.clear();
-    reconnectAttempts.current = 0;
-    setConnectionState('disconnected');
+      const currentToken = useAuthStore.getState().accessToken;
+      if (!currentToken) return;
+      if (socketRef.current) {
+        socketRef.current.auth = { token: currentToken };
+        socketRef.current.connect();
+      } else {
+        connectRef.current();
+      }
+    }, delay);
   }, []);
 
-  const joinGroupRoom = useCallback((groupId: string) => {
-    joinedRooms.current.add(groupId);
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('join-group', { groupId });
-    }
-  }, []);
-
-  const leaveGroupRoom = useCallback((groupId: string) => {
-    joinedRooms.current.delete(groupId);
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('leave-group', { groupId });
-    }
-  }, []);
+  scheduleReconnectRef.current = scheduleReconnect;
 
   useEffect(() => {
     if (accessToken) {
@@ -146,12 +134,25 @@ export function useWebSocket() {
   return {
     connectionState,
     isConnected: connectionState === 'connected',
-    joinGroupRoom,
-    leaveGroupRoom,
+    joinGroupRoom: useCallback((groupId: string) => {
+      joinedRooms.current.add(groupId);
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('join-group', { groupId });
+      }
+    }, []),
+    leaveGroupRoom: useCallback((groupId: string) => {
+      joinedRooms.current.delete(groupId);
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('leave-group', { groupId });
+      }
+    }, []),
     forceReconnect: () => {
       reconnectAttempts.current = 0;
       disconnect();
-      setTimeout(() => connect(), 500);
+      reconnectTimer.current = setTimeout(() => {
+        reconnectTimer.current = null;
+        connect();
+      }, 500);
     },
   };
 }

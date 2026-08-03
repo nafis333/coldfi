@@ -7,9 +7,10 @@ function deriveKeyBytes(
   baseSalt: Uint8Array,
   context: string
 ): Promise<Uint8Array> {
-  const contextSalt = new Uint8Array(baseSalt.length + context.length);
-  contextSalt.set(new TextEncoder().encode(context));
-  contextSalt.set(baseSalt, context.length);
+  const contextBytes = new TextEncoder().encode(context);
+  const contextSalt = new Uint8Array(baseSalt.length + contextBytes.length);
+  contextSalt.set(contextBytes);
+  contextSalt.set(baseSalt, contextBytes.length);
   return derivePBKDF2Bytes(password, contextSalt);
 }
 
@@ -111,6 +112,7 @@ export function uint8ArrayToHex(bytes: Uint8Array): string {
 }
 
 export function hexToUint8Array(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0) throw new Error('Hex string must have even length');
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
@@ -274,12 +276,8 @@ export async function deriveWrappingKey(
   passphrase: string,
   personalSaltBase64: string
 ): Promise<Uint8Array> {
-  const salt = base64ToUint8Array(personalSaltBase64);
-  const context = new TextEncoder().encode('coldfi:pek-wrapping');
-  const contextSalt = new Uint8Array(context.length + salt.length);
-  contextSalt.set(context);
-  contextSalt.set(salt, context.length);
-  return deriveKeyBytes(passphrase, contextSalt, 'coldfi:pek-wrap:');
+const salt = base64ToUint8Array(personalSaltBase64);
+  return deriveKeyBytes(passphrase, salt, 'coldfi:pek-wrap:');
 }
 
 export async function encryptPEK(
@@ -297,3 +295,10 @@ export async function decryptPEK(
   const plaintext = await decryptWithRawKey(wrappingKey, encryptedPek);
   return base64ToUint8Array(plaintext);
 }
+
+export function wipeBytes(bytes: Uint8Array): void {
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = 0;
+  }
+}
+

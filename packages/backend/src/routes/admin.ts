@@ -85,8 +85,8 @@ export async function adminRoutes(app: FastifyInstance) {
       level: level as string,
       module: module as string,
       search: search as string,
-      page: safeParseInt(page, 1),
-      limit: safeParseInt(limit, 50),
+      page: safeParseInt(page, 1, 1),
+      limit: safeParseInt(limit, 50, 1),
       from: from as string,
       to: to as string,
     }));
@@ -95,8 +95,8 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get('/admin/debug/errors', { preHandler: [adminAudit] }, async (request, reply) => {
     const { page = '1', limit = '20', resolved } = request.query as any;
     return reply.send(await adminLog.getErrorEvents({
-      page: safeParseInt(page, 1),
-      limit: safeParseInt(limit, 50),
+      page: safeParseInt(page, 1, 1),
+      limit: safeParseInt(limit, 50, 1),
       resolved: resolved as string,
     }));
   });
@@ -143,8 +143,8 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get('/admin/users', { preHandler: [adminAudit] }, async (request, reply) => {
     const { page = '1', limit = '50', status, search } = request.query as any;
     return reply.send(await adminUser.getAnonymizedUsers({
-      page: safeParseInt(page, 1),
-      limit: safeParseInt(limit, 50),
+      page: safeParseInt(page, 1, 1),
+      limit: safeParseInt(limit, 50, 1),
       status: status as string,
       search: search as string,
     }));
@@ -285,7 +285,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const adminId = request.user.userId;
 
     const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
-    const IPV6_REGEX = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
+    const IPV6_REGEX = /^(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|:(?::[0-9a-fA-F]{1,4}){1,7}|::)$/;
     if (!IPV4_REGEX.test(ipAddress) && !IPV6_REGEX.test(ipAddress)) {
       throw new ValidationError('ipAddress must be a valid IP address');
     }

@@ -3,6 +3,17 @@ import { silentCatch } from '../../lib/errorHandler';
 import { usePersonalStore } from '../../stores/personalStore';
 import type { Category } from '../../lib/personalSync';
 
+const DEFAULT_CATEGORIES: Category[] = [
+  { id: 'food_drink', name: 'Food & Drink', icon: '🍕', color: '#ef4444' },
+  { id: 'transport', name: 'Transport', icon: '🚗', color: '#f97316' },
+  { id: 'accommodation', name: 'Accommodation', icon: '🏠', color: '#eab308' },
+  { id: 'entertainment', name: 'Entertainment', icon: '🎬', color: '#8b5cf6' },
+  { id: 'shopping', name: 'Shopping', icon: '🛍️', color: '#ec4899' },
+  { id: 'utilities', name: 'Utilities', icon: '💡', color: '#14b8a6' },
+  { id: 'health', name: 'Health', icon: '💊', color: '#22c55e' },
+  { id: 'other', name: 'Other', icon: '📝', color: '#6366f1' },
+];
+
 const CATEGORY_ICONS = ['🍕', '🚗', '🏠', '🎬', '🛍️', '💡', '📝', '💊', '🎓', '✈️', '🐾', '🎁', '💻', '🏋️', '☕', '🎵', '👕', '📱', '🏥', '📦'];
 const CATEGORY_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#6366f1'];
 
@@ -23,7 +34,10 @@ export default function CategoryPicker({ value, categories, error, onChange }: C
   const [newError, setNewError] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const selected = categories.find((c) => c.id === value);
+  const allCategories = [...DEFAULT_CATEGORIES, ...categories.filter(
+    (c) => !DEFAULT_CATEGORIES.some((dc) => dc.id === c.id)
+  )];
+  const selected = allCategories.find((c) => c.id === value);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -82,10 +96,12 @@ export default function CategoryPicker({ value, categories, error, onChange }: C
 
       {open && !showNew && (
         <div className="absolute z-10 mt-1 w-full rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-800 max-h-64 overflow-y-auto">
-          {categories.length === 0 && (
+          {allCategories.length === 0 && (
             <div className="px-3 py-4 text-center text-sm text-neutral-400">No categories yet</div>
           )}
-          {categories.map((cat) => (
+          {allCategories.map((cat) => {
+            const isDefault = DEFAULT_CATEGORIES.some((dc) => dc.id === cat.id);
+            return (
             <div
               key={cat.id}
               className="flex items-center px-3 py-2.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer"
@@ -97,6 +113,7 @@ export default function CategoryPicker({ value, categories, error, onChange }: C
               </span>
               <span className="flex items-center gap-1 shrink-0">
                 {value === cat.id && <span className="text-primary-600">✓</span>}
+                {!isDefault && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation();
@@ -107,9 +124,11 @@ export default function CategoryPicker({ value, categories, error, onChange }: C
                   className="ml-1 text-neutral-300 hover:text-danger-500 dark:text-neutral-600 dark:hover:text-danger-400 text-sm px-1"
                   title="Delete category"
                 >✕</button>
+                )}
               </span>
             </div>
-          ))}
+            );
+          })}
           <div className="border-t border-neutral-200 dark:border-neutral-700">
             <button
               type="button"

@@ -2,6 +2,14 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import * as groupService from '../services/groupService';
 import { emitToGroup } from '../plugins/websocket';
 import { requireGroupAccess, requireGroupAdmin } from '../middleware';
+import { createRateLimiter } from '../middleware/rateLimiter';
+
+const encryptionKeyLimiter = createRateLimiter({
+  windowSeconds: 60,
+  maxAttempts: 10,
+  keyPrefix: 'rl:encryption-key',
+  keyFn: (req) => req.user?.userId || req.ip,
+});
 
 export async function groupRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
@@ -111,7 +119,7 @@ export async function groupRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  app.get('/:groupId/encryption-key', { preHandler: [requireGroupAccess] }, async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/:groupId/encryption-key', { preHandler: [requireGroupAccess, encryptionKeyLimiter] }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { groupId } = request.params as { groupId: string };
     const result = await groupService.getGroupEncryptionKey(groupId);
     return reply.send(result);

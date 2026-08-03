@@ -16,6 +16,12 @@ import {
 
 export type { RecurringBill, Frequency } from '../lib/personalSync';
 
+let personalVectorClock = Date.now();
+
+function setLastVectorClock(clock: number): void {
+  personalVectorClock = Math.max(personalVectorClock, clock);
+}
+
 interface PersonalState {
   personalBlob: PersonalBlob | null;
   expenses: Expense[];
@@ -109,17 +115,16 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
       throw new Error('Not authenticated');
     }
     if (!pek) {
-      if (isGoogleUser) return;
+      if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
       throw new Error('No encryption key loaded');
     }
 
     const plaintext = JSON.stringify(blob);
-    const encryptedBlob = await encryptData(pek, plaintext);
+    let encryptedBlob = await encryptData(pek, plaintext);
 
+    let vectorClock = ++personalVectorClock;
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const vectorClock = Date.now();
-
       const res = await apiClient('/api/personal/sync', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -127,6 +132,10 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
       });
 
       if (res.ok) {
+        const data = await res.json();
+        if (data.vectorClock) {
+          setLastVectorClock(data.vectorClock);
+        }
         const { statuses: budgetStatuses, updatedBudgets } = computeBudgetStatuses(blob.budgets, blob.expenses);
 
         set({
@@ -142,6 +151,28 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
       }
 
       if (res.status === 409 && attempt < 2) {
+        const refreshRes = await apiClient('/api/personal/sync');
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          vectorClock = (refreshData.vectorClock || 0) + 1;
+          if (refreshData.encryptedBlob) {
+            const freshPlaintext = await decryptData(pek, refreshData.encryptedBlob);
+            const freshBlob = JSON.parse(freshPlaintext) as PersonalBlob;
+            const merged: PersonalBlob = {
+              ...blob,
+              ...freshBlob,
+              expenses: [...(freshBlob.expenses || []), ...(blob.expenses || []).filter(e => !freshBlob.expenses?.some((fe: any) => fe.id === e.id))],
+              budgets: [...(freshBlob.budgets || []), ...(blob.budgets || []).filter(b => !freshBlob.budgets?.some((fb: any) => fb.id === b.id))],
+              categories: [...(freshBlob.categories || []), ...(blob.categories || []).filter(c => !freshBlob.categories?.some((fc: any) => fc.id === c.id))],
+              incomeLogs: [...(freshBlob.incomeLogs || []), ...(blob.incomeLogs || []).filter(i => !freshBlob.incomeLogs?.some((fi: any) => fi.id === i.id))],
+              savingsTargets: [...(freshBlob.savingsTargets || []), ...(blob.savingsTargets || []).filter(s => !freshBlob.savingsTargets?.some((fs: any) => fs.id === s.id))],
+            };
+            const mergedPlaintext = JSON.stringify(merged);
+            encryptedBlob = await encryptData(pek, mergedPlaintext);
+          }
+        } else {
+          vectorClock = Date.now();
+        }
         lastError = new Error('Data conflict. Retrying...');
         continue;
       }

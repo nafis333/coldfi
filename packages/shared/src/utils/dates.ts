@@ -24,8 +24,8 @@ export function parseDate(value: string): Date | null {
 
 export function getMonthRange(date: string | Date): { start: string; end: string } {
   const d = typeof date === 'string' ? new Date(date) : date;
-  const start = new Date(d.getFullYear(), d.getMonth(), 1);
-  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1));
+  const end = new Date(Date.UTC(d.getFullYear(), d.getMonth() + 1, 0));
   return {
     start: start.toISOString().split('T')[0]!,
     end: end.toISOString().split('T')[0]!,

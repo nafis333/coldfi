@@ -22,9 +22,7 @@ export async function adminRateLimit(request: FastifyRequest, reply: FastifyRepl
 
   try {
     const current = await redis.incr(key);
-    if (current === 1) {
-      await redis.expire(key, windowSeconds);
-    }
+    await redis.expire(key, windowSeconds);
 
     if (current > limit) {
       const ttl = await redis.ttl(key);

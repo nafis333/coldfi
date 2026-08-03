@@ -118,11 +118,11 @@ export default function GroupOverviewTab() {
     const memberIds = members.map((m) => m.userId);
 
     const engineExpenses = expenses.map((e) => ({
-      id: e.id, groupId, amount: e.amount, currency: defaultCurrency, categoryId: e.category,
-      description: e.description, date: e.date || e.createdAt, paidBy: e.payerId,
+      id: e.id, groupId, amount: e.amount, currency: defaultCurrency, categoryId: e.categoryId || e.category || '',
+      description: e.description, date: e.date || e.createdAt, paidBy: e.paidBy || e.payerId || '',
       paymentMethod: 'cash' as const, splitMode: 'ratio' as const,
       splits: (e.splits || []).map((s) => ({ memberId: s.userId, ratio: e.amount > 0 ? s.amount / e.amount : 0, isPaid: false, fixedAmount: s.amount })),
-      status: 'unsettled' as const, isRecurring: false, createdAt: e.createdAt, updatedAt: e.createdAt, createdBy: e.payerId,
+      status: 'unsettled' as const, isRecurring: false, createdAt: e.createdAt, updatedAt: e.createdAt, createdBy: e.paidBy || e.payerId || '',
     }));
     const engineSettlements = settlements.map((s) => ({
       id: s.id, groupId, fromUserId: s.fromUserId, toUserId: s.toUserId, amount: s.amount,
@@ -133,8 +133,8 @@ export default function GroupOverviewTab() {
 
     const categorySpending: Record<string, { name: string; icon: string; total: number }> = {};
     for (const e of expenses) {
-      const cat = categories.find((c) => c.id === e.category);
-      const key = e.category || 'other';
+      const cat = categories.find((c) => c.id === (e.categoryId || e.category || ''));
+      const key = e.categoryId || e.category || 'other';
       if (!categorySpending[key]) categorySpending[key] = { name: cat?.name || key, icon: cat?.icon || '📝', total: 0 };
       categorySpending[key].total += e.amount;
     }
@@ -144,8 +144,8 @@ export default function GroupOverviewTab() {
 
     const memberExpenses: Record<string, number> = {};
     for (const e of expenses) {
-      if (!activeMemberIds.includes(e.payerId)) continue;
-      memberExpenses[e.payerId] = (memberExpenses[e.payerId] || 0) + e.amount;
+      if (!activeMemberIds.includes(e.paidBy || e.payerId || '')) continue;
+      memberExpenses[e.paidBy || e.payerId || ''] = (memberExpenses[e.paidBy || e.payerId || ''] || 0) + e.amount;
     }
     const memberSpending = activeMembers.map((m) => ({
       userId: m.userId, displayName: m.displayName || m.userId.slice(0, 8),
@@ -163,7 +163,7 @@ export default function GroupOverviewTab() {
     const monthlyTrend = Object.entries(monthlyMap).map(([month, data]) => ({ month, ...data })).sort((a, b) => a.month.localeCompare(b.month));
 
     const recentActivity = expenses.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10).map((e) => ({
-      type: 'expense' as const, id: e.id, actorName: memberName(members, e.payerId),
+      type: 'expense' as const, id: e.id, actorName: memberName(members, e.paidBy || e.payerId || ''),
       description: e.description || 'added expense', date: e.createdAt, amount: e.amount,
     }));
 

@@ -117,7 +117,7 @@ export function downloadReceiptPDF(data: ReceiptData): void {
       tableLineColor: [220, 220, 220],
       tableLineWidth: 0.1,
     });
-    startY = (doc as any).lastAutoTable.finalY + 4;
+    if ((doc as any).lastAutoTable) startY = (doc as any).lastAutoTable.finalY + 4;
   }
 
   // Splits table (group only)
@@ -147,7 +147,7 @@ export function downloadReceiptPDF(data: ReceiptData): void {
       tableLineColor: [220, 220, 220],
       tableLineWidth: 0.1,
     });
-    startY = (doc as any).lastAutoTable.finalY + 4;
+    if ((doc as any).lastAutoTable) startY = (doc as any).lastAutoTable.finalY + 4;
   }
 
   // Total

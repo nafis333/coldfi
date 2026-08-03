@@ -93,8 +93,8 @@ export async function runMigrations(): Promise<void> {
 // Allow running as standalone script
 if (require.main === module) {
   migrate()
-    .catch((err) => {
-      logger.fatal('Migration failed', { module: 'migrate', error: String(err) });
+    .catch(async (err) => {
+      await logger.fatal('Migration failed', { module: 'migrate', error: String(err) });
       process.exit(1);
     })
     .finally(() => {

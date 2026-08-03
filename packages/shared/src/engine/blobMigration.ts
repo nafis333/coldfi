@@ -28,7 +28,6 @@ export function migrateBlob<BlobT extends { version: number }>(
   migrations: BlobMigration<any>[]
 ): BlobT {
   let current = { ...blob };
-  const startVersion = (current.version as number) || 0;
 
   const sorted = [...migrations].sort(
     (a, b) => a.fromVersion - b.fromVersion
@@ -94,13 +93,14 @@ function normalizeBudget(b: Record<string, unknown>): Record<string, unknown> {
 }
 
 function normalizeGroupExpense(exp: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...exp,
-    id: exp.id ?? generateId(),
-    category: exp.category ?? '',
-    payerId: exp.payerId ?? '',
-    createdAt: exp.createdAt ?? new Date().toISOString(),
-  };
+  const result: Record<string, unknown> = { ...exp };
+  result.id = (exp.id as string) ?? generateId();
+  result.categoryId = (exp.categoryId as string) ?? (exp.category as string) ?? '';
+  result.paidBy = (exp.paidBy as string) ?? (exp.payerId as string) ?? '';
+  result.createdAt = (exp.createdAt as string) ?? new Date().toISOString();
+  delete result.category;
+  delete result.payerId;
+  return result;
 }
 
 function normalizeSettlement(s: Record<string, unknown>): Record<string, unknown> {

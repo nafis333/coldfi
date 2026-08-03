@@ -85,7 +85,7 @@ export async function importEncryptedBackup(file: File, password: string): Promi
   }
 
   // Groups are referenced by ID; queue a full re-sync
-  useGroupStore.getState().fetchGroups();
+  try { await useGroupStore.getState().fetchGroups(); } catch {}
 }
 
 export function exportExpensesCSV(): void {

@@ -566,11 +566,12 @@ describe('Scenario: Analytics calculations', () => {
       makePersonalExpense({ id: 'e2', amount: 500, categoryId: catUtil, date: '2026-01-20' }),
     ];
     const savings = computeSavings(incomeLogs, expenses);
-    expect(savings.totalIncome).toBe(6000);
-    expect(savings.totalExpenses).toBe(2500);
-    expect(savings.netSavings).toBe(3500);
-    expect(savings.savingsRate).toBeCloseTo(58.33, 1);
-    expect(savings.bySource).toHaveLength(2);
+    expect(savings).toHaveLength(1);
+    expect(savings[0]!.totalIncome).toBe(6000);
+    expect(savings[0]!.totalExpenses).toBe(2500);
+    expect(savings[0]!.netSavings).toBe(3500);
+    expect(savings[0]!.savingsRate).toBeCloseTo(58.33, 1);
+    expect(savings[0]!.bySource).toHaveLength(2);
   });
 
   it('computes spending trends over months', () => {
@@ -596,9 +597,9 @@ describe('Scenario: Analytics calculations', () => {
       makePersonalExpense({ id: 'e3', amount: 200, categoryId: catFood, date: '2026-01-03' }),
     ];
     const top = computeTopExpenses(expenses, categories, 2);
-    expect(top).toHaveLength(2);
-    expect(top[0]!.amount).toBe(500);
-    expect(top[1]!.amount).toBe(200);
+    expect(top['USD']).toHaveLength(2);
+    expect(top['USD']![0]!.amount).toBe(500);
+    expect(top['USD']![1]!.amount).toBe(200);
   });
 
   it('date range filters top expenses', () => {
@@ -610,8 +611,8 @@ describe('Scenario: Analytics calculations', () => {
       makePersonalExpense({ id: 'e2', amount: 1000, categoryId: catFood, date: '2026-02-01' }),
     ];
     const top = computeTopExpenses(expenses, categories, 10, '2026-01-01', '2026-01-31');
-    expect(top).toHaveLength(1);
-    expect(top[0]!.amount).toBe(500);
+    expect(top['USD']).toHaveLength(1);
+    expect(top['USD']![0]!.amount).toBe(500);
   });
 });
 

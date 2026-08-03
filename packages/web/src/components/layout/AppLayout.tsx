@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { useTabSync } from '../../hooks/useTabSync';
@@ -50,8 +50,12 @@ export default function AppLayout() {
   const displayName = useAuthStore((s) => s.displayName);
   const logout = useAuthStore((s) => s.logout);
 
+  const lastActivityRef = useRef(0);
   const updateActivity = useCallback(() => {
-    localStorage.setItem('coldfi:lastActivity', String(Date.now()));
+    const now = Date.now();
+    if (now - lastActivityRef.current < 30000) return;
+    lastActivityRef.current = now;
+    localStorage.setItem('coldfi:lastActivity', String(now));
   }, []);
 
   useEffect(() => {

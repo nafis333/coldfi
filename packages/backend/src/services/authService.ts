@@ -57,11 +57,6 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     throw new ValidationError('Auth key hash is required and must be at least 32 characters');
   }
 
-  const existing = await query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
-  if (existing.rows.length > 0) {
-    throw new ConflictError('Email is already registered');
-  }
-
   const hashedAuthKey = await bcrypt.hash(authKeyHash, SALT_ROUNDS);
   const serverEncryptedPek = encryptServerKey(rawPek);
   const recoveryCode = generateRecoveryCode();
@@ -74,6 +69,11 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
 
   try {
     await transaction(async (client) => {
+      const existing = await client.query('SELECT id FROM users WHERE email = $1 FOR UPDATE', [email.toLowerCase()]);
+      if (existing.rows.length > 0) {
+        throw new ConflictError('Email is already registered');
+      }
+
       await client.query(
         `INSERT INTO users (id, email, display_name, password_hash, auth_key_hash, personal_salt, encrypted_pek, role, personal_data_enc, personal_vc, default_currency, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())`,
@@ -105,7 +105,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
       }
     });
   } catch (error: any) {
-    if (error?.code === '23505') {
+    if (error?.code === '23505' || error instanceof ConflictError) {
       throw new ConflictError('Email is already registered');
     }
     throw error;
@@ -139,12 +139,16 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
   if (failedCount >= config.MAX_LOGIN_ATTEMPTS) {
     const oldestFail = await query<{ created_at: string }>(
       `SELECT created_at FROM user_activity_log
-       WHERE user_id = $1 AND action = 'login_failed'
+       WHERE user_id = $1 AND action = 'login_failed' AND created_at > NOW() - $2::interval
        ORDER BY created_at ASC LIMIT 1`,
-      [user.id]
+      [user.id, `${config.LOGIN_WINDOW_MINUTES} minutes`]
     );
     const lockUntil = new Date(oldestFail.rows[0]!.created_at);
     lockUntil.setMinutes(lockUntil.getMinutes() + config.LOGIN_WINDOW_MINUTES);
+    await query(
+      `UPDATE users SET locked_until = $1 WHERE id = $2`,
+      [lockUntil.toISOString(), user.id]
+    );
     const remaining = Math.ceil((lockUntil.getTime() - Date.now()) / 60000);
     throw new AuthError('ERR_USER_LOCKED', `Account locked. Try again in ${remaining} minutes`, 423);
   }
@@ -160,6 +164,11 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
 
     throw new AuthError('ERR_INVALID_CREDENTIALS', 'Invalid email or password');
   }
+
+  await query(
+    `DELETE FROM user_activity_log WHERE user_id = $1 AND action = 'login_failed' AND created_at > NOW() - $2::interval`,
+    [user.id, `${config.LOGIN_WINDOW_MINUTES} minutes`]
+  );
 
   await query(
     `INSERT INTO user_activity_log (user_id, action, created_at)
@@ -213,20 +222,27 @@ export async function googleLogin(
   const email = payload.email.toLowerCase();
   const displayName = payload.name || '';
 
-  const existingByEmail = await query(
-    `SELECT id, google_id FROM users WHERE email = $1`,
-    [email]
-  );
+  const existingByEmail = await transaction(async (client) => {
+    const result = await client.query(
+      `SELECT id, google_id FROM users WHERE email = $1 FOR UPDATE`,
+      [email]
+    );
 
-  if (existingByEmail.rows.length > 0) {
-    const user = existingByEmail.rows[0];
-    if (!user.google_id) {
-      await query(
-        `UPDATE users SET google_id = $1, display_name = COALESCE(NULLIF($2, ''), display_name), updated_at = NOW() WHERE id = $3`,
-        [googleId, displayName, user.id]
-      );
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      if (!user.google_id) {
+        await client.query(
+          `UPDATE users SET google_id = $1, display_name = COALESCE(NULLIF($2, ''), display_name), updated_at = NOW() WHERE id = $3`,
+          [googleId, displayName, user.id]
+        );
+      }
+      return { existing: true, userId: user.id, googleNewUser: false };
     }
-    const tokens = await generateTokens(user.id);
+    return { existing: false };
+  });
+
+  if (existingByEmail.existing) {
+    const tokens = await generateTokens(existingByEmail.userId);
     return { ...tokens, googleNewUser: false };
   }
 
@@ -247,11 +263,16 @@ export async function googleLogin(
   const internalPass = crypto.randomBytes(32).toString('hex');
   const authKeyHash = await bcrypt.hash(internalPass, SALT_ROUNDS);
 
+  const personalSaltBytes = crypto.randomBytes(32).toString('base64');
+  const pekBytes = crypto.randomBytes(32);
+  const pekBase64 = pekBytes.toString('base64');
+  const serverEncryptedPek = encryptServerKey(pekBase64);
+
   await transaction(async (client) => {
     await client.query(
-      `INSERT INTO users (id, email, display_name, password_hash, auth_key_hash, personal_salt, encrypted_pek, role, google_id, personal_data_enc, personal_vc, default_currency, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, '', '', $6, $7, $8, $9, $10, NOW(), NOW())`,
-      [userId, email, displayName || null, authKeyHash, authKeyHash, role, googleId, Buffer.from(''), '[]', 'BDT']
+      `INSERT INTO users (id, email, display_name, password_hash, auth_key_hash, personal_salt, encrypted_pek, server_encrypted_pek, role, google_id, personal_data_enc, personal_vc, default_currency, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())`,
+      [userId, email, displayName || null, authKeyHash, authKeyHash, personalSaltBytes, pekBase64, serverEncryptedPek, role, googleId, Buffer.from(''), '[]', 'BDT']
     );
 
     await client.query(
@@ -270,7 +291,7 @@ export async function googleLogin(
   });
 
   const tokens = await generateTokens(userId);
-  return { ...tokens, googleNewUser: true };
+  return { ...tokens, googleNewUser: true, personalSalt: personalSaltBytes, encryptedPek: pekBase64 };
 }
 
 export async function updateProfile(

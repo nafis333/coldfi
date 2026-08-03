@@ -3,6 +3,14 @@ import { WebPushService } from '../services/webPush';
 import { query, pool } from '../db/pool';
 import { createNotification, createNotificationForMultipleUsers, deleteNotification } from '../services/notificationService';
 import { ValidationError, NotFoundError, ForbiddenError } from '../errors';
+import { createRateLimiter } from '../middleware/rateLimiter';
+
+const notificationRateLimiter = createRateLimiter({
+  windowSeconds: 60,
+  maxAttempts: 30,
+  keyPrefix: 'rl:notification',
+  keyFn: (req: any) => req.user?.userId || req.ip || 'unknown',
+});
 
 const ENDPOINT_URL_REGEX = /^https:\/\/.+$/;
 const BASE64_REGEX = /^[A-Za-z0-9+/_-]+={0,2}$/;
@@ -92,6 +100,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/', {
+    preHandler: [notificationRateLimiter],
     schema: {
       body: {
         type: 'object',
@@ -115,7 +124,35 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.user.userId;
     const { type, title, body, groupId, expenseId, settlementId, recipientIds } = request.body as any;
 
-    if (Array.isArray(recipientIds) && recipientIds.length > 0) {
+      if (Array.isArray(recipientIds) && recipientIds.length > 0) {
+        if (recipientIds.includes(userId)) {
+          throw new ValidationError('Cannot send notification to yourself via recipientIds');
+        }
+        if (groupId) {
+          const groupMemberResult = await query(
+            `SELECT user_id FROM group_members WHERE group_id = $1 AND left_at IS NULL AND user_id = ANY($2)`,
+            [groupId, recipientIds]
+          );
+          const validUserIds = new Set(groupMemberResult.rows.map((r: any) => r.user_id));
+          for (const rid of recipientIds) {
+            if (!validUserIds.has(rid)) {
+              throw new ForbiddenError(`Cannot send notification to user ${rid}: not a member of group ${groupId}`);
+            }
+          }
+        } else {
+          const groupResult = await query(
+            `SELECT DISTINCT gm2.user_id FROM group_members gm1
+             JOIN group_members gm2 ON gm1.group_id = gm2.group_id AND gm2.left_at IS NULL
+             WHERE gm1.user_id = $1 AND gm1.left_at IS NULL`,
+            [userId]
+          );
+          const sharedUserIds = new Set(groupResult.rows.map((r: any) => r.user_id));
+          for (const rid of recipientIds) {
+            if (!sharedUserIds.has(rid)) {
+              throw new ForbiddenError(`Cannot send notification to user ${rid}: no shared groups`);
+            }
+          }
+        }
       await createNotificationForMultipleUsers(recipientIds, { type, title, body, groupId, expenseId, settlementId });
     } else {
       await createNotification({ userId, type, title, body, groupId, expenseId, settlementId });

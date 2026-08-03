@@ -97,6 +97,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
   },
 
   markSettlementAsPaid: async (groupId: string, settlementId: string, paidAmount?: number) => {
+    set({ isLoading: true, error: null });
     try {
       if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
@@ -153,6 +154,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
   },
 
   acceptSettlement: async (groupId: string, settlementId: string) => {
+    set({ isLoading: true, error: null });
     try {
       if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
@@ -205,6 +207,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
   },
 
   rejectSettlement: async (groupId: string, settlementId: string) => {
+    set({ isLoading: true, error: null });
     try {
       if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
@@ -257,6 +260,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
   },
 
   cancelSettlement: async (groupId: string, settlementId: string) => {
+    set({ isLoading: true, error: null });
     try {
       if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 

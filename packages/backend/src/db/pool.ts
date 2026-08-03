@@ -61,14 +61,18 @@ export async function transaction<T>(
   fn: (client: PoolClient) => Promise<T>
 ): Promise<T> {
   const client = await pool.connect();
+  let began = false;
 
   try {
     await client.query('BEGIN');
+    began = true;
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (began) {
+      await client.query('ROLLBACK');
+    }
     throw error;
   } finally {
     client.release();

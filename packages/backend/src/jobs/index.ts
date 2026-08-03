@@ -13,5 +13,6 @@ export async function setupJobProcessor(pool: Pool): Promise<void> {
     });
   } catch (err) {
     logger.error('Failed to start job processor', { module: 'jobs', error: String(err) });
+    throw err;
   }
 }

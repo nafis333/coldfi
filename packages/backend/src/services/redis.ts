@@ -71,6 +71,24 @@ export async function getTempToken(
   }
 }
 
+export async function peekTempToken(
+  purpose: string,
+  token: string
+): Promise<Record<string, any> | null> {
+  const client = getRedis();
+  const key = `temp:${purpose}:${token}`;
+
+  const data = await client.get(key);
+  if (!data) return null;
+
+  try {
+    return JSON.parse(data);
+  } catch {
+    logger.warn('Failed to parse temp token data', { module: 'redis', purpose, key });
+    return null;
+  }
+}
+
 export async function deleteTempToken(
   purpose: string,
   token: string

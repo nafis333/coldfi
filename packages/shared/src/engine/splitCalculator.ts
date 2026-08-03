@@ -1,4 +1,4 @@
-import { ExpenseSplit, ItemizedItem } from '../types/group';
+import { ItemizedItem } from '../types/group';
 import { SplitMode } from '../types/enums';
 
 export interface SplitResult {
@@ -72,22 +72,35 @@ function calculateRatioSplits(
 
   let allocated = 0;
   const entries = Object.entries(effectiveRatios);
-  const lastIndex = entries.length - 1;
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!;
     const memberId = entry[0];
     const ratio = entry[1];
-    if (i === lastIndex) {
-      results.push({
-        memberId,
-        amount: Math.round((totalAmount - allocated) * 100) / 100,
-        ratio,
+    const isLast = i === entries.length - 1;
+    const rawAmount = isLast ? totalAmount - allocated : totalAmount * ratio;
+    const amount = Math.round(rawAmount * 100) / 100;
+    if (amount < 0) {
+      warnings.push({
+        type: 'ratio_normalized',
+        message: `Rounding produced negative amount for ${memberId}, clamped to 0`,
       });
-    } else {
-      const amount = Math.round(totalAmount * ratio * 100) / 100;
-      allocated += amount;
-      results.push({ memberId, amount, ratio });
+    }
+    allocated += amount;
+    results.push({
+      memberId,
+      amount: Math.max(0, amount),
+      ratio,
+    });
+  }
+
+  if (Math.abs(allocated - totalAmount) > 0.01) {
+    const diff = Math.round((totalAmount - allocated) * 100);
+    for (let i = results.length - 1; i >= 0 && results.length - 1 - i < Math.abs(diff); i--) {
+      const adjustment = diff > 0 ? 0.01 : -0.01;
+      const newAmount = Math.max(0, Math.round((results[i]!.amount + adjustment) * 100) / 100);
+      allocated += newAmount - results[i]!.amount;
+      results[i]!.amount = newAmount;
     }
   }
 
@@ -122,28 +135,28 @@ function calculateFixedSplits(
 
   const results: SplitResult[] = [];
   let allocated = 0;
-  const lastIndex = memberIds.length - 1;
 
   for (let i = 0; i < memberIds.length; i++) {
     const memberId = memberIds[i]!;
     const rawAmount = fixedAmounts[memberId] ?? 0;
     const scaledAmount = rawAmount * scaleFactor;
+    const isLast = i === memberIds.length - 1;
+    const amount = Math.round((isLast ? totalAmount - allocated : scaledAmount) * 100) / 100;
+    allocated += amount;
+    results.push({
+      memberId,
+      amount: Math.max(0, amount),
+      ratio: totalAmount > 0 ? amount / totalAmount : 0,
+    });
+  }
 
-    if (i === lastIndex) {
-      const amount = Math.round((totalAmount - allocated) * 100) / 100;
-      results.push({
-        memberId,
-        amount,
-        ratio: amount / totalAmount,
-      });
-    } else {
-      const amount = Math.round(scaledAmount * 100) / 100;
-      allocated += amount;
-      results.push({
-        memberId,
-        amount,
-        ratio: amount / totalAmount,
-      });
+  if (Math.abs(allocated - totalAmount) > 0.01) {
+    const diff = Math.round((totalAmount - allocated) * 100);
+    for (let i = results.length - 1; i >= 0 && results.length - 1 - i < Math.abs(diff); i--) {
+      const adjustment = diff > 0 ? 0.01 : -0.01;
+      const newAmount = Math.max(0, Math.round((results[i]!.amount + adjustment) * 100) / 100);
+      allocated += newAmount - results[i]!.amount;
+      results[i]!.amount = newAmount;
     }
   }
 
@@ -162,6 +175,13 @@ function calculateItemizedSplits(
 
   const itemsTotal = items.reduce((s, item) => s + item.amount, 0);
   const warnings: SplitWarning[] = [];
+  if (itemsTotal === 0) {
+    warnings.push({
+      type: 'itemized_scaled',
+      message: `Itemized items total is 0, falling back to equal split`,
+    });
+    return calculateRatioSplits(totalAmount, memberIds);
+  }
   const scaleFactor = Math.abs(itemsTotal - totalAmount) < 0.01
     ? 1
     : totalAmount / itemsTotal;
@@ -207,25 +227,27 @@ function calculateItemizedSplits(
 
   const results: SplitResult[] = [];
   let allocated = 0;
-  const lastIndex = memberIds.length - 1;
 
   for (let i = 0; i < memberIds.length; i++) {
     const memberId = memberIds[i]!;
-    if (i === lastIndex) {
-      const amount = Math.round((totalAmount - allocated) * 100) / 100;
-      results.push({
-        memberId,
-        amount,
-        ratio: amount / totalAmount,
-      });
-    } else {
-      const amount = Math.round((amounts[memberId] ?? 0) * 100) / 100;
-      allocated += amount;
-      results.push({
-        memberId,
-        amount,
-        ratio: amount / totalAmount,
-      });
+    const isLast = i === memberIds.length - 1;
+    const rawAmount = isLast ? totalAmount - allocated : (amounts[memberId] ?? 0);
+    const amount = Math.round(rawAmount * 100) / 100;
+    allocated += amount;
+    results.push({
+      memberId,
+      amount: Math.max(0, amount),
+      ratio: totalAmount > 0 ? amount / totalAmount : 0,
+    });
+  }
+
+  if (Math.abs(allocated - totalAmount) > 0.01) {
+    const diff = Math.round((totalAmount - allocated) * 100);
+    for (let i = results.length - 1; i >= 0 && results.length - 1 - i < Math.abs(diff); i--) {
+      const adjustment = diff > 0 ? 0.01 : -0.01;
+      const newAmount = Math.max(0, Math.round((results[i]!.amount + adjustment) * 100) / 100);
+      allocated += newAmount - results[i]!.amount;
+      results[i]!.amount = newAmount;
     }
   }
 
@@ -239,7 +261,24 @@ function buildEqualRatios(
   if (memberIds.length === 0) return {};
 
   if (ratios && Object.keys(ratios).length > 0) {
-    const total = Object.values(ratios).reduce((s, r) => s + r, 0);
+    const missingCount = memberIds.filter(id => !(id in ratios)).length;
+    const hasMissing = missingCount > 0;
+    if (hasMissing) {
+      const specifiedTotal = Object.values(ratios).reduce((s, r) => s + r, 0);
+      const avgWeight = specifiedTotal / Object.keys(ratios).length;
+      const result: Record<string, number> = { ...ratios };
+      for (const id of memberIds) {
+        if (!(id in result)) {
+          result[id] = avgWeight;
+        }
+      }
+      const grandTotal = Object.values(result).reduce((s, r) => s + r, 0);
+      for (const id of Object.keys(result)) {
+        result[id]! /= grandTotal;
+      }
+      return result;
+    }
+    let total = Object.values(ratios).reduce((s, r) => s + r, 0);
     if (Math.abs(total - 1) > 0.001) {
       const normalized: Record<string, number> = {};
       for (const [id, ratio] of Object.entries(ratios)) {

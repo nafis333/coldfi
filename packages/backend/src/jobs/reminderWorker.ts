@@ -12,9 +12,16 @@ const BATCH_SIZE = parseInt(process.env.REMINDER_BATCH_SIZE ?? '50', 10) || 50;
 
 function createRedisConnection(): IORedis {
   return new IORedis(REDIS_URL, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: true,
     connectTimeout: 5000,
+    retryStrategy(times) {
+      if (times > 10) {
+        logger.error('ReminderWorker: max retry attempts reached', { module: 'reminder-worker' });
+        return null;
+      }
+      return Math.min(times * 200, 5000);
+    },
   });
 }
 
@@ -76,10 +83,15 @@ export function createReminderWorker(pool: Pool): Worker {
       let failCount = 0;
 
       for (const reminder of pendingReminders) {
-        const sent = await reminderService.processReminder(reminder);
-        if (sent) {
-          successCount++;
-        } else {
+        try {
+          const sent = await reminderService.processReminder(reminder);
+          if (sent) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (err) {
+          logger.error('Reminder processing failed', { module: 'reminder-worker', reminderId: reminder.id, error: String(err) });
           failCount++;
         }
       }

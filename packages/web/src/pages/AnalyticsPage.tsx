@@ -4,6 +4,7 @@ import { useGroupStore } from '../stores/groupStore';
 import { useGroupExpenseStore } from '../stores/groupExpenseStore';
 import { useAuthStore } from '../stores/authStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
+import type { TopExpense } from '@coldfi/shared';
 import {
   computeSpendingByCategory,
   computeTopExpenses,
@@ -134,7 +135,7 @@ export default function AnalyticsPage() {
       for (const e of g.expenses) {
         result.push({
           id: `group_${gid}_${e.id}`, amount: e.amount, currency: g.currency || defaultCurrency,
-          categoryId: e.category, date: e.date, payee: e.description,
+          categoryId: e.categoryId || e.category || '', date: e.date, payee: e.description,
           note: `[${g.name}] ${e.description}`, paymentMethod: null, receiptUri: null,
           isRecurring: false, createdAt: e.createdAt, updatedAt: e.createdAt,
         });
@@ -239,8 +240,9 @@ export default function AnalyticsPage() {
 
   const topExpenses = useMemo(() => {
     if (filtered.length === 0) return [];
-    return computeTopExpenses(engineExpenses, engineCategories, 5, periodRange.start, periodRange.end);
-  }, [filtered, categories, periodRange]);
+    const result = computeTopExpenses(engineExpenses, engineCategories, 5, periodRange.start, periodRange.end);
+    return result[defaultCurrency] ?? [];
+  }, [filtered, categories, periodRange, defaultCurrency]);
 
   const topCategory = useMemo(() => pieData[0] || null, [pieData]);
 
@@ -278,7 +280,7 @@ export default function AnalyticsPage() {
   const savingsData = useMemo(() => {
     if (source === 'groups') return null;
     const savingsExpenses = source === 'all' ? expenses : filtered;
-    return computeSavings(
+    const results = computeSavings(
       incomeLogs.map((i) => ({
         id: i.id, source: i.source, amount: i.amount,
         currency: i.currency || defaultCurrency, date: i.date,
@@ -287,6 +289,7 @@ export default function AnalyticsPage() {
       toEngineExpenses(savingsExpenses),
       periodRange.start, periodRange.end
     );
+    return results.find((r) => r.currency === defaultCurrency) || results[0] || null;
   }, [incomeLogs, expenses, filtered, source, periodRange, defaultCurrency]);
 
   const currentRecap = useMemo(() => {

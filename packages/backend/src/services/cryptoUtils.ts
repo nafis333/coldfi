@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { config } from '../config';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -34,5 +35,9 @@ export function generateRecoveryCode(): string {
 }
 
 export function hashRecoveryCode(code: string): string {
-  return crypto.createHash('sha512').update(code).digest('hex');
+  return bcrypt.hashSync(code, 10);
+}
+
+export function verifyRecoveryCode(code: string, hash: string): boolean {
+  return bcrypt.compareSync(code, hash);
 }

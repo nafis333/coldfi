@@ -43,10 +43,12 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     });
 
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
+      const { pek, isGoogleUser } = useAuthStore.getState();
+      if (!pek) {
+        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+        throw new Error('No encryption key loaded');
       }
+      await savePersonalBlob(updated);
     } catch (err) {
       usePersonalStore.setState({ personalBlob: current as PersonalBlob, incomeLogs: current.incomeLogs || [] });
       throw err;
@@ -71,10 +73,12 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     });
 
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
+      const { pek, isGoogleUser } = useAuthStore.getState();
+      if (!pek) {
+        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+        throw new Error('No encryption key loaded');
       }
+      await savePersonalBlob(updated);
     } catch (err) {
       usePersonalStore.setState({ personalBlob: previousBlob, incomeLogs: previousBlob.incomeLogs || [] });
       throw err;
@@ -97,10 +101,12 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     });
 
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
+      const { pek, isGoogleUser } = useAuthStore.getState();
+      if (!pek) {
+        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+        throw new Error('No encryption key loaded');
       }
+      await savePersonalBlob(updated);
     } catch (err) {
       usePersonalStore.setState({ personalBlob: previousBlob, incomeLogs: previousBlob.incomeLogs || [] });
       throw err;
@@ -129,10 +135,12 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     });
 
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
+      const { pek, isGoogleUser } = useAuthStore.getState();
+      if (!pek) {
+        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+        throw new Error('No encryption key loaded');
       }
+      await savePersonalBlob(updated);
     } catch (err) {
       usePersonalStore.setState({ personalBlob: current as PersonalBlob, savingsTargets: current.savingsTargets || [] });
       throw err;
@@ -157,10 +165,12 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     });
 
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
+      const { pek, isGoogleUser } = useAuthStore.getState();
+      if (!pek) {
+        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+        throw new Error('No encryption key loaded');
       }
+      await savePersonalBlob(updated);
     } catch (err) {
       usePersonalStore.setState({ personalBlob: previousBlob, savingsTargets: previousBlob.savingsTargets || [] });
       throw err;
@@ -183,10 +193,12 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     });
 
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
+      const { pek, isGoogleUser } = useAuthStore.getState();
+      if (!pek) {
+        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+        throw new Error('No encryption key loaded');
       }
+      await savePersonalBlob(updated);
     } catch (err) {
       usePersonalStore.setState({ personalBlob: previousBlob, savingsTargets: previousBlob.savingsTargets || [] });
       throw err;

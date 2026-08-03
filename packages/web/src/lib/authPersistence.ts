@@ -1,4 +1,4 @@
-import { deriveWrappingKey, decryptPEK, importKey, uint8ArrayToBase64 } from './crypto';
+import { deriveWrappingKey, decryptPEK, importKey, uint8ArrayToBase64, wipeBytes } from './crypto';
 
 export const PEK_STORAGE_KEY = 'coldfi:pek';
 export const AUTH_STORAGE_KEY = 'coldfi:auth';
@@ -8,7 +8,7 @@ export function storage(): Storage {
   try {
     return sessionStorage;
   } catch {
-    return localStorage;
+    return sessionStorage;
   }
 }
 
@@ -45,6 +45,8 @@ export async function deriveAndStorePek(passphrase: string, personalSalt: string
   const pekBytes = await decryptPEK(encryptedPek, wrappingKey);
   const pek = await importKey(pekBytes);
   try { storage().setItem(PEK_STORAGE_KEY, uint8ArrayToBase64(pekBytes)); } catch {}
+  wipeBytes(wrappingKey);
+  wipeBytes(pekBytes);
   return pek;
 }
 
@@ -55,4 +57,8 @@ export function storePekBytes(pekBytes: Uint8Array) {
 export function clearPekStorage() {
   try { storage().removeItem(PEK_STORAGE_KEY); } catch {}
   try { localStorage.removeItem(PEK_STORAGE_KEY); } catch {}
+}
+
+export function clearPekMemory(pekBytes: Uint8Array): void {
+  wipeBytes(pekBytes);
 }

@@ -3,6 +3,7 @@ import fp from 'fastify-plugin';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { query } from '../db/pool';
 import { config } from '../config';
+import { parse } from 'cookie';
 
 interface AuthenticatedSocket extends Socket {
   userId: string;
@@ -87,7 +88,15 @@ async function websocketPlugin(
   });
 
   io.use(async (socket: Socket, next) => {
-    const token = socket.handshake.auth?.token as string;
+    let token = socket.handshake.auth?.token as string;
+
+    if (!token) {
+      const cookieHeader = socket.handshake.headers.cookie as string;
+      if (cookieHeader) {
+        const cookies = parse(cookieHeader);
+        token = cookies['token'] || cookies['accessToken'] || '';
+      }
+    }
 
     if (!token) {
       return next(new Error('Authentication token required'));

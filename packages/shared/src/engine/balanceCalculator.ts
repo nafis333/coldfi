@@ -1,6 +1,6 @@
 import { GroupExpense, ExpenseSplit } from '../types/group';
-import { SettlementProposal, MemberNetBalance } from '../types/settlement';
-import { SettlementStatus, SplitMode, ExpenseStatus } from '../types/enums';
+import { SettlementProposal } from '../types/settlement';
+import { SettlementStatus, ExpenseStatus } from '../types/enums';
 
 export interface BalanceMap {
   [userId: string]: number;
@@ -84,8 +84,11 @@ export function computeNetBalances(
     if (typeof expense.amount !== 'number' || isNaN(expense.amount) || expense.amount <= 0) continue;
 
     const paidBy = expense.paidBy;
+    if (!pairwise[paidBy]) continue;
+
     for (const split of expense.splits) {
       if (split.isPaid) continue;
+      if (!pairwise[split.memberId]) continue;
 
       const amount = getSplitAmount(expense, split);
       if (amount <= 0) continue;
@@ -97,6 +100,7 @@ export function computeNetBalances(
 
   for (const settlement of settlements) {
     if (settlement.status !== SettlementStatus.APPROVED) continue;
+    if (!pairwise[settlement.fromUserId] || !pairwise[settlement.toUserId]) continue;
 
     const from = settlement.fromUserId;
     const to = settlement.toUserId;
@@ -108,7 +112,6 @@ export function computeNetBalances(
     if (remaining >= 0) {
       pairwise[from]![to] = remaining;
     } else {
-      // Settlement exceeds debt: clear the debt and create reverse debt for overpayment
       pairwise[from]![to] = 0;
       pairwise[to]![from] = (pairwise[to]![from] || 0) + Math.abs(remaining);
     }
@@ -190,8 +193,12 @@ export function getTotalDebt(
 }
 
 export function getSplitAmount(expense: GroupExpense, split: ExpenseSplit): number {
-  if (expense.splitMode === SplitMode.FIXED && split.fixedAmount !== undefined) {
+  if (split.fixedAmount !== undefined) {
     return split.fixedAmount;
   }
-  return expense.amount * split.ratio;
+  return roundToCents(expense.amount * split.ratio);
+}
+
+function roundToCents(value: number): number {
+  return Math.round(value * 100) / 100;
 }

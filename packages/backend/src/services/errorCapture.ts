@@ -12,6 +12,24 @@ interface CapturedError {
   requestId?: string;
 }
 
+let shutdownInProgress = false;
+
+async function gracefulShutdown(exitCode: number): Promise<void> {
+  if (shutdownInProgress) return;
+  shutdownInProgress = true;
+  logger.info('Initiating graceful shutdown due to uncaught exception', { module: 'error-capture' });
+  try {
+    logger.destroy();
+    const { closePool } = await import('../db/pool');
+    const { closeRedis } = await import('./redis');
+    await closePool();
+    await closeRedis();
+  } catch {
+    // best-effort cleanup
+  }
+  setTimeout(() => process.exit(exitCode), 2000);
+}
+
 export async function captureError(
   error: Error | any,
   module: string,
@@ -91,13 +109,13 @@ export function registerGlobalErrorHandlers() {
     captureError(
       reason instanceof Error ? reason : new Error(String(reason)),
       'unhandled-rejection'
-    ).catch(() => {});
+    );
   });
 
   process.on('uncaughtException', (error: Error) => {
     logger.error('Uncaught Exception', { module: 'error-capture', error: error.message });
     captureError(error, 'uncaught-exception').finally(() => {
-      setTimeout(() => process.exit(1), 2000);
-    }).catch(() => {});
+      gracefulShutdown(1);
+    });
   });
 }

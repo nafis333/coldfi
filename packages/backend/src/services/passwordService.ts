@@ -1,9 +1,8 @@
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import { query, transaction } from '../db/pool';
 import { AuthError, ValidationError, NotFoundError } from '../errors';
-import { decryptServerKey } from './cryptoUtils';
-import { generateRecoveryCode, hashRecoveryCode } from './cryptoUtils';
+import { decryptServerKey, encryptServerKey } from './cryptoUtils';
+import { generateRecoveryCode, hashRecoveryCode, verifyRecoveryCode } from './cryptoUtils';
 
 const SALT_ROUNDS = 12;
 
@@ -27,10 +26,6 @@ export async function changePassword(input: ChangePasswordInput): Promise<Change
     throw new ValidationError('New auth key hash must be at least 32 characters');
   }
 
-  if (oldAuthKeyHash === newAuthKeyHash) {
-    throw new ValidationError('New password must be different from current password');
-  }
-
   if (!personalSalt || !encryptedPek) {
     throw new ValidationError('Personal salt and encrypted PEK are required');
   }
@@ -52,11 +47,22 @@ export async function changePassword(input: ChangePasswordInput): Promise<Change
   const newHashedAuthKey = await bcrypt.hash(newAuthKeyHash, SALT_ROUNDS);
 
   await transaction(async (client) => {
+    const user = await client.query(
+      `SELECT server_encrypted_pek FROM users WHERE id = $1 FOR UPDATE`,
+      [userId]
+    );
+
+    let serverEncryptedPek = null;
+    if (user.rows[0]?.server_encrypted_pek) {
+      const rawPek = decryptServerKey(user.rows[0].server_encrypted_pek);
+      serverEncryptedPek = encryptServerKey(rawPek);
+    }
+
     await client.query(
       `UPDATE users
-       SET auth_key_hash = $1, personal_salt = $2, encrypted_pek = $3, updated_at = NOW()
-       WHERE id = $4`,
-      [newHashedAuthKey, personalSalt, encryptedPek, userId]
+       SET auth_key_hash = $1, personal_salt = $2, encrypted_pek = $3, server_encrypted_pek = COALESCE($4, server_encrypted_pek), updated_at = NOW()
+       WHERE id = $5`,
+      [newHashedAuthKey, personalSalt, encryptedPek, serverEncryptedPek, userId]
     );
 
     await client.query(
@@ -102,13 +108,8 @@ export async function recoverAccount(input: RecoverInput): Promise<{ userId: str
   }
 
   const normalizedCode = recoveryCode.trim().toLowerCase().replace(/-/g, '');
-  const inputHash = hashRecoveryCode(normalizedCode);
 
-  if (inputHash.length !== user.recovery_code_hash.length) {
-    throw new AuthError('ERR_INVALID_RECOVERY', 'Invalid email or recovery code');
-  }
-
-  if (!crypto.timingSafeEqual(Buffer.from(inputHash), Buffer.from(user.recovery_code_hash))) {
+  if (!verifyRecoveryCode(normalizedCode, user.recovery_code_hash)) {
     throw new AuthError('ERR_INVALID_RECOVERY', 'Invalid email or recovery code');
   }
 
@@ -116,7 +117,12 @@ export async function recoverAccount(input: RecoverInput): Promise<{ userId: str
     throw new AuthError('ERR_RECOVERY_FAILED', 'No recovery data found for this account');
   }
 
-  const rawPek = decryptServerKey(user.server_encrypted_pek);
+  let rawPek: string;
+  try {
+    rawPek = decryptServerKey(user.server_encrypted_pek);
+  } catch {
+    throw new AuthError('ERR_RECOVERY_FAILED', 'Failed to decrypt recovery data');
+  }
 
   return { userId: user.id, email: user.email, rawPek };
 }

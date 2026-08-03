@@ -53,9 +53,9 @@ class Logger {
     this.log('error', message, ctx);
   }
 
-  fatal(message: string, ctx: LogContext = {}) {
+  async fatal(message: string, ctx: LogContext = {}) {
     this.log('fatal', message, ctx);
-    this.flush();
+    await this.flush();
   }
 
   requestStart(
@@ -180,6 +180,9 @@ class Logger {
 
     if (this.buffer.length >= this.MAX_BUFFER_SIZE) {
       this.buffer.shift();
+      if (this.buffer.length % 100 === 0) {
+        console.error(`[Logger] Buffer overflow: dropped log entry. Buffer size: ${this.buffer.length}`);
+      }
     }
     this.buffer.push(entry);
   }
@@ -214,7 +217,7 @@ class Logger {
         params
       );
     } catch (err) {
-      for (const entry of batch.reverse()) {
+      for (const entry of batch) {
         if (this.buffer.length < this.MAX_BUFFER_SIZE) {
           this.buffer.unshift(entry);
         }

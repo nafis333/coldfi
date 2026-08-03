@@ -11,8 +11,8 @@ export function useTabSync() {
       () => {
         initialize();
       },
-      () => {
-        logout();
+      async () => {
+        await logout();
       }
     );
     return cleanup;

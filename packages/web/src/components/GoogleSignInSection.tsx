@@ -53,7 +53,7 @@ export default function GoogleSignInSection() {
           });
       }
     }
-  }, [location.hash]);
+  }, [location.hash, googleLogin, navigate, addToast]);
 
   const handleClick = () => {
     const redirectUri = `${window.location.origin}${window.location.pathname === '/register' ? '/register' : '/login'}`;

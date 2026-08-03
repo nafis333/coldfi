@@ -118,7 +118,9 @@ export function triggerCriticalError(error: unknown, context?: string): void {
   try {
     sessionStorage.setItem('coldfi:criticalError', JSON.stringify(critical));
   } catch {}
-  window.location.href = '/error';
+  if (window.location.pathname !== '/error') {
+    window.location.href = '/error';
+  }
 }
 
 export function silentCatch(context: string, error?: unknown): void {

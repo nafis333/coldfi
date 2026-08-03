@@ -69,8 +69,8 @@ async function getMetricValue(metric: string): Promise<number | null> {
     }
     case 'p99_latency': {
       const endpoints = await monitoring.getEndpointMetrics(1);
-      const maxP99 = Math.max(...endpoints.map(e => e.avgDuration), 0);
-      return maxP99;
+      const maxAvg = Math.max(...endpoints.map(e => e.avgDuration), 0);
+      return maxAvg;
     }
     case 'reg_rate': {
       const rate = await monitoring.getRegistrationRate(1);

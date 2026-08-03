@@ -21,6 +21,11 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
   addExpense: async (expense) => {
     if (typeof expense.amount !== 'number' || isNaN(expense.amount) || expense.amount <= 0) throw new Error('Expense amount must be a positive number');
 
+    const { pek } = useAuthStore.getState();
+    if (!pek) throw new Error('Encryption key not loaded. Please log out and log back in.');
+
+    set({ isLoading: true, error: null });
+
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
     const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 
@@ -40,19 +45,12 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       expenses: [newExpense, ...current.expenses],
     };
 
-    usePersonalStore.setState({
-      personalBlob: updated,
-      expenses: updated.expenses,
-    });
-
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
-      }
+      await savePersonalBlob(updated);
     } catch (err) {
-      usePersonalStore.setState({ personalBlob: current as PersonalBlob, expenses: current.expenses });
-      throw err;
+      set({ error: err instanceof Error ? err.message : 'Failed to add expense' });
+    } finally {
+      set({ isLoading: false });
     }
   },
 
@@ -60,7 +58,11 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
     if (!personalBlob) throw new Error('No data loaded');
 
-    const previousBlob = personalBlob;
+    const { pek } = useAuthStore.getState();
+    if (!pek) throw new Error('Encryption key not loaded. Please log out and log back in.');
+
+    set({ isLoading: true, error: null });
+
     const updated: PersonalBlob = {
       ...personalBlob,
       expenses: personalBlob.expenses.map((e) =>
@@ -68,19 +70,12 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       ),
     };
 
-    usePersonalStore.setState({
-      personalBlob: updated,
-      expenses: updated.expenses,
-    });
-
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
-      }
+      await savePersonalBlob(updated);
     } catch (err) {
-      usePersonalStore.setState({ personalBlob: previousBlob, expenses: previousBlob.expenses });
-      throw err;
+      set({ error: err instanceof Error ? err.message : 'Failed to update expense' });
+    } finally {
+      set({ isLoading: false });
     }
   },
 
@@ -88,25 +83,22 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
     if (!personalBlob) throw new Error('No data loaded');
 
-    const previousBlob = personalBlob;
+    const { pek } = useAuthStore.getState();
+    if (!pek) throw new Error('Encryption key not loaded. Please log out and log back in.');
+
+    set({ isLoading: true, error: null });
+
     const updated: PersonalBlob = {
       ...personalBlob,
       expenses: personalBlob.expenses.filter((e) => e.id !== id),
     };
 
-    usePersonalStore.setState({
-      personalBlob: updated,
-      expenses: updated.expenses,
-    });
-
     try {
-      const { pek } = useAuthStore.getState();
-      if (pek) {
-        await savePersonalBlob(updated);
-      }
+      await savePersonalBlob(updated);
     } catch (err) {
-      usePersonalStore.setState({ personalBlob: previousBlob, expenses: previousBlob.expenses });
-      throw err;
+      set({ error: err instanceof Error ? err.message : 'Failed to delete expense' });
+    } finally {
+      set({ isLoading: false });
     }
   },
 

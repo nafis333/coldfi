@@ -9,8 +9,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   HOST: z.string().default('127.0.0.1'),
 
-  DATABASE_URL: z.string().url().startsWith('postgres'),
-  REDIS_URL: z.string().url().startsWith('redis'),
+  DATABASE_URL: z.string().url().refine(val => val.startsWith('postgres') || val.startsWith('postgresql'), { message: 'Must start with postgres:// or postgresql://' }),
+  REDIS_URL: z.string().url().refine(val => val.startsWith('redis') || val.startsWith('rediss'), { message: 'Must start with redis:// or rediss://' }),
 
   JWT_SECRET: z.string().min(32),
   COOKIE_SECRET: z.string().min(32),

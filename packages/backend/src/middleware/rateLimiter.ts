@@ -26,8 +26,7 @@ export function createRateLimiter(options: RateLimitOptions) {
 
       if (current === 1) {
         await redis.expire(key, windowSeconds);
-      } else if (current > maxAttempts) {
-        // Refresh TTL on existing key so the ban window resets with each new attempt
+      } else {
         await redis.expire(key, windowSeconds);
       }
 

@@ -35,7 +35,7 @@ export async function personalRoutes(app: FastifyInstance) {
         type: 'object',
         required: ['encryptedBlob', 'vectorClock'],
         properties: {
-          encryptedBlob: { type: 'string', minLength: 1 },
+          encryptedBlob: { type: 'string', minLength: 1, maxLength: 10485760 },
           vectorClock: { type: 'number', minimum: 0 },
         },
       },

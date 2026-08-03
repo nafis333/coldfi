@@ -34,6 +34,8 @@ import {
 
 export { getGroupKey, cacheGroupKey } from '../lib/groupSync';
 
+let activeFetchGroupId: string | null = null;
+
 export interface MemberSplit {
   userId: string;
   amount: number;
@@ -88,7 +90,7 @@ async function fetchGroupEncryptionKey(groupId: string): Promise<string | null> 
   return null;
 }
 
-async function computeGroupBalance(groupId: string, userId: string): Promise<number | null> {
+async function computeGroupBalance(groupId: string, userId: string, defaultCurrency: string): Promise<number | null> {
   try {
     let gk = getGroupKey(groupId);
     if (!gk) {
@@ -111,7 +113,7 @@ async function computeGroupBalance(groupId: string, userId: string): Promise<num
 
     const memberIdsSet = new Set<string>([userId]);
     for (const exp of expenses) {
-      memberIdsSet.add(exp.payerId);
+      memberIdsSet.add(exp.paidBy || exp.payerId || '');
       for (const s of exp.splits) memberIdsSet.add(s.userId);
     }
     for (const st of settlements) {
@@ -120,7 +122,7 @@ async function computeGroupBalance(groupId: string, userId: string): Promise<num
     }
     const memberIds = Array.from(memberIdsSet);
 
-    const engineExpenses = toEngineExpenses(expenses, groupId, 'USD');
+    const engineExpenses = toEngineExpenses(expenses, groupId, defaultCurrency);
     const engineSettlements = toEngineSettlements(settlements);
     const balances = computeNetBalances(engineExpenses, engineSettlements, memberIds);
     return balances.find((b) => b.userId === userId)?.net ?? 0;
@@ -152,16 +154,25 @@ export const useGroupStore = create<GroupState>((set) => ({
       set({ groups: data.groups, isLoading: false });
 
       const currentUserId = useAuthStore.getState().userId || '';
-      for (const g of data.groups as GroupSummary[]) {
-        computeGroupBalance(g.id, currentUserId).then((balance) => {
-          if (balance !== null) {
-            set((state) => ({
-              groups: state.groups.map((grp) =>
-                grp.id === g.id ? { ...grp, yourBalance: balance } : grp
-              ),
-            }));
-          }
-        }).catch(() => {});
+      const groupIds = (data.groups as GroupSummary[]).map(g => g.id);
+      const balanceResults = await Promise.allSettled(
+        (data.groups as GroupSummary[]).map(g =>
+          computeGroupBalance(g.id, currentUserId, g.defaultCurrency)
+        )
+      );
+      const balanceMap: Record<string, number> = {};
+      for (let i = 0; i < groupIds.length; i++) {
+        const result = balanceResults[i];
+        if (result?.status === 'fulfilled' && result.value !== null) {
+          balanceMap[groupIds[i]!] = result.value;
+        }
+      }
+      if (Object.keys(balanceMap).length > 0) {
+        set((state) => ({
+          groups: state.groups.map((grp) =>
+            balanceMap[grp.id] !== undefined ? { ...grp, yourBalance: balanceMap[grp.id]! } : grp
+          ),
+        }));
       }
     } catch (error) {
       set({
@@ -174,6 +185,7 @@ export const useGroupStore = create<GroupState>((set) => ({
   fetchGroupById: async (id: string) => {
     if (!useAuthStore.getState().accessToken) return;
 
+    activeFetchGroupId = id;
     set({ isLoading: true, error: null });
 
     try {
@@ -227,7 +239,7 @@ export const useGroupStore = create<GroupState>((set) => ({
       const defaultCurrency = data.defaultCurrency;
       const memberIdsSet = new Set<string>(data.members.map((m: GroupMember) => m.userId));
       for (const exp of expenses) {
-        memberIdsSet.add(exp.payerId);
+        memberIdsSet.add(exp.paidBy || exp.payerId || '');
         for (const s of exp.splits) {
           memberIdsSet.add(s.userId);
         }
@@ -240,6 +252,8 @@ export const useGroupStore = create<GroupState>((set) => ({
       const engineExpenses = toEngineExpenses(expenses, data.id, defaultCurrency);
       const engineSettlements = toEngineSettlements(settlements);
       const balances = computeNetBalances(engineExpenses, engineSettlements, memberIds);
+
+      if (activeFetchGroupId !== id) return;
 
       set({
         currentGroup: {
@@ -256,10 +270,12 @@ export const useGroupStore = create<GroupState>((set) => ({
         isLoading: false,
       });
     } catch (error) {
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch group',
-      });
+      if (activeFetchGroupId === id) {
+        set({
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Failed to fetch group',
+        });
+      }
     }
   },
 
@@ -573,6 +589,11 @@ export const useGroupStore = create<GroupState>((set) => ({
         body: JSON.stringify(settings),
       });
       if (!res.ok) throw new Error('Failed to update group settings');
+      set((state) => ({
+        currentGroup: state.currentGroup && state.currentGroup.id === groupId
+          ? { ...state.currentGroup, ...settings }
+          : state.currentGroup,
+      }));
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to update group settings' });
       throw error;
@@ -688,8 +709,9 @@ export const useGroupStore = create<GroupState>((set) => ({
   },
 
   updateGroupFromSocket: (group: GroupSummary) => {
+    const cloned = { ...group };
     set((state) => ({
-      groups: state.groups.map((g) => (g.id === group.id ? group : g)),
+      groups: state.groups.map((g) => (g.id === cloned.id ? cloned : g)),
     }));
   },
 

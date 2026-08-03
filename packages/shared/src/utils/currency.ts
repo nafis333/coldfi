@@ -173,7 +173,7 @@ export function parseCurrency(value: string): { amount: number; currency: string
 }
 
 export function convertCurrency(amount: number, from: string, to: string): number {
-  if (from === to) return Math.round(amount * 100) / 100;
+  if (from === to) return adjustAmountForCurrency(amount, to);
   const rates = getExchangeRates();
   const fromRate = rates[from];
   const toRate = rates[to];
@@ -181,7 +181,7 @@ export function convertCurrency(amount: number, from: string, to: string): numbe
     throw new Error(`Unsupported currency: ${fromRate === undefined ? from : to}`);
   }
   const result = (amount / fromRate) * toRate;
-  return Math.round(result * 100) / 100;
+  return adjustAmountForCurrency(result, to);
 }
 
 export function getCurrencySymbol(currency: string): string {

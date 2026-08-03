@@ -9,7 +9,7 @@ export function dateToISO(date: Date): ISO8601String {
 }
 
 export function isISODateString(value: string): value is ISO8601String {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value);
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value);
 }
 
 export function apiTimestamp(): { timestamp: ISO8601String } {

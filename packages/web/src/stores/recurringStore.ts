@@ -115,6 +115,10 @@ export const useRecurringStore = create<RecurringState>((set) => ({
 
       if (!personalBlob) {
         await fetchPersonalBlob();
+        const afterFetch = usePersonalStore.getState();
+        if (!afterFetch.personalBlob) {
+          throw new Error('Failed to load personal data');
+        }
       }
 
       const state = usePersonalStore.getState();

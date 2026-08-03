@@ -107,6 +107,10 @@ export function verifyLogChain(entries: GroupLogEntry[]): {
     errors.push('Circular or disconnected chain: no head entry found');
     return { valid: false, errors };
   }
+  if (heads.length > 1) {
+    errors.push(`Forked chain detected: ${heads.length} head entries found (${heads.map(h => h.id).join(', ')})`);
+    return { valid: false, errors };
+  }
 
   for (const head of heads) {
     const chain: GroupLogEntry[] = [];

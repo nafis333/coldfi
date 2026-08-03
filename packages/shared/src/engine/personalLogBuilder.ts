@@ -104,7 +104,7 @@ export function buildPersonalLog(
         ? `Paid settlement to ${resolveName(counterpartyId)}`
         : `Received settlement from ${resolveName(counterpartyId)}`,
       amount: settlement.amount,
-      share: isSender ? settlement.amount : -settlement.amount,
+      share: isSender ? -settlement.amount : settlement.amount,
       counterparty: resolveName(counterpartyId),
       settlementId: settlement.id,
     });

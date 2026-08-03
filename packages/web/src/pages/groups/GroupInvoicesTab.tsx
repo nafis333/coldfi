@@ -22,12 +22,14 @@ interface ExpenseData {
   id: string;
   amount: number;
   description: string;
-  category: string;
-  payerId: string;
+  categoryId: string;
+  paidBy: string;
   date: string;
   createdAt: string;
   splits: { userId: string; amount: number }[];
   displayId?: string;
+  category?: string;
+  payerId?: string;
 }
 
 interface TabContext {
@@ -149,8 +151,8 @@ export default function GroupInvoicesTab() {
   const spentByPerson = useMemo(() => {
     const map: Record<string, number> = {};
     for (const e of filteredExpenses) {
-      if (!activeMemberIds.includes(e.payerId)) continue;
-      map[e.payerId] = (map[e.payerId] || 0) + e.amount;
+      if (!activeMemberIds.includes(e.paidBy || e.payerId || '')) continue;
+      map[e.paidBy || e.payerId || ''] = (map[e.paidBy || e.payerId || ''] || 0) + e.amount;
     }
     return map;
   }, [filteredExpenses, activeMemberIds]);
@@ -162,10 +164,10 @@ export default function GroupInvoicesTab() {
       groupId,
       amount: e.amount,
       currency: defaultCurrency,
-      categoryId: e.category || 'other',
+      categoryId: e.categoryId || e.category || 'other',
       description: e.description,
       date: e.date || e.createdAt,
-      paidBy: e.payerId,
+      paidBy: e.paidBy || e.payerId || '',
       paymentMethod: 'cash' as any,
       splitMode: 'ratio' as any,
       splits: e.splits.map((s) => ({
@@ -178,7 +180,7 @@ export default function GroupInvoicesTab() {
       isRecurring: false,
       createdAt: e.createdAt,
       updatedAt: e.createdAt,
-      createdBy: e.payerId,
+      createdBy: e.paidBy || e.payerId || '',
     }));
     return computeNetBalances(mockExpenses, [], allMemberIds);
   }, [filteredExpenses, group.members, defaultCurrency, groupId]);

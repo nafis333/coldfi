@@ -110,7 +110,7 @@ describe('verifyLogChain', () => {
     });
     const result = verifyLogChain([entry1, entry2]);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => /predecessor/i.test(e))).toBe(true);
+    expect(result.errors.some((e) => /forked|predecessor/i.test(e))).toBe(true);
   });
 
   it('accepts first entry with empty previousLogHash', () => {

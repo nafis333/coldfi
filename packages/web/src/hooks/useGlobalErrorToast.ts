@@ -18,6 +18,16 @@ import { useToastStore } from '../stores/toastStore';
 function useStoreError(store: any, addToast: (type: 'error', msg: string) => void) {
   const error = store((s: any) => s.error);
   const prevRef = useRef(error);
+  const addToastRef = useRef(addToast);
+  addToastRef.current = addToast;
+  useEffect(() => {
+    if (error && error !== prevRef.current) {
+      addToastRef.current('error', error);
+    }
+    prevRef.current = error;
+  }, [error]);
+} s.error);
+  const prevRef = useRef(error);
   useEffect(() => {
     if (error && error !== prevRef.current) {
       addToast('error', error);

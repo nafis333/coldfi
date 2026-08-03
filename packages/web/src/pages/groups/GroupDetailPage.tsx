@@ -26,7 +26,7 @@ export default function GroupDetailPage() {
 
   useEffect(() => {
     if (id) fetchGroupById(id);
-    return () => { useGroupStore.setState({ isLoading: false, error: null }); };
+    return () => { if (useGroupStore.getState().error !== null) useGroupStore.setState({ isLoading: false, error: null }); };
   }, [id, fetchGroupById]);
 
   const activeTab = location.pathname.replace(`/groups/${id}`, '') || '';

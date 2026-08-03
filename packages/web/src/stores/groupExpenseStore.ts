@@ -11,7 +11,7 @@ import {
   GroupSummary,
   migrateGroupBlob,
 } from '../lib/groupSync';
-import { decryptData } from '../lib/crypto';
+import { decryptData, encryptData } from '../lib/crypto';
 import { SplitMode, GroupLogEventType } from '@coldfi/shared';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
@@ -89,7 +89,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       }
 
       const groupName = useGroupStore.getState().currentGroup?.name || 'group';
-      const shortName = groupName.split(' ').map((w: string) => w[0]).join('').toLowerCase().slice(0, 6);
+      const shortName = groupName.trim() ? groupName.split(' ').map((w: string) => w[0] || '').join('').toLowerCase().slice(0, 6) : 'g';
       const defaultCurrency = useGroupStore.getState().currentGroup?.defaultCurrency || useAuthStore.getState().defaultCurrency;
       const now = new Date().toISOString();
 
@@ -124,13 +124,15 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
           latestExpenseId = expenseId;
           groupData.expenses.push({
             ...data,
+            categoryId: data.category || data.categoryId || '',
+            paidBy: data.payerId || data.paidBy || '',
             date: now.split('T')[0],
             displayId,
             createdAt: now,
+            updatedAt: now,
             id: expenseId,
           });
 
-          const { encryptData } = await import('../lib/crypto');
           const encrypted = await encryptData(gk, JSON.stringify(groupData));
 
           const putRes = await apiClient(`/api/group/${groupId}/sync`, {
@@ -160,23 +162,27 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
         }
       }
 
-      if (!created) throw lastError || new Error('Failed to create expense after retries');
+      if (!created) throw lastError || new Error('Failed to save expense due to a data conflict. Please try again.');
       set({ isLoading: false });
-      useGroupStore.getState().fetchGroupById(groupId).catch((err) => { silentCatch('groupExpenseStore.refreshGroup', err); });
+      await useGroupStore.getState().fetchGroupById(groupId);
       const gExpNotificationRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
-      createGroupNotification('expense_added', 'Expense Added', `New expense of ${data.amount} ${defaultCurrency}`, groupId, undefined, gExpNotificationRecipients);
+      try {
+        await createGroupNotification('expense_added', 'Expense Added', `New expense of ${data.amount} ${defaultCurrency}`, groupId, undefined, gExpNotificationRecipients);
+      } catch { silentCatch('groupExpenseStore.notification', null); }
       const actorId = useAuthStore.getState().userId || '';
       const actorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
-      useLogStore.getState().addLogEntry(groupId, {
-        eventType: GroupLogEventType.EXPENSE_ADDED,
-        actorId,
-        actorName,
-        action: `Added expense: ${data.description}`,
-        actionType: 'expense',
-        details: `${data.amount} ${defaultCurrency} via ${shortName}`,
-        targetId: latestExpenseId,
-        metadata: { amount: data.amount, description: data.description, category: data.category },
-      });
+      try {
+        await useLogStore.getState().addLogEntry(groupId, {
+          eventType: GroupLogEventType.EXPENSE_ADDED,
+          actorId,
+          actorName,
+          action: `Added expense: ${data.description}`,
+          actionType: 'expense',
+          details: `${data.amount} ${defaultCurrency} via ${shortName}`,
+          targetId: latestExpenseId,
+          metadata: { amount: data.amount, description: data.description, category: data.categoryId || data.category || '' },
+        });
+      } catch { silentCatch('groupExpenseStore.log', null); }
     } catch (error) {
       set({
         isLoading: false,

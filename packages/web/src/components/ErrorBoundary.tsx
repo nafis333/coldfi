@@ -49,7 +49,9 @@ export class ErrorBoundary extends Component<Props, State> {
     useErrorStore.getState().setCriticalError(critical);
 
     this.redirectTimer = setTimeout(() => {
-      window.location.href = '/error';
+      if (window.location.pathname !== '/error') {
+        window.location.href = '/error';
+      }
     }, 100);
   }
 

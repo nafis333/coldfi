@@ -94,7 +94,7 @@ describe('buildPersonalLog', () => {
     const entry = log.entries[0]!;
     expect(entry.type).toBe('settlement');
     expect(entry.description).toContain('Paid settlement');
-    expect(entry.share).toBe(30);
+    expect(entry.share).toBe(-30);
   });
 
   it('includes settlement where member is receiver', () => {
@@ -104,7 +104,7 @@ describe('buildPersonalLog', () => {
     const entry = log.entries[0]!;
     expect(entry.type).toBe('settlement');
     expect(entry.description).toContain('Received settlement');
-    expect(entry.share).toBe(-30);
+    expect(entry.share).toBe(30);
   });
 
   it('skips settlements with non-APPROVED status', () => {
@@ -135,9 +135,9 @@ describe('buildPersonalLog', () => {
     expect(log.entries[1]!.share).toBe(-30);
     expect(log.entries[1]!.runningBalance).toBe(20);
 
-    // settlement: alice sends 20 to bob, share = 20, balance = 20 + 20 = 40
-    expect(log.entries[2]!.share).toBe(20);
-    expect(log.entries[2]!.runningBalance).toBe(40);
+    // settlement: alice sends 20 to bob, share = -20, balance = 20 - 20 = 0
+    expect(log.entries[2]!.share).toBe(-20);
+    expect(log.entries[2]!.runningBalance).toBe(0);
   });
 
   it('sorts entries by date ascending', () => {

@@ -104,9 +104,7 @@ export class ReminderService {
         await this.markSent(reminder.id);
         return true;
       } else {
-        // sent === 0 is not necessarily a failure — push may be disabled,
-        // user may be in quiet hours, or no subscriptions exist.
-        // Leave as pending to retry on next poll instead of marking failed.
+        await this.markFailed(reminder.id);
         return false;
       }
     } catch (error) {

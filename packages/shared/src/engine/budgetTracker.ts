@@ -29,7 +29,22 @@ export function computeBudgetStatus(
 
   const spent = periodExpenses.reduce((sum, e) => sum + e.amount, 0);
   const remaining = budget.amount - spent;
-  const percentUsed = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
+  if (budget.amount === 0) {
+    return {
+      budgetId: budget.id,
+      categoryId: budget.categoryId,
+      budgetAmount: 0,
+      spent: Math.round(spent * 100) / 100,
+      remaining: -Math.round(spent * 100) / 100,
+      percentUsed: spent > 0 ? 100 : 0,
+      status: spent > 0 ? BudgetStatus.RED : BudgetStatus.GREEN,
+      projectedTotal: Math.round(spent * 100) / 100,
+      projectedPercent: spent > 0 ? 100 : 0,
+      projectedStatus: spent > 0 ? BudgetStatus.RED : BudgetStatus.GREEN,
+    };
+  }
+
+  const percentUsed = (spent / budget.amount) * 100;
 
   const status = determineStatus(percentUsed);
 
@@ -45,13 +60,10 @@ export function computeBudgetStatus(
     const totalDays = (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
     const elapsedDays = (now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
 
-    if (budget.amount === 0) {
-      projectedPercent = 0;
-      projectedStatus = BudgetStatus.GREEN;
-    } else if (elapsedDays > 0) {
+    if (elapsedDays > 0) {
       const dailyRate = spent / elapsedDays;
       projectedTotal = dailyRate * totalDays;
-      projectedPercent = budget.amount > 0 ? (projectedTotal / budget.amount) * 100 : 0;
+      projectedPercent = (projectedTotal / budget.amount) * 100;
       projectedStatus = determineStatus(projectedPercent);
     }
   }

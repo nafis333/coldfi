@@ -374,10 +374,18 @@ describe('changePassword', () => {
   const oldHash = bcrypt.hashSync('a'.repeat(64), 4);
 
   it('should change password with valid old password', async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ auth_key_hash: oldHash }],
-      rowCount: 1,
-    } as any);
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ auth_key_hash: oldHash }],
+        rowCount: 1,
+      } as any)
+      .mockResolvedValueOnce({
+        rows: [{ server_encrypted_pek: null }],
+        rowCount: 1,
+      } as any)
+      .mockResolvedValueOnce({ rowCount: 1 } as any)
+      .mockResolvedValueOnce({ rowCount: 1 } as any)
+      .mockResolvedValueOnce({ rowCount: 1 } as any);
 
     const result = await changePassword({
       userId: 'user-1',

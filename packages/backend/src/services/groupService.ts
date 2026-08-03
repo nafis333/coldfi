@@ -21,7 +21,7 @@ export async function listUserGroups(userId: string): Promise<any[]> {
     name: row.name,
     memberCount: parseInt(row.member_count, 10),
     defaultCurrency: row.default_currency,
-    yourBalance: 0,
+    yourBalance: 0, // Computed client-side from encrypted sync blob
   }));
 }
 
@@ -171,6 +171,7 @@ export async function joinGroup(
       return { groupId, memberIndex: row.member_index };
     }
 
+    await client.query(`SELECT id FROM groups WHERE id = $1 FOR UPDATE`, [groupId]);
     const maxResult = await client.query(
       `SELECT COALESCE(MAX(member_index), -1) as max_index FROM group_members WHERE group_id = $1`,
       [groupId]
@@ -244,7 +245,7 @@ export async function getGroupMembers(groupId: string): Promise<any> {
   }
 
   const membersResult = await query(
-    `SELECT gm.user_id, u.display_name, gm.role, gm.joined_at, gm.left_at
+    `SELECT gm.user_id, u.display_name, u.email, gm.role, gm.joined_at, gm.left_at
      FROM group_members gm
      JOIN users u ON u.id = gm.user_id
      WHERE gm.group_id = $1
@@ -255,6 +256,7 @@ export async function getGroupMembers(groupId: string): Promise<any> {
   const members = membersResult.rows.map((row: any) => ({
     userId: row.user_id,
     displayName: row.display_name,
+    email: row.email,
     role: row.role,
     balance: 0,
     joinedAt: row.joined_at,
@@ -382,7 +384,7 @@ export async function removeMember(
     if (result.rows[0].left_at) throw new AppError('ERR_CONFLICT', 'Already left', 400);
 
     const adminRes = await client.query(
-      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL`,
+      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL FOR UPDATE`,
       [groupId, adminUserId]
     );
     if (adminRes.rows.length === 0 || adminRes.rows[0].role !== 'admin') {
@@ -435,7 +437,7 @@ export async function updateMemberRole(
 ): Promise<{ role: string }> {
   return transaction(async (client) => {
     const adminRes = await client.query(
-      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL`,
+      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL FOR UPDATE`,
       [groupId, adminUserId]
     );
     if (adminRes.rows.length === 0 || adminRes.rows[0].role !== 'admin') {
@@ -462,7 +464,7 @@ export async function updateMemberRole(
 export async function deleteGroup(groupId: string, userId: string): Promise<{ success: boolean }> {
   return transaction(async (client) => {
     const adminRes = await client.query(
-      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL`,
+      `SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND left_at IS NULL FOR UPDATE`,
       [groupId, userId]
     );
     if (adminRes.rows.length === 0 || adminRes.rows[0].role !== 'admin') {
@@ -536,14 +538,17 @@ function detectConflict(
   clientClock: Record<string, number>
 ): boolean {
   const allKeys = new Set([...Object.keys(serverClock), ...Object.keys(clientClock)]);
+  let serverHasNewer = false;
+  let clientHasNewer = false;
 
   for (const key of allKeys) {
     const sv = serverClock[key] || 0;
     const cv = clientClock[key] || 0;
-    if (sv > cv) return true;
+    if (sv > cv && cv > 0) serverHasNewer = true;
+    if (cv > sv && sv > 0) clientHasNewer = true;
   }
 
-  return false;
+  return serverHasNewer && clientHasNewer;
 }
 
 function mergeClocks(

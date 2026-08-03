@@ -30,7 +30,7 @@ export async function setupAdminWebSocket(app: FastifyInstance) {
     try {
       const decoded = app.jwt.verify(token) as any;
       if (decoded.role !== 'owner') return next(new Error('Admin access required'));
-      (socket as any).adminId = decoded.id;
+      (socket as any).adminId = decoded.userId;
       next();
     } catch {
       next(new Error('Invalid token'));

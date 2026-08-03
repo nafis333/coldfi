@@ -69,15 +69,15 @@ export default function PersonalLogTab() {
       groupId,
       amount: e.amount,
       currency: defaultCurrency,
-      categoryId: e.category,
+      categoryId: e.categoryId || e.category || '',
       description: e.description,
       date: e.createdAt,
-      paidBy: e.payerId,
+      paidBy: e.paidBy || e.payerId || '',
       paymentMethod: PaymentMethod.CASH,
       splitMode: SplitMode.FIXED,
       splits: e.splits.map((s) => ({
         memberId: s.userId,
-        ratio: s.amount / e.amount,
+        ratio: e.amount > 0 ? s.amount / e.amount : 0,
         fixedAmount: s.amount,
         isPaid: false,
       })),
@@ -91,7 +91,7 @@ export default function PersonalLogTab() {
       isRecurring: false,
       createdAt: e.createdAt,
       updatedAt: e.createdAt,
-      createdBy: e.payerId,
+      createdBy: e.paidBy || e.payerId || '',
     }));
 
     const engineSettlements = currentGroup.settlements.map((s) => ({

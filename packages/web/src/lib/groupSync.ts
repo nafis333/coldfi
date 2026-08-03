@@ -52,26 +52,30 @@ export interface ItemizedEntry {
 export interface GroupExpenseInput {
   amount: number;
   description: string;
-  category: string;
-  payerId: string;
+  categoryId: string;
+  paidBy: string;
   splits: MemberSplit[];
   itemized?: ItemizedEntry[];
   splitMode?: SplitMode;
   splitParams?: Record<string, number>;
+  category?: string;
+  payerId?: string;
 }
 
 export interface GroupExpenseData {
   id: string;
   amount: number;
   description: string;
-  category: string;
-  payerId: string;
+  categoryId: string;
+  paidBy: string;
   date: string;
   splits: MemberSplit[];
   itemized?: ItemizedEntry[];
   displayId?: string;
   createdAt: string;
   updatedAt?: string;
+  category?: string;
+  payerId?: string;
 }
 
 export interface SettlementInput {
@@ -238,42 +242,46 @@ export function toEngineExpenses(
   groupId: string,
   defaultCurrency: string
 ): GroupExpense[] {
-  return expenses.map((e) => ({
-    id: e.id,
-    groupId,
-    amount: e.amount,
-    currency: defaultCurrency,
-    categoryId: e.category,
-    description: e.description,
-    date: e.date || e.createdAt,
-    paidBy: e.payerId,
-    paymentMethod: PaymentMethod.CASH,
-    splitMode: SplitMode.FIXED,
-    splits: e.splits.map((s) => ({
-      memberId: s.userId,
-      ratio: s.amount / e.amount,
-      fixedAmount: s.amount,
-      isPaid: false,
-    })),
-    itemizedItems: e.itemized?.map((i) => {
-      const participants = (i as any).assignedTo;
-      return {
-        id: `item_${i.name}`,
-        name: i.name,
-        amount: i.amount,
-        assignedTo: Array.isArray(participants) && participants.length > 0
-          ? participants
-          : e.splits.map((s) => s.userId),
-        splitMode: (i as any).splitMode || undefined,
-        splitAmounts: (i as any).splitValues || undefined,
-      };
-    }),
-    status: ExpenseStatus.UNSETTLED,
-    isRecurring: false,
-    createdAt: e.createdAt,
-    updatedAt: e.createdAt,
-    createdBy: e.payerId,
-  }));
+  return expenses.map((e) => {
+    const paidBy = e.paidBy || e.payerId || '';
+    const categoryId = e.categoryId || e.category || '';
+    return {
+      id: e.id,
+      groupId,
+      amount: e.amount,
+      currency: defaultCurrency,
+      categoryId,
+      description: e.description,
+      date: e.date || e.createdAt,
+      paidBy,
+      paymentMethod: PaymentMethod.CASH,
+      splitMode: SplitMode.FIXED,
+      splits: e.splits.map((s) => ({
+        memberId: s.userId,
+        ratio: e.amount > 0 ? s.amount / e.amount : 0,
+        fixedAmount: s.amount,
+        isPaid: false,
+      })),
+      itemizedItems: e.itemized?.map((i) => {
+        const participants = (i as any).assignedTo;
+        return {
+          id: `item_${i.name}`,
+          name: i.name,
+          amount: i.amount,
+          assignedTo: Array.isArray(participants) && participants.length > 0
+            ? participants
+            : e.splits.map((s) => s.userId),
+          splitMode: (i as any).splitMode || undefined,
+          splitAmounts: (i as any).splitValues || undefined,
+        };
+      }),
+      status: ExpenseStatus.UNSETTLED,
+      isRecurring: false,
+      createdAt: e.createdAt,
+      updatedAt: e.createdAt,
+      createdBy: paidBy,
+    };
+  });
 }
 
 export function toEngineSettlements(settlements: SettlementData[]): SettlementProposal[] {

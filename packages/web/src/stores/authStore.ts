@@ -4,6 +4,7 @@ import { broadcastLogin, broadcastLogout } from '../lib/tabSync';
 import { resetAllStores } from '../lib/resetStores';
 import { PEK_STORAGE_KEY, AUTH_STORAGE_KEY, LAST_ACTIVITY_KEY, getJwtExpiry, saveAuthToStorage, clearAuthStorage, storage, storePekBytes, clearPekStorage, deriveAndStorePek } from '../lib/authPersistence';
 import { triggerCriticalError, silentCatch } from '../lib/errorHandler';
+import { resetSessionExpired } from '../lib/apiClient';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -114,6 +115,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
 
         broadcastLogin(userId);
+        resetSessionExpired();
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Login failed';
         if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
@@ -233,13 +235,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const pekBytes = generateSalt();
       const wrappingKey = await deriveWrappingKey(passphrase, personalSalt);
       const encryptedPek = await encryptPEK(pekBytes, wrappingKey);
-      const rawPek = uint8ArrayToBase64(pekBytes);
 
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, displayName, authKeyHash, personalSalt, encryptedPek, rawPek }),
+        body: JSON.stringify({ email, displayName, authKeyHash, personalSalt, encryptedPek }),
       });
 
       if (!res.ok) {
@@ -280,43 +281,51 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  logout: async () => {
-    const { accessToken } = get();
+  logout: (() => {
+    let isLoggingOut = false;
+    return async () => {
+      if (isLoggingOut) return;
+      isLoggingOut = true;
+      try {
+        const { accessToken } = get();
 
-    try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        await fetch(`${API_BASE}/api/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+      } catch (err) {
+        silentCatch('authStore.logout', err);
+      }
+
+      resetAllStores();
+      clearPekStorage();
+      clearAuthStorage();
+      storage().removeItem(LAST_ACTIVITY_KEY);
+      set({
+        userId: null,
+        email: null,
+        displayName: null,
+        accessToken: null,
+        pek: null,
+        personalSalt: null,
+        encryptedPek: null,
+        role: null,
+        isAuthenticated: false,
+        isLoading: false,
+        pekMissing: false,
+        pekErrorMessage: null,
+        error: null,
       });
-    } catch (err) {
-      silentCatch('authStore.logout', err);
+
+      broadcastLogout();
+    } finally {
+      isLoggingOut = false;
     }
-
-    resetAllStores();
-    clearPekStorage();
-    clearAuthStorage();
-    storage().removeItem(LAST_ACTIVITY_KEY);
-    set({
-      userId: null,
-      email: null,
-      displayName: null,
-      accessToken: null,
-      pek: null,
-      personalSalt: null,
-      encryptedPek: null,
-      role: null,
-      isAuthenticated: false,
-      isLoading: false,
-      pekMissing: false,
-      pekErrorMessage: null,
-      error: null,
-    });
-
-    broadcastLogout();
-  },
+    };
+  })(),
 
   initialize: async () => {
     if (get().isInitialized) return;
@@ -371,7 +380,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const data = await res.json();
-      const { accessToken, userId, email, displayName, personalSalt, encryptedPek, role, rawPek, isGoogleUser } = data;
+      const { accessToken, userId, email, displayName, personalSalt, encryptedPek, role, isGoogleUser } = data;
 
       let pek: CryptoKey | null = null;
       const storedPek = storage().getItem(PEK_STORAGE_KEY);
@@ -381,15 +390,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } catch {
           silentCatch('authStore.initialize.importStoredPek');
           storage().removeItem(PEK_STORAGE_KEY);
-        }
-      }
-      if (!pek && rawPek && !isGoogleUser) {
-        try {
-          const pekBytes = base64ToUint8Array(rawPek);
-          storePekBytes(pekBytes);
-          pek = await importKey(pekBytes);
-        } catch {
-          silentCatch('authStore.initialize.importRawPek');
         }
       }
 

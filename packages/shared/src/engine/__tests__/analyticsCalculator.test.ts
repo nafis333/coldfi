@@ -96,7 +96,7 @@ describe('computeDailySpending', () => {
 });
 
 describe('computeTopExpenses', () => {
-  it('returns top N expenses sorted by amount', () => {
+  it('returns top N expenses sorted by amount per currency', () => {
     const expenses = [
       makeExpense({ amount: 200, categoryId: 'cat-food' }),
       makeExpense({ id: 'e2', amount: 50, categoryId: 'cat-transport' }),
@@ -108,14 +108,14 @@ describe('computeTopExpenses', () => {
       makeCategory({ id: 'cat-entertainment', name: 'Entertainment', icon: '🎬', color: '#ffce56' }),
     ];
     const top = computeTopExpenses(expenses, categories, 2);
-    expect(top).toHaveLength(2);
-    expect(top[0]!.amount).toBe(200);
-    expect(top[1]!.amount).toBe(150);
+    expect(top['USD']).toHaveLength(2);
+    expect(top['USD']![0]!.amount).toBe(200);
+    expect(top['USD']![1]!.amount).toBe(150);
   });
 
-  it('returns empty array for no expenses', () => {
+  it('returns empty record for no expenses', () => {
     const top = computeTopExpenses([], [], 5);
-    expect(top).toHaveLength(0);
+    expect(Object.keys(top)).toHaveLength(0);
   });
 
   it('respects limit parameter', () => {
@@ -124,6 +124,6 @@ describe('computeTopExpenses', () => {
     );
     const categories = [makeCategory()];
     const top = computeTopExpenses(expenses, categories, 3);
-    expect(top).toHaveLength(3);
+    expect(top['USD']).toHaveLength(3);
   });
 });

@@ -63,7 +63,7 @@ describe('settlementEngine', () => {
       const result = markAsPaid(proposal, 0);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('greater than 0');
+      expect(result.error).toContain('valid positive');
     });
   });
 

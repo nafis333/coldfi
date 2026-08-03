@@ -98,8 +98,8 @@ describe('migrateGroupBlob', () => {
       expenses: [{ amount: 200, description: 'Group Dinner' }],
     }) as any;
     expect(result.expenses[0]).toHaveProperty('id');
-    expect(result.expenses[0]).toHaveProperty('category');
-    expect(result.expenses[0]).toHaveProperty('payerId');
+    expect(result.expenses[0]).toHaveProperty('categoryId');
+    expect(result.expenses[0]).toHaveProperty('paidBy');
     expect(result.expenses[0]).toHaveProperty('createdAt');
     expect(result.expenses[0].amount).toBe(200);
     expect(result.expenses[0].description).toBe('Group Dinner');

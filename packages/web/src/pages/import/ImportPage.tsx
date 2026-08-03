@@ -90,7 +90,7 @@ export default function ImportPage() {
     const match = categories.find((c) => c.name.toLowerCase() === name);
     if (match) return match.id;
     const partial = categories.find((c) => c.name.toLowerCase().includes(name) || name.includes(c.name.toLowerCase()));
-    return partial?.id ?? categories[0]?.id ?? '';
+    return partial?.id ?? '';
   };
 
   const handleConfirmImport = useCallback(async () => {
@@ -99,32 +99,38 @@ export default function ImportPage() {
 
     try {
       let imported = 0;
+      const errors: string[] = [];
       for (const row of parsedData) {
         const amount = parseFloat(row[mapping.amount]);
-        if (isNaN(amount) || amount <= 0) continue;
+        if (isNaN(amount) || amount <= 0) {
+          errors.push(`Row ${imported + errors.length + 1}: invalid amount`);
+          continue;
+        }
 
-        await addExpense({
-          amount,
-          currency: useAuthStore.getState().defaultCurrency,
-          categoryId: resolveCategoryId(row[mapping.category]),
-          date: row[mapping.date] ?? new Date().toISOString().split('T')[0],
-          payee: null,
-          note: row[mapping.description] ?? null,
-          paymentMethod: null,
-          receiptUri: null,
-          isRecurring: false,
-        });
-        imported++;
+        try {
+          await addExpense({
+            amount,
+            currency: useAuthStore.getState().defaultCurrency,
+            categoryId: resolveCategoryId(row[mapping.category]),
+            date: row[mapping.date] ?? new Date().toISOString().split('T')[0],
+            payee: null,
+            note: row[mapping.description] ?? null,
+            paymentMethod: null,
+            receiptUri: null,
+            isRecurring: false,
+          });
+          imported++;
+        } catch (rowErr: any) {
+          errors.push(`Row ${imported + errors.length + 1}: ${rowErr.message ?? 'unknown error'}`);
+        }
       }
 
-      setResult({
-        success: true,
-        message: `Successfully imported ${imported} expense(s).`,
-        count: imported,
-      });
+      const hasErrors = errors.length > 0;
+      const message = hasErrors
+        ? `Imported ${imported} expense(s). ${errors.length} row(s) failed:\n${errors.join('\n')}`
+        : `Successfully imported ${imported} expense(s).`;
+      setResult({ success: !hasErrors, message, count: imported });
       setStep(3);
-    } catch (err: any) {
-      setResult({ success: false, message: err.message ?? 'Import failed' });
     } finally {
       setImporting(false);
     }

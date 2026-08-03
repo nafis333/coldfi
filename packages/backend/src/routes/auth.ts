@@ -129,7 +129,6 @@ export async function authRoutes(app: FastifyInstance) {
       personalSalt: tokens.personalSalt,
       encryptedPek: tokens.encryptedPek,
       email: tokens.email,
-      rawPek: tokens.rawPek,
       isGoogleUser: tokens.isGoogleUser,
     });
   });
@@ -224,15 +223,22 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/refresh', { preHandler: [refreshRateLimiter] }, async (request, reply) => {
     const origin = request.headers.origin;
     const referer = request.headers.referer;
-    const allowedOrigins = config.CORS_ORIGIN.split(',');
-    if (origin && !allowedOrigins.some(o => o.trim() === origin)) {
+    const allowedOrigins = [...config.CORS_ORIGIN.split(',').map(o => o.trim()), 'https://coldfi.vercel.app'];
+    if (origin && !allowedOrigins.some(o => o === origin)) {
       throw new ForbiddenError('Request origin not allowed');
     }
     if (!origin && referer) {
-      const refOrigin = new URL(referer).origin;
-      if (!allowedOrigins.some(o => o.trim() === refOrigin)) {
+      try {
+        const refOrigin = new URL(referer).origin;
+        if (!allowedOrigins.some(o => o === refOrigin)) {
+          throw new ForbiddenError('Request origin not allowed');
+        }
+      } catch {
         throw new ForbiddenError('Request origin not allowed');
       }
+    }
+    if (!origin && !referer) {
+      throw new ForbiddenError('Request origin not allowed');
     }
 
     const refreshToken = request.cookies.refreshToken;
@@ -252,7 +258,6 @@ export async function authRoutes(app: FastifyInstance) {
       personalSalt: tokens.personalSalt,
       encryptedPek: tokens.encryptedPek,
       email: tokens.email,
-      rawPek: tokens.rawPek,
       isGoogleUser: tokens.isGoogleUser,
     });
   });
@@ -404,7 +409,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post('/2fa/enable', {
-    preHandler: [app.authenticate],
+    preHandler: [app.authenticate, twoFARateLimiter],
     schema: {
       body: {
         type: 'object',
@@ -421,7 +426,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post('/2fa/disable', {
-    preHandler: [app.authenticate],
+    preHandler: [app.authenticate, twoFARateLimiter],
     schema: {
       body: {
         type: 'object',

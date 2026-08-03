@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { onLogout } from '../lib/resetStores';
 
 const MAX_ERRORS = 200;
 
@@ -84,3 +85,7 @@ export const useErrorStore = create<ErrorState>((set, get) => ({
   toggleDebugPanel: () =>
     set((state) => ({ isDebugPanelOpen: !state.isDebugPanelOpen })),
 }));
+
+onLogout(() => {
+  useErrorStore.setState({ errors: [], criticalError: null, isDebugPanelOpen: false });
+});

@@ -24,7 +24,7 @@ async function main() {
     const result = await query('SELECT NOW() as now');
     logger.info('Database connected', { module: 'startup', timestamp: result.rows[0]?.now });
   } catch (err) {
-    logger.fatal('Failed to connect to database', { module: 'startup', error: String(err) });
+    await logger.fatal('Failed to connect to database', { module: 'startup', error: String(err) });
     process.exit(1);
   }
 
@@ -32,7 +32,7 @@ async function main() {
     const { runMigrations } = await import('./db/migrate');
     await runMigrations();
   } catch (err) {
-    logger.fatal('Migration failed', { module: 'startup', error: String(err) });
+    await logger.fatal('Migration failed', { module: 'startup', error: String(err) });
     process.exit(1);
   }
 
@@ -41,7 +41,7 @@ async function main() {
     await app.listen({ port: config.PORT, host: config.HOST });
     logger.info(`Server running on ${config.HOST}:${config.PORT}`, { module: 'startup' });
   } catch (err) {
-    logger.fatal('Failed to start server', { module: 'startup', error: String(err) });
+    await logger.fatal('Failed to start server', { module: 'startup', error: String(err) });
     process.exit(1);
   }
 
@@ -83,7 +83,7 @@ async function main() {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
-main().catch((err) => {
-  logger.fatal('Failed to start server', { module: 'startup', error: String(err) });
+main().catch(async (err) => {
+  await logger.fatal('Failed to start server', { module: 'startup', error: String(err) });
   process.exit(1);
 });

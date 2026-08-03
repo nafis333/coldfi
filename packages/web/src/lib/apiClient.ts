@@ -1,7 +1,14 @@
 import { useAuthStore } from '../stores/authStore';
 import { triggerCriticalError } from './errorHandler';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+let refreshPromise: Promise<string | null> | null = null;
+let sessionExpired = false;
+
+export function resetSessionExpired(): void {
+  sessionExpired = false;
+}
 
 export async function apiClient(url: string, options: RequestInit = {}): Promise<Response> {
   const { accessToken } = useAuthStore.getState();
@@ -25,15 +32,34 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
   }
 
   if (res.status === 401) {
-    const { refreshToken, logout } = useAuthStore.getState();
-    try {
-      const newToken = await refreshToken();
-      if (newToken) {
-        headers.set('Authorization', `Bearer ${newToken}`);
-        return fetch(fullUrl, { ...options, headers, credentials: 'include' });
-      }
-    } catch {
+    if (sessionExpired) {
+      const err = new Error('Session expired');
+      triggerCriticalError(err, 'Authentication session expired');
+      throw err;
     }
+
+    if (!refreshPromise) {
+      refreshPromise = (async () => {
+        const { refreshToken } = useAuthStore.getState();
+        try {
+          return await refreshToken();
+        } catch {
+          return null;
+        }
+      })();
+    }
+
+    const newToken = await refreshPromise;
+
+    if (newToken) {
+      refreshPromise = null;
+      headers.set('Authorization', `Bearer ${newToken}`);
+      return fetch(fullUrl, { ...options, headers, credentials: 'include' });
+    }
+
+    sessionExpired = true;
+    refreshPromise = null;
+    const { logout } = useAuthStore.getState();
     await logout();
     const err = new Error('Session expired');
     triggerCriticalError(err, 'Authentication session expired');

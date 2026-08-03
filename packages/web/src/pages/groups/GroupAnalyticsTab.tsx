@@ -9,9 +9,10 @@ interface Member {
 }
 
 interface ExpenseData {
-  id: string; amount: number; description: string; category: string;
-  payerId: string; date: string; createdAt: string;
+  id: string; amount: number; description: string; categoryId: string;
+  paidBy: string; date: string; createdAt: string;
   splits: { userId: string; amount: number }[];
+  category?: string; payerId?: string;
 }
 
 interface GroupCategory { id: string; name: string; icon: string; color: string; }
@@ -43,8 +44,8 @@ export default function GroupAnalyticsTab() {
   const categorySpending = useMemo(() => {
     const map: Record<string, { name: string; icon: string; total: number; count: number }> = {};
     for (const e of expenses) {
-      const cat = (group.groupCategories || []).find((c) => c.id === e.category);
-      const key = e.category || 'other';
+      const cat = (group.groupCategories || []).find((c) => c.id === (e.categoryId || e.category || ''));
+      const key = e.categoryId || e.category || 'other';
       if (!map[key]) map[key] = { name: cat?.name || key, icon: cat?.icon || '📝', total: 0, count: 0 };
       map[key].total += e.amount;
       map[key].count++;
@@ -57,8 +58,8 @@ export default function GroupAnalyticsTab() {
   const memberPaid = useMemo(() => {
     const map: Record<string, number> = {};
     for (const e of expenses) {
-      if (!activeMemberIds.includes(e.payerId)) continue;
-      map[e.payerId] = (map[e.payerId] || 0) + e.amount;
+      if (!activeMemberIds.includes(e.paidBy || e.payerId || '')) continue;
+      map[e.paidBy || e.payerId || ''] = (map[e.paidBy || e.payerId || ''] || 0) + e.amount;
     }
     return activeMembers.map((m) => ({
       userId: m.userId,
@@ -193,7 +194,7 @@ export default function GroupAnalyticsTab() {
                   }`}>{i + 1}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 truncate">{e.description}</p>
-                    <p className="text-xs text-neutral-400">{memberName(group.members, e.payerId)} · {new Date(e.date || e.createdAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-neutral-400">{memberName(group.members, e.paidBy || e.payerId || '')} · {new Date(e.date || e.createdAt).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <span className="text-sm font-semibold text-danger-600 dark:text-danger-400 shrink-0">{formatCurrency(e.amount, defaultCurrency)}</span>

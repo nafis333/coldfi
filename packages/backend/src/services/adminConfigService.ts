@@ -13,7 +13,7 @@ export async function updateConfig(
   ipAddress: string
 ): Promise<{ key: string; value: any }> {
   const oldResult = await query('SELECT value FROM system_config WHERE key = $1', [key]);
-  const oldValue = oldResult.rows[0]?.value || null;
+  const oldValue = oldResult.rows[0]?.value ?? null;
   const storedValue = typeof value === 'string' ? value : JSON.stringify(value);
 
   await transaction(async (client) => {

@@ -12,13 +12,15 @@ interface GroupExpenseData {
   id: string;
   amount: number;
   description: string;
-  category: string;
-  payerId: string;
+  categoryId: string;
+  paidBy: string;
   date: string;
   createdAt: string;
   displayId?: string;
   splits: { userId: string; amount: number }[];
   itemized?: { name: string; amount: number; assignedTo: string[] }[];
+  category?: string;
+  payerId?: string;
 }
 
 interface Member {
@@ -95,10 +97,10 @@ export default function ExpensesTab() {
       receiptNumber: expense.displayId || expense.id.slice(0, 8).toUpperCase(),
       date: expense.date || expense.createdAt,
       description: expense.description,
-      category: categoryMap[expense.category]?.name || expense.category,
+      category: categoryMap[expense.categoryId || expense.category || '']?.name || expense.categoryId || expense.category || '',
       currency: defaultCurrency,
-      paidBy: expense.payerId,
-      paidByDisplay: memberName(groupMembers.length > 0 ? groupMembers : group.members, expense.payerId),
+      paidBy: expense.paidBy || expense.payerId || '',
+      paidByDisplay: memberName(groupMembers.length > 0 ? groupMembers : group.members, expense.paidBy || expense.payerId || ''),
       totalAmount: expense.amount,
       yourShare: mySplit?.amount,
       items: items.length > 0 ? items : undefined,
@@ -173,8 +175,8 @@ export default function ExpensesTab() {
                 <div key={expense.id} className="card overflow-hidden transition-all duration-200">
                   <div className="card-hover flex items-center gap-4 p-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : expense.id)}>
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base"
-                      style={{ backgroundColor: (categoryMap[expense.category]?.color || '#6366f1') + '25' }}>
-                      {categoryMap[expense.category]?.icon || (
+                      style={{ backgroundColor: (categoryMap[expense.categoryId || expense.category || '']?.color || '#6366f1') + '25' }}>
+                      {categoryMap[expense.categoryId || expense.category || '']?.icon || (
                         <span className="text-sm font-bold text-primary-600 dark:text-primary-300">
                           {expense.description?.charAt(0).toUpperCase() || '?'}
                         </span>
@@ -188,7 +190,7 @@ export default function ExpensesTab() {
                         )}
                       </div>
                       <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                        <span className="font-medium">{memberName(group.members, expense.payerId)}</span>
+                        <span className="font-medium">{memberName(group.members, expense.paidBy || expense.payerId || '')}</span>
                         <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">·</span>
                         {timeAgo(expense.createdAt)}
                         {expense.splits && expense.splits.length > 0 && (
