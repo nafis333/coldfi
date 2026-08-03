@@ -113,7 +113,14 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
           }
 
           const existing = groupData.expenses.filter((e) => e.displayId?.startsWith(`#${shortName}`));
-          const nextNum = existing.length + 1;
+          let nextNum = 1;
+          for (const e of existing) {
+            const match = e.displayId!.match(/-(\d+)$/);
+            if (match) {
+              const n = parseInt(match[1], 10);
+              if (!isNaN(n)) nextNum = Math.max(nextNum, n + 1);
+            }
+          }
           const displayId = `#${shortName}-${String(nextNum).padStart(3, '0')}`;
 
           const expenseId = `exp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

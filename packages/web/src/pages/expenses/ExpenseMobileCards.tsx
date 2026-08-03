@@ -4,14 +4,13 @@ import type { Expense, Category } from '../../lib/personalSync';
 interface ExpenseMobileCardsProps {
   paged: Expense[];
   categoryMap: Record<string, Pick<Category, 'name' | 'icon' | 'color'>>;
-  defaultCurrency: string;
   activeFilterCount: number;
   onNavigate: (path: string) => void;
   onDownloadReceipt: (expense: Expense) => void;
 }
 
 export default function ExpenseMobileCards({
-  paged, categoryMap, defaultCurrency, activeFilterCount,
+  paged, categoryMap, activeFilterCount,
   onNavigate, onDownloadReceipt,
 }: ExpenseMobileCardsProps) {
   return (
@@ -48,7 +47,7 @@ export default function ExpenseMobileCards({
                         <div className="flex flex-wrap gap-1 mt-1">
                           {expense.items.map((item, i) => (
                             <span key={i} className="inline-flex items-center gap-1 rounded-md bg-neutral-100 dark:bg-neutral-700/40 px-1.5 py-0.5 text-xs text-neutral-600 dark:text-neutral-300">
-                              {item.name} {formatCurrency(item.amount, defaultCurrency)}
+                              {item.name} {formatCurrency(item.amount, expense.currency)}
                             </span>
                           ))}
                         </div>
@@ -56,7 +55,7 @@ export default function ExpenseMobileCards({
                     </div>
                   </div>
                 <div className="flex items-center gap-1 shrink-0 ml-3">
-                  <p className="text-sm font-bold text-danger-600 dark:text-danger-400">-{formatCurrency(expense.amount, defaultCurrency)}</p>
+                  <p className="text-sm font-bold text-danger-600 dark:text-danger-400">-{formatCurrency(expense.amount, expense.currency)}</p>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDownloadReceipt(expense); }}
                     className="btn-ghost p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"

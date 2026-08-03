@@ -155,17 +155,36 @@ export default function AnalyticsPage() {
     [allExpenses, periodRange]
   );
 
+  // Money aggregates are only meaningful within a single currency — stat cards and
+  // charts below use default-currency expenses only; anything else is flagged.
+  const defaultFiltered = useMemo(
+    () => filtered.filter((e) => (e.currency || defaultCurrency) === defaultCurrency),
+    [filtered, defaultCurrency]
+  );
+  const otherCurrencyExpenses = useMemo(
+    () => filtered.filter((e) => (e.currency || defaultCurrency) !== defaultCurrency),
+    [filtered, defaultCurrency]
+  );
+  const otherCurrencies = useMemo(
+    () => [...new Set(otherCurrencyExpenses.map((e) => e.currency))],
+    [otherCurrencyExpenses]
+  );
+
   const engineCategories = useMemo(() => toEngineCategories(categories), [categories]);
-  const engineExpenses = useMemo(() => toEngineExpenses(filtered), [filtered]);
+  const engineExpenses = useMemo(() => toEngineExpenses(defaultFiltered), [defaultFiltered]);
   const engineAllExpenses = useMemo(() => toEngineExpenses(allExpenses), [allExpenses]);
 
   const previousPeriod = useMemo(
     () => allExpenses.filter((e) => e.date >= prevRange.start && e.date <= prevRange.end),
     [allExpenses, prevRange]
   );
+  const defaultPreviousPeriod = useMemo(
+    () => previousPeriod.filter((e) => (e.currency || defaultCurrency) === defaultCurrency),
+    [previousPeriod, defaultCurrency]
+  );
 
-  const totalSpent = useMemo(() => filtered.reduce((s, e) => s + e.amount, 0), [filtered]);
-  const prevTotalSpent = useMemo(() => previousPeriod.reduce((s, e) => s + e.amount, 0), [previousPeriod]);
+  const totalSpent = useMemo(() => defaultFiltered.reduce((s, e) => s + e.amount, 0), [defaultFiltered]);
+  const prevTotalSpent = useMemo(() => defaultPreviousPeriod.reduce((s, e) => s + e.amount, 0), [defaultPreviousPeriod]);
 
   const trendPercent = prevTotalSpent > 0 ? ((totalSpent - prevTotalSpent) / prevTotalSpent) * 100 : 0;
   const isTrendUp = totalSpent > prevTotalSpent;
@@ -179,17 +198,17 @@ export default function AnalyticsPage() {
   }, [totalSpent, periodRange]);
 
   const biggestDay = useMemo(() => {
-    if (filtered.length === 0) return null;
+    if (defaultFiltered.length === 0) return null;
     const byDate: Record<string, number> = {};
-    for (const e of filtered) byDate[e.date] = (byDate[e.date] || 0) + e.amount;
+    for (const e of defaultFiltered) byDate[e.date] = (byDate[e.date] || 0) + e.amount;
     const [date, amount] = Object.entries(byDate).sort((a, b) => b[1] - a[1])[0];
     return { date, amount };
-  }, [filtered]);
+  }, [defaultFiltered]);
 
   const categorySpending = useMemo(() => {
-    if (filtered.length === 0) return [];
+    if (defaultFiltered.length === 0) return [];
     return computeSpendingByCategory(engineExpenses, engineCategories, periodRange.start, periodRange.end);
-  }, [filtered, categories, periodRange]);
+  }, [defaultFiltered, engineExpenses, engineCategories, periodRange]);
 
   const pieData = useMemo(() => {
     const sorted = categorySpending.map((cs) => ({
@@ -216,7 +235,7 @@ export default function AnalyticsPage() {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const mStart = d.toISOString().split('T')[0];
         const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
-        const total = filtered.filter((e) => e.date >= mStart && e.date <= mEnd).reduce((s, e) => s + e.amount, 0);
+        const total = defaultFiltered.filter((e) => e.date >= mStart && e.date <= mEnd).reduce((s, e) => s + e.amount, 0);
         monthly.push({ label: d.toLocaleDateString('en', { month: 'short' }), amount: total });
       }
       return monthly;
@@ -227,22 +246,22 @@ export default function AnalyticsPage() {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       const ds = d.toISOString().split('T')[0];
-      const total = filtered.filter((e) => e.date === ds).reduce((s, e) => s + e.amount, 0);
+      const total = defaultFiltered.filter((e) => e.date === ds).reduce((s, e) => s + e.amount, 0);
       points.push({
         label: period === '7d' ? d.toLocaleDateString('en', { weekday: 'short' }) : String(d.getDate()),
         amount: total,
       });
     }
     return points;
-  }, [filtered, period]);
+  }, [defaultFiltered, period]);
 
   const maxBarValue = Math.max(...barData.map((d) => d.amount), 1);
 
   const topExpenses = useMemo(() => {
-    if (filtered.length === 0) return [];
+    if (defaultFiltered.length === 0) return [];
     const result = computeTopExpenses(engineExpenses, engineCategories, 5, periodRange.start, periodRange.end);
     return result[defaultCurrency] ?? [];
-  }, [filtered, categories, periodRange, defaultCurrency]);
+  }, [defaultFiltered, engineExpenses, engineCategories, periodRange, defaultCurrency]);
 
   const topCategory = useMemo(() => pieData[0] || null, [pieData]);
 
@@ -270,10 +289,11 @@ export default function AnalyticsPage() {
     const d = new Date();
     const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
     const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
-    const monthExps = allExpenses.filter((e) => e.date >= monthStart && e.date <= monthEnd);
+    const monthExps = allExpenses.filter((e) => e.date >= monthStart && e.date <= monthEnd
+      && (e.currency || defaultCurrency) === defaultCurrency);
     const total = monthExps.reduce((s, e) => s + e.amount, 0);
     return total / Math.max(1, d.getDate());
-  }, [allExpenses]);
+  }, [allExpenses, defaultCurrency]);
 
   const projectedThisMonth = dailyAvgThisMonth * monthDays;
 
@@ -324,6 +344,15 @@ export default function AnalyticsPage() {
 
       {source !== 'personal' && groupExpensesFlat.length === 0 && (
         <GroupDataWarning groupsLength={groups.length} />
+      )}
+
+      {otherCurrencyExpenses.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700/40 dark:bg-amber-700/10 p-3">
+          <p className="text-sm text-amber-800 dark:text-amber-300">
+            {otherCurrencyExpenses.length} expense{otherCurrencyExpenses.length !== 1 ? 's' : ''} in{' '}
+            {otherCurrencies.join(', ')} excluded from the totals below — amounts shown in {defaultCurrency} only.
+          </p>
+        </div>
       )}
 
       <StatCards

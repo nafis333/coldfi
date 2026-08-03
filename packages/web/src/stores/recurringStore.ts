@@ -46,7 +46,7 @@ export function computeBillStatus(bill: RecurringBill): BillStatus {
   if (bill.lastPaidDate) {
     const paidDate = toLocalDate(bill.lastPaidDate);
     const prevDueDate = previousDueDate(bill.nextDueDate, bill.frequency);
-    if (paidDate >= prevDueDate) return 'paid';
+    if (paidDate >= prevDueDate && diffDays > 0) return 'paid';
   }
 
   if (diffDays < 0) return 'overdue';
@@ -305,39 +305,45 @@ export const useRecurringStore = create<RecurringState>((set) => ({
       const categories = blob.categories ?? [];
 
       for (const bill of blob.recurringBills) {
-      if (!bill.isActive || bill.nextDueDate > today) {
-        updatedBills.push(bill);
-        continue;
+        if (!bill.isActive || bill.nextDueDate > today) {
+          updatedBills.push(bill);
+          continue;
+        }
+
+        billsChanged = true;
+        const matchingCategory = categories.find(
+          (c) => c.name.toLowerCase() === bill.category.toLowerCase()
+        );
+
+        const defaultCurrency = useAuthStore.getState().defaultCurrency || 'BDT';
+
+        let cursor = bill.nextDueDate;
+        let iterations = 0;
+        while (cursor <= today && iterations < 60) {
+          newExpenses.push({
+            amount: bill.amount,
+            currency: bill.currency || defaultCurrency,
+            categoryId: matchingCategory?.id ?? bill.category,
+            date: cursor,
+            payee: bill.name,
+            note: `Auto-generated from recurring bill`,
+            paymentMethod: null,
+            receiptUri: null,
+            isRecurring: true,
+          });
+
+          generated.push(bill.name);
+          cursor = computeNextDueDate(cursor, bill.frequency);
+          iterations++;
+        }
+
+        updatedBills.push({
+          ...bill,
+          lastPaidDate: today,
+          previousNextDueDate: bill.nextDueDate,
+          nextDueDate: cursor,
+        });
       }
-
-      billsChanged = true;
-      const matchingCategory = categories.find(
-        (c) => c.name.toLowerCase() === bill.category.toLowerCase()
-      );
-
-      const defaultCurrency = useAuthStore.getState().defaultCurrency || 'BDT';
-
-      newExpenses.push({
-        amount: bill.amount,
-        currency: bill.currency || defaultCurrency,
-        categoryId: matchingCategory?.id ?? bill.category,
-        date: today,
-        payee: bill.name,
-        note: `Auto-generated from recurring bill`,
-        paymentMethod: null,
-        receiptUri: null,
-        isRecurring: true,
-      });
-
-      generated.push(bill.name);
-
-      updatedBills.push({
-        ...bill,
-        lastPaidDate: today,
-        previousNextDueDate: bill.nextDueDate,
-        nextDueDate: computeNextDueDate(bill.nextDueDate, bill.frequency),
-      });
-    }
 
     if (billsChanged) {
       const currentBlob = usePersonalStore.getState().personalBlob!;

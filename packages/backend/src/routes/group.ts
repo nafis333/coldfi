@@ -215,7 +215,7 @@ export async function groupRoutes(app: FastifyInstance) {
 
     try { emitToGroup(groupId, 'member-left', { groupId, userId, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo }); } catch {}
 
-    return reply.send({ success: true, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo, newEncryptionKey: r.newEncryptionKey });
+    return reply.send({ success: true, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo });
   });
 
   app.delete('/:groupId', { preHandler: [requireGroupAccess, requireGroupAdmin] }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -230,7 +230,7 @@ export async function groupRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:groupId/members/:targetUserId', {
-    preHandler: [requireGroupAccess],
+    preHandler: [requireGroupAccess, requireGroupAdmin],
     schema: {
       params: {
         type: 'object',
@@ -253,7 +253,7 @@ export async function groupRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:groupId/members/:targetUserId/role', {
-    preHandler: [requireGroupAccess],
+    preHandler: [requireGroupAccess, requireGroupAdmin],
     schema: {
       params: {
         type: 'object',

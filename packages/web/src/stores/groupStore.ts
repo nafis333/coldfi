@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useAuthStore } from './authStore';
 import { apiClient } from '../lib/apiClient';
-import { encryptData, decryptData } from '../lib/crypto';
+import { decryptData } from '../lib/crypto';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
 import { useLogStore } from './logStore';
@@ -20,6 +20,7 @@ import {
   getGroupKey,
   cacheGroupKey,
   clearGroupKeyCache,
+  clearGroupKey,
   modifySyncBlob,
   toEngineExpenses,
   toEngineSettlements,
@@ -383,22 +384,6 @@ export const useGroupStore = create<GroupState>((set) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const gk = getGroupKey(groupId);
-      let decrypted: string | null = null;
-      let vectorClock: Record<string, number> = {};
-      if (gk) {
-        try {
-          const syncRes = await apiClient(`/api/group/${groupId}/sync`);
-          if (syncRes.ok) {
-            const syncData = await syncRes.json();
-            vectorClock = syncData.vectorClock || {};
-            if (syncData.encryptedBlob) {
-              decrypted = await decryptData(gk, syncData.encryptedBlob);
-            }
-          }
-        } catch { /* blob not accessible */ }
-      }
-
       const res = await apiClient(`/api/group/${groupId}/leave`, {
         method: 'POST',
       });
@@ -408,31 +393,7 @@ export const useGroupStore = create<GroupState>((set) => ({
         throw new Error(data.error || 'Failed to leave group');
       }
 
-      const result = await res.json();
-
-      if (result.newEncryptionKey) {
-        const newKey = await cacheGroupKey(groupId, result.newEncryptionKey);
-        if (decrypted) {
-          const reEncrypted = await encryptData(newKey, decrypted);
-          let saved = false;
-          for (let attempt = 0; attempt < 3 && !saved; attempt++) {
-            const saveRes = await apiClient(`/api/group/${groupId}/sync`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ encryptedBlob: reEncrypted, vectorClock }),
-            });
-            if (saveRes.ok) {
-              saved = true;
-            } else if (saveRes.status === 409 && attempt < 2) {
-              const refresh = await apiClient(`/api/group/${groupId}/sync`);
-              if (refresh.ok) {
-                const sd = await refresh.json();
-                vectorClock = sd.vectorClock || {};
-              }
-            }
-          }
-        }
-      }
-
+      clearGroupKey(groupId);
       set({ isLoading: false, currentGroup: null });
 
       const lgActorId = useAuthStore.getState().userId || '';
@@ -459,48 +420,15 @@ export const useGroupStore = create<GroupState>((set) => ({
   removeMember: async (groupId: string, targetUserId: string) => {
     if (!useAuthStore.getState().accessToken) throw new Error('Not authenticated');
 
-    const gk = getGroupKey(groupId);
-    let decrypted: string | null = null;
-    let vectorClock: Record<string, number> = {};
-    if (gk) {
-      try {
-        const syncRes = await apiClient(`/api/group/${groupId}/sync`);
-        if (syncRes.ok) {
-          const syncData = await syncRes.json();
-          vectorClock = syncData.vectorClock || {};
-          if (syncData.encryptedBlob) {
-            decrypted = await decryptData(gk, syncData.encryptedBlob);
-          }
-        }
-      } catch { /* blob not accessible */ }
-    }
-
     const res = await apiClient(`/api/group/${groupId}/members/${targetUserId}`, { method: 'DELETE' });
     if (!res.ok) { const data = await res.json(); throw new Error(data.message || 'Failed to remove member'); }
 
     const result = await res.json();
 
+    // The server re-encrypts the blob with the rotated key; just refresh our local
+    // key cache so the admin can keep decrypting group data immediately.
     if (result.newEncryptionKey) {
-      const newKey = await cacheGroupKey(groupId, result.newEncryptionKey);
-      if (decrypted) {
-        const reEncrypted = await encryptData(newKey, decrypted);
-        let saved = false;
-        for (let attempt = 0; attempt < 3 && !saved; attempt++) {
-          const saveRes = await apiClient(`/api/group/${groupId}/sync`, {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ encryptedBlob: reEncrypted, vectorClock }),
-          });
-          if (saveRes.ok) {
-            saved = true;
-          } else if (saveRes.status === 409 && attempt < 2) {
-            const refresh = await apiClient(`/api/group/${groupId}/sync`);
-            if (refresh.ok) {
-              const sd = await refresh.json();
-              vectorClock = sd.vectorClock || {};
-            }
-          }
-        }
-      }
+      await cacheGroupKey(groupId, result.newEncryptionKey);
     }
 
     const rmActorId = useAuthStore.getState().userId || '';

@@ -26,14 +26,6 @@ function useStoreError(store: any, addToast: (type: 'error', msg: string) => voi
     }
     prevRef.current = error;
   }, [error]);
-} s.error);
-  const prevRef = useRef(error);
-  useEffect(() => {
-    if (error && error !== prevRef.current) {
-      addToast('error', error);
-    }
-    prevRef.current = error;
-  }, [error, addToast]);
 }
 
 export function useGlobalErrorToast() {

@@ -6,6 +6,69 @@ function generateEncryptionKey(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+const BLOB_IV_LENGTH = 12;
+const BLOB_TAG_LENGTH = 16;
+
+// Group blobs are encrypted client-side as base64(iv + ciphertext + tag) using AES-256-GCM,
+// matching packages/web/src/lib/crypto.ts (encryptData/decryptData).
+function decryptGroupBlob(keyHex: string, blobBase64: string): string {
+  const key = Buffer.from(keyHex, 'hex');
+  const combined = Buffer.from(blobBase64, 'base64');
+  if (combined.length < BLOB_IV_LENGTH + BLOB_TAG_LENGTH) {
+    throw new AppError('ERR_ENCRYPTION', 'Invalid encrypted blob', 500);
+  }
+  const iv = combined.subarray(0, BLOB_IV_LENGTH);
+  const tag = combined.subarray(combined.length - BLOB_TAG_LENGTH);
+  const ciphertext = combined.subarray(BLOB_IV_LENGTH, combined.length - BLOB_TAG_LENGTH);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  return decipher.update(ciphertext) + decipher.final('utf8');
+}
+
+function encryptGroupBlob(keyHex: string, plaintext: string): string {
+  const key = Buffer.from(keyHex, 'hex');
+  const iv = crypto.randomBytes(BLOB_IV_LENGTH);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, encrypted, tag]).toString('base64');
+}
+
+// Rotates the group encryption key and re-encrypts the stored blob with the new key
+// so that clients holding the old key can no longer decrypt group data.
+async function rotateGroupEncryptionKey(
+  client: any,
+  groupId: string
+): Promise<{ newKey: string }> {
+  const keyRes = await client.query(
+    `SELECT encryption_key FROM groups WHERE id = $1 FOR UPDATE`,
+    [groupId]
+  );
+  const oldKey = keyRes.rows[0]?.encryption_key;
+  if (!oldKey) throw new AppError('ERR_NOT_FOUND', 'Group not found', 404);
+
+  const newKey = generateEncryptionKey();
+  await client.query(
+    `UPDATE groups SET encryption_key = $1, updated_at = NOW() WHERE id = $2`,
+    [newKey, groupId]
+  );
+
+  const blobRes = await client.query(
+    `SELECT encrypted_blob FROM group_sync WHERE group_id = $1`,
+    [groupId]
+  );
+  const blob = blobRes.rows[0]?.encrypted_blob;
+  if (blob) {
+    const plaintext = decryptGroupBlob(oldKey, blob);
+    await client.query(
+      `UPDATE group_sync SET encrypted_blob = $1 WHERE group_id = $2`,
+      [encryptGroupBlob(newKey, plaintext), groupId]
+    );
+  }
+
+  return { newKey };
+}
+
 export async function listUserGroups(userId: string): Promise<any[]> {
   const result = await query(
     `SELECT g.id, g.name, g.default_currency, g.created_at,
@@ -417,12 +480,10 @@ export async function removeMember(
       [result.rows[0].id]
     );
 
-    // Rotate encryption key + regenerate invites
-    const newKey = generateEncryptionKey();
-    await client.query(
-      `UPDATE groups SET encryption_key = $1, updated_at = NOW() WHERE id = $2`,
-      [newKey, groupId]
-    );
+    // Rotate encryption key + regenerate invites.
+    // The blob is re-encrypted server-side with the new key; the admin receives
+    // the new key so their client can refresh its local key cache immediately.
+    const { newKey } = await rotateGroupEncryptionKey(client, groupId);
     await deactivateAndCreateInvite(client, groupId, adminUserId);
 
     return { leftAt: new Date().toISOString(), newEncryptionKey: newKey };
@@ -478,7 +539,7 @@ export async function deleteGroup(groupId: string, userId: string): Promise<{ su
 export async function leaveGroup(
   groupId: string,
   userId: string
-): Promise<{ leftAt: string; adminTransferredTo?: string; newEncryptionKey: string }> {
+): Promise<{ leftAt: string; adminTransferredTo?: string }> {
   return transaction(async (client) => {
     const memberResult = await client.query(
       `SELECT id, role, left_at FROM group_members WHERE group_id = $1 AND user_id = $2 FOR UPDATE`,
@@ -521,15 +582,13 @@ export async function leaveGroup(
       }
     }
 
-    // Rotate encryption key + regenerate invites
-    const newKey = generateEncryptionKey();
-    await client.query(
-      `UPDATE groups SET encryption_key = $1, updated_at = NOW() WHERE id = $2`,
-      [newKey, groupId]
-    );
+    // Rotate encryption key + regenerate invites.
+    // The new key is never handed to the departing member; the server re-encrypts
+    // the stored blob so remaining members simply fetch the new key as usual.
+    await rotateGroupEncryptionKey(client, groupId);
     await deactivateAndCreateInvite(client, groupId, userId);
 
-    return { leftAt: new Date().toISOString(), adminTransferredTo, newEncryptionKey: newKey };
+    return { leftAt: new Date().toISOString(), adminTransferredTo };
   });
 }
 

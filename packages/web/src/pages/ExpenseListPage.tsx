@@ -178,7 +178,6 @@ export default function ExpenseListPage() {
           <ExpenseDesktopTable
             paged={paged}
             categoryMap={categoryMap}
-            defaultCurrency={defaultCurrency}
             activeFilterCount={activeFilterCount}
             onNavigate={(path) => navigate(path)}
             onDownloadReceipt={handleDownloadPersonalReceipt}
@@ -187,7 +186,6 @@ export default function ExpenseListPage() {
           <ExpenseMobileCards
             paged={paged}
             categoryMap={categoryMap}
-            defaultCurrency={defaultCurrency}
             activeFilterCount={activeFilterCount}
             onNavigate={(path) => navigate(path)}
             onDownloadReceipt={handleDownloadPersonalReceipt}

@@ -26,6 +26,14 @@ const DEFAULT_MAPPING: ColumnMapping = {
 
 const STEPS = ['Upload', 'Map Columns', 'Preview', 'Confirm'] as const;
 
+function normalizeDate(raw: string): string {
+  if (!raw) return new Date().toISOString().split('T')[0];
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export default function ImportPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,7 +120,7 @@ export default function ImportPage() {
             amount,
             currency: useAuthStore.getState().defaultCurrency,
             categoryId: resolveCategoryId(row[mapping.category]),
-            date: row[mapping.date] ?? new Date().toISOString().split('T')[0],
+            date: normalizeDate(row[mapping.date] ?? ''),
             payee: null,
             note: row[mapping.description] ?? null,
             paymentMethod: null,

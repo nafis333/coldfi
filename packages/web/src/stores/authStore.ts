@@ -321,9 +321,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
       broadcastLogout();
-    } finally {
-      isLoggingOut = false;
-    }
     };
   })(),
 

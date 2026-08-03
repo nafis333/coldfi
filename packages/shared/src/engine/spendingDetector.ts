@@ -62,13 +62,16 @@ export function detectUnusualSpending(
   } = {}
 ): SpendingAlert[] {
   const {
-    lookbackPeriods = 3,
-    periodDays = 30,
+    lookbackPeriods: rawLookbackPeriods = 3,
+    periodDays: rawPeriodDays = 30,
     lowThreshold = 1.2,
     mediumThreshold = 1.5,
     highThreshold = 2.0,
     currentDate = new Date(),
   } = options;
+
+  const lookbackPeriods = Math.max(1, rawLookbackPeriods);
+  const periodDays = Math.max(1, rawPeriodDays);
 
   const ranges = getPeriodRanges(currentDate, lookbackPeriods + 1, periodDays);
   const currentRange = ranges[0]!;
@@ -155,10 +158,12 @@ export function getSpendingTrend(
 ): CategorySpendingTrend[] {
   const {
     periods = 4,
-    periodDays = 30,
+    periodDays: rawPeriodDays = 30,
     stableThreshold = 5,
     currentDate = new Date(),
   } = options;
+
+  const periodDays = Math.max(1, rawPeriodDays);
 
   const ranges = getPeriodRanges(currentDate, periods, periodDays);
 

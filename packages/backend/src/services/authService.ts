@@ -118,7 +118,7 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
   const { email, authKeyHash } = input;
 
   const userResult = await query(
-    `SELECT id, auth_key_hash, personal_salt, encrypted_pek, two_factor_enabled, role
+    `SELECT id, auth_key_hash, personal_salt, encrypted_pek, two_factor_enabled, role, locked_until
      FROM users WHERE email = $1`,
     [email.toLowerCase()]
   );
@@ -128,6 +128,13 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
   }
 
   const user = userResult.rows[0];
+
+  // locked_until is the single source of truth for lockout (also enforced on token refresh).
+  const lockedUntil = user.locked_until ? new Date(user.locked_until) : null;
+  if (lockedUntil && lockedUntil.getTime() > Date.now()) {
+    const remaining = Math.ceil((lockedUntil.getTime() - Date.now()) / 60000);
+    throw new AuthError('ERR_USER_LOCKED', `Account locked. Try again in ${remaining} minutes`, 423);
+  }
 
   const recentFails = await query<{ count: number }>(
     `SELECT COUNT(*) as count FROM user_activity_log
@@ -168,6 +175,11 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
   await query(
     `DELETE FROM user_activity_log WHERE user_id = $1 AND action = 'login_failed' AND created_at > NOW() - $2::interval`,
     [user.id, `${config.LOGIN_WINDOW_MINUTES} minutes`]
+  );
+
+  await query(
+    `UPDATE users SET locked_until = NULL WHERE id = $1`,
+    [user.id]
   );
 
   await query(

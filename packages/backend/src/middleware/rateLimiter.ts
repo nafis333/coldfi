@@ -26,8 +26,6 @@ export function createRateLimiter(options: RateLimitOptions) {
 
       if (current === 1) {
         await redis.expire(key, windowSeconds);
-      } else {
-        await redis.expire(key, windowSeconds);
       }
 
       if (current > maxAttempts) {

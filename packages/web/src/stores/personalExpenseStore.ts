@@ -49,6 +49,7 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       await savePersonalBlob(updated);
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to add expense' });
+      throw err;
     } finally {
       set({ isLoading: false });
     }
@@ -74,6 +75,7 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       await savePersonalBlob(updated);
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to update expense' });
+      throw err;
     } finally {
       set({ isLoading: false });
     }
@@ -97,6 +99,7 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       await savePersonalBlob(updated);
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete expense' });
+      throw err;
     } finally {
       set({ isLoading: false });
     }

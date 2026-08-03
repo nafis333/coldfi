@@ -5,14 +5,13 @@ import type { Expense, Category } from '../../lib/personalSync';
 interface ExpenseDesktopTableProps {
   paged: Expense[];
   categoryMap: Record<string, Pick<Category, 'name' | 'icon' | 'color'>>;
-  defaultCurrency: string;
   activeFilterCount: number;
   onNavigate: (path: string) => void;
   onDownloadReceipt: (expense: Expense) => void;
 }
 
 export default function ExpenseDesktopTable({
-  paged, categoryMap, defaultCurrency, activeFilterCount,
+  paged, categoryMap, activeFilterCount,
   onNavigate, onDownloadReceipt,
 }: ExpenseDesktopTableProps) {
   return (
@@ -67,7 +66,7 @@ export default function ExpenseDesktopTable({
                         <span className="flex h-6 w-6 items-center justify-center rounded-md text-xs" style={{ backgroundColor: (cat?.color || '#CBD5E1') + '25' }}>
                           {cat?.icon || '📄'}
                         </span>
-                        <span className="text-sm text-neutral-700 dark:text-neutral-300">{cat?.name || expense.categoryId}</span>
+                        <span className="text-sm text-neutral-700 dark:text-neutral-300">{cat?.name || expense.categoryId || 'Uncategorized'}</span>
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 font-medium">
@@ -81,7 +80,7 @@ export default function ExpenseDesktopTable({
                             {expense.items.map((item, i) => (
                               <span key={i} className="inline-flex items-center gap-1 rounded-md bg-neutral-100 dark:bg-neutral-700/40 px-1.5 py-0.5 text-xs text-neutral-600 dark:text-neutral-300">
                                 {item.name}
-                                <span className="text-neutral-400 dark:text-neutral-500">{formatCurrency(item.amount, defaultCurrency)}</span>
+                                <span className="text-neutral-400 dark:text-neutral-500">{formatCurrency(item.amount, expense.currency)}</span>
                               </span>
                             ))}
                           </div>
@@ -92,7 +91,7 @@ export default function ExpenseDesktopTable({
                     </td>
                     <td className="whitespace-nowrap px-5 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">-{formatCurrency(expense.amount, defaultCurrency)}</span>
+                        <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">-{formatCurrency(expense.amount, expense.currency)}</span>
                         <button
                           onClick={(e) => { e.stopPropagation(); onDownloadReceipt(expense); }}
                           className="btn-ghost p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"

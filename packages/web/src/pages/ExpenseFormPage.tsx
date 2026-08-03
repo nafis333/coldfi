@@ -34,7 +34,7 @@ export default function ExpenseFormPage() {
   const isEditing = !!id;
 
   const { expenses, categories, fetchPersonalBlob } = usePersonalStore();
-  const { addExpense, updateExpense } = usePersonalExpenseStore();
+  const { addExpense, updateExpense, deleteExpense } = usePersonalExpenseStore();
 
   const existingExpense = useMemo(
     () => (id ? expenses.find((e) => e.id === id) : undefined),
@@ -77,6 +77,7 @@ export default function ExpenseFormPage() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [receiptFile, setReceiptFile] = useState<ReceiptFile | null>(null);
 
   useEffect(() => {
@@ -166,6 +167,18 @@ export default function ExpenseFormPage() {
 
   function itemError(idx: number, field: string): string | undefined {
     return errors[`items_${idx}_${field}`];
+  }
+
+  async function handleDelete() {
+    if (!id || !window.confirm('Are you sure you want to delete this expense? This cannot be undone.')) return;
+    setIsDeleting(true);
+    try {
+      await deleteExpense(id);
+      navigate('/expenses');
+    } catch (err) {
+      setErrors({ form: err instanceof Error ? err.message : 'Failed to delete expense' });
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -323,6 +336,16 @@ export default function ExpenseFormPage() {
             )}
           </button>
           <button type="button" onClick={() => navigate('/expenses')} className="btn-ghost">Cancel</button>
+          {isEditing && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="ml-auto text-sm font-medium text-danger-600 hover:text-danger-700 dark:text-danger-400 dark:hover:text-danger-300 disabled:opacity-50"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Expense'}
+            </button>
+          )}
         </div>
       </form>
     </div>

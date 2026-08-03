@@ -34,7 +34,7 @@ export function migrateBlob<BlobT extends { version: number }>(
   );
 
   for (const m of sorted) {
-    if ((current.version as number) < m.toVersion) {
+    if (((current.version as number) ?? 0) < m.toVersion) {
       current = { ...current, ...m.migrate(current) };
       current.version = m.toVersion;
     }

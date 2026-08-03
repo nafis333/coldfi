@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { usePersonalStore } from './personalStore';
+import { useAuthStore } from './authStore';
 import { useGroupStore } from './groupStore';
 import { useGroupExpenseStore } from './groupExpenseStore';
 import { silentCatch } from '../lib/errorHandler';
@@ -81,6 +82,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       const allBudgets = state.budgets;
       const allCategories = state.categories;
       const allIncomeLogs = state.incomeLogs || [];
+      const defaultCurrency = useAuthStore.getState().defaultCurrency || 'BDT';
 
       const { daysInMonth } = monthBoundaries(month);
 
@@ -96,16 +98,21 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
         return ym === month;
       });
 
-      const totalSpent = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
-      const totalIncome = monthIncome.reduce((sum, i) => sum + i.amount, 0);
+      // Recap numbers are rendered with a single currency label — restrict the
+      // aggregates to the user's default currency so they are never mixed.
+      const defaultMonthExpenses = monthExpenses.filter((e) => (e.currency || defaultCurrency) === defaultCurrency);
+      const defaultMonthIncome = monthIncome.filter((i) => (i.currency || defaultCurrency) === defaultCurrency);
+
+      const totalSpent = defaultMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const totalIncome = defaultMonthIncome.reduce((sum, i) => sum + i.amount, 0);
       const netSavings = totalIncome - totalSpent;
-      const expenseCount = monthExpenses.length;
+      const expenseCount = defaultMonthExpenses.length;
       const dailyAverage = daysInMonth > 0 ? totalSpent / daysInMonth : 0;
       const averageTransaction = expenseCount > 0 ? totalSpent / expenseCount : 0;
 
       // Top spending day of the month
       const dayTotals: Record<number, number> = {};
-      for (const e of monthExpenses) {
+      for (const e of defaultMonthExpenses) {
         const day = new Date(e.date).getDate();
         dayTotals[day] = (dayTotals[day] || 0) + e.amount;
       }
@@ -119,14 +126,14 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       // Weekday vs weekend spending
       let weekdayTotal = 0;
       let weekendTotal = 0;
-      for (const e of monthExpenses) {
+      for (const e of defaultMonthExpenses) {
         const d = new Date(e.date).getDay();
         if (d === 0 || d === 6) weekendTotal += e.amount;
         else weekdayTotal += e.amount;
       }
 
       // Top 5 personal expenses (individual items)
-      const sortedExpenses = [...monthExpenses].sort((a, b) => b.amount - a.amount);
+      const sortedExpenses = [...defaultMonthExpenses].sort((a, b) => b.amount - a.amount);
       const personalTopExpenses = sortedExpenses.slice(0, 5).map((e) => ({
         description: e.note || e.payee || 'Expense',
         amount: e.amount,
@@ -164,7 +171,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
 
       // Category breakdown
       const categoryTotals: Record<string, number> = {};
-      for (const e of monthExpenses) {
+      for (const e of defaultMonthExpenses) {
         categoryTotals[e.categoryId] = (categoryTotals[e.categoryId] || 0) + e.amount;
       }
 
@@ -188,7 +195,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       // Biggest single expense
       let biggestExpense = { description: 'None', amount: 0 };
       let maxAmount = 0;
-      for (const e of monthExpenses) {
+      for (const e of defaultMonthExpenses) {
         if (e.amount > maxAmount) {
           maxAmount = e.amount;
           biggestExpense = {
@@ -200,7 +207,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
 
       // Income sources
       const sourceTotals: Record<string, number> = {};
-      for (const i of monthIncome) {
+      for (const i of defaultMonthIncome) {
         sourceTotals[i.source] = (sourceTotals[i.source] || 0) + i.amount;
       }
       const incomeSources: IncomeSource[] = Object.entries(sourceTotals)
@@ -209,6 +216,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
 
       // Budget progress
       const monthBudgets = allBudgets.filter((b) => {
+        if ((b.currency || defaultCurrency) !== defaultCurrency) return false;
         const start = new Date(b.periodStart);
         const end = new Date(b.periodEnd);
         const ymStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
@@ -222,7 +230,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
 
       // Per-budget breakdown
       const budgetProgress: BudgetProgress[] = monthBudgets.map((b) => {
-        const budgetCategories = monthExpenses.filter((e) => {
+        const budgetCategories = defaultMonthExpenses.filter((e) => {
           if (b.categoryId === '__all__') return true;
           return e.categoryId === b.categoryId;
         });
