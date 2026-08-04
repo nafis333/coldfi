@@ -145,7 +145,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const data = await res.json();
-      const { accessToken, userId, displayName, email } = data;
+      const { accessToken, userId, displayName, email, rawPek, personalSalt, encryptedPek } = data;
+      let pek: CryptoKey | null = null;
+      if (rawPek) {
+        try {
+          pek = await importKey(base64ToUint8Array(rawPek));
+          storePekBytes(base64ToUint8Array(rawPek));
+        } catch {
+          silentCatch('authStore.googleLogin.importRawPek');
+        }
+      }
       saveAuthToStorage({ accessToken, userId, email, displayName, role: data.role, isGoogleUser: true });
 
       set({
@@ -153,14 +162,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: email || '',
         displayName: displayName || null,
         accessToken,
-        pek: null,
-        personalSalt: null,
-        encryptedPek: null,
+        pek,
+        personalSalt: personalSalt || null,
+        encryptedPek: encryptedPek || null,
         role: data.role || 'user',
         isAuthenticated: true,
         isLoading: false,
         isInitialized: true,
-        pekMissing: false,
+        pekMissing: !!(personalSalt && !pek),
         isGoogleUser: true,
       });
 
@@ -401,7 +410,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const data = await res.json();
-      const { accessToken, userId, email, displayName, personalSalt, encryptedPek, role, isGoogleUser } = data;
+      const { accessToken, userId, email, displayName, personalSalt, encryptedPek, role, isGoogleUser, rawPek } = data;
 
       let pek: CryptoKey | null = null;
       const storedPek = storage().getItem(PEK_STORAGE_KEY);
@@ -411,6 +420,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } catch {
           silentCatch('authStore.initialize.importStoredPek');
           storage().removeItem(PEK_STORAGE_KEY);
+        }
+      }
+      if (!pek && rawPek) {
+        try {
+          pek = await importKey(base64ToUint8Array(rawPek));
+          storePekBytes(base64ToUint8Array(rawPek));
+        } catch {
+          silentCatch('authStore.initialize.importRawPek');
         }
       }
 

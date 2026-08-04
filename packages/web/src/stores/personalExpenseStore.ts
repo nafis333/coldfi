@@ -21,8 +21,7 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
   addExpense: async (expense) => {
     if (typeof expense.amount !== 'number' || isNaN(expense.amount) || expense.amount <= 0) throw new Error('Expense amount must be a positive number');
 
-    const { pek, isGoogleUser } = useAuthStore.getState();
-    if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+    const { pek } = useAuthStore.getState();
     if (!pek) throw new Error('Encryption key not loaded. Please log out and log back in.');
 
     set({ isLoading: true, error: null });
@@ -60,8 +59,7 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
     if (!personalBlob) throw new Error('No data loaded');
 
-    const { pek, isGoogleUser } = useAuthStore.getState();
-    if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+    const { pek } = useAuthStore.getState();
     if (!pek) throw new Error('Encryption key not loaded. Please log out and log back in.');
 
     set({ isLoading: true, error: null });
@@ -87,8 +85,7 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
     if (!personalBlob) throw new Error('No data loaded');
 
-    const { pek, isGoogleUser } = useAuthStore.getState();
-    if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
+    const { pek } = useAuthStore.getState();
     if (!pek) throw new Error('Encryption key not loaded. Please log out and log back in.');
 
     set({ isLoading: true, error: null });

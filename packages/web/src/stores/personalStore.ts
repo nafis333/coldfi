@@ -52,8 +52,8 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
   error: null,
 
   fetchPersonalBlob: async () => {
-    const { accessToken, pek, isGoogleUser } = useAuthStore.getState();
-    if (!accessToken || (!pek && !isGoogleUser)) {
+    const { accessToken, pek } = useAuthStore.getState();
+    if (!accessToken || !pek) {
       set({ error: 'Not authenticated' });
       return;
     }
@@ -110,12 +110,11 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
   },
 
   savePersonalBlob: async (blob: PersonalBlob) => {
-    const { accessToken, pek, isGoogleUser } = useAuthStore.getState();
+    const { accessToken, pek } = useAuthStore.getState();
     if (!accessToken) {
       throw new Error('Not authenticated');
     }
     if (!pek) {
-      if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
       throw new Error('No encryption key loaded');
     }
 

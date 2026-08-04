@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAuthStore } from '../authStore';
+import { importKey } from '../../lib/crypto';
 
 vi.mock('../../lib/crypto', () => ({
   deriveAuthKey: vi.fn().mockResolvedValue(new Uint8Array(32)),
@@ -90,6 +91,38 @@ describe('authStore', () => {
       expect(useAuthStore.getState().pek).toEqual({} as CryptoKey);
       expect(useAuthStore.getState().userId).toBe('user-1');
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('googleLogin', () => {
+    it('should import the server-provided PEK (rawPek) so personal data works', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          accessToken: 'token-google',
+          userId: 'user-google',
+          email: 'google@test.com',
+          displayName: 'Google User',
+          role: 'user',
+          personalSalt: 'c2FsdA==',
+          encryptedPek: 'ZW5j',
+          rawPek: 'cmF3LXBlaw==',
+        }),
+      } as Response);
+
+      await useAuthStore.getState().googleLogin('id-token');
+
+      const state = useAuthStore.getState();
+      expect(state.isAuthenticated).toBe(true);
+      expect(state.isGoogleUser).toBe(true);
+      expect(state.pek).toEqual({} as CryptoKey);
+      expect(state.pekMissing).toBe(false);
+      expect(state.personalSalt).toBe('c2FsdA==');
+      expect(importKey).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/auth/google'),
+        expect.objectContaining({ credentials: 'include' })
+      );
     });
   });
 

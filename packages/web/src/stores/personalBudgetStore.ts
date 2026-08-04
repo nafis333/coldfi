@@ -38,9 +38,8 @@ export const usePersonalBudgetStore = create<PersonalBudgetState>((set) => ({
     });
 
     try {
-      const { pek, isGoogleUser } = useAuthStore.getState();
+      const { pek } = useAuthStore.getState();
       if (!pek) {
-        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
         throw new Error('No encryption key loaded');
       }
       await savePersonalBlob(updated);
@@ -68,9 +67,8 @@ export const usePersonalBudgetStore = create<PersonalBudgetState>((set) => ({
     });
 
     try {
-      const { pek, isGoogleUser } = useAuthStore.getState();
+      const { pek } = useAuthStore.getState();
       if (!pek) {
-        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
         throw new Error('No encryption key loaded');
       }
       await savePersonalBlob(updated);
@@ -96,9 +94,8 @@ export const usePersonalBudgetStore = create<PersonalBudgetState>((set) => ({
     });
 
     try {
-      const { pek, isGoogleUser } = useAuthStore.getState();
+      const { pek } = useAuthStore.getState();
       if (!pek) {
-        if (isGoogleUser) throw new Error('Personal data is not available with Google sign-in');
         throw new Error('No encryption key loaded');
       }
       await savePersonalBlob(updated);
