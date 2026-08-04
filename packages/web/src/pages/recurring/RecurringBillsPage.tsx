@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRecurringStore, computeBillStatus } from '../../stores/recurringStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
@@ -28,21 +28,17 @@ export default function RecurringBillsPage() {
   const [formVisible, setFormVisible] = useState(false);
   const [editingBill, setEditingBill] = useState<BillFormData | undefined>(undefined);
   const [generatedNames, setGeneratedNames] = useState<string[]>([]);
-  const processedRef = useRef(false);
 
   useEffect(() => {
-    fetchRecurringBills();
-  }, [fetchRecurringBills]);
-
-  useEffect(() => {
-    if (processedRef.current) return;
-    processedRef.current = true;
-    processDueBills().then((names) => {
-      if (names.length > 0) {
-        setGeneratedNames(names);
-      }
+    let cancelled = false;
+    fetchRecurringBills().then(() => {
+      if (cancelled) return;
+      return processDueBills().then((names) => {
+        if (!cancelled && names.length > 0) setGeneratedNames(names);
+      });
     });
-  }, [processDueBills]);
+    return () => { cancelled = true; };
+  }, [fetchRecurringBills, processDueBills]);
 
   const activeBills = recurringBills.filter((b) => b.isActive);
   const totalMonthly = useMemo(() => activeBills.reduce((sum, b) => {

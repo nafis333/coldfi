@@ -109,7 +109,8 @@ export default function ExpenseListPage() {
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  const personalTotal = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
+  const personalTotal = useMemo(() => expenses.reduce((s, e) => s + ((e.currency || defaultCurrency) === defaultCurrency ? e.amount : 0), 0), [expenses, defaultCurrency]);
+  const otherCurrencyCount = useMemo(() => expenses.filter((e) => (e.currency || defaultCurrency) !== defaultCurrency).length, [expenses, defaultCurrency]);
   const groupBalanceTotal = useMemo(() => groups.reduce((s, g) => s + Math.abs(g.yourBalance), 0), [groups]);
 
   const activeFilterCount = [
@@ -139,7 +140,7 @@ export default function ExpenseListPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white">Expenses</h1>
           <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
             {tab === 'personal'
-              ? `${expenses.length} personal transactions · ${formatCurrency(personalTotal, defaultCurrency)} total`
+              ? `${expenses.length} personal transactions · ${formatCurrency(personalTotal, defaultCurrency)} total${otherCurrencyCount > 0 ? ` · ${otherCurrencyCount} in other currencies excluded` : ''}`
               : `${groups.length} groups · ${formatCurrency(groupBalanceTotal, defaultCurrency)} total balance`
             }
           </p>

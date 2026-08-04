@@ -111,7 +111,8 @@ export default function ImportPage() {
       let imported = 0;
       const errors: string[] = [];
       for (const row of parsedData) {
-        const amount = parseFloat(row[mapping.amount]);
+        const rawAmount = String(row[mapping.amount] ?? '').replace(/[^\d.-]/g, '');
+        const amount = parseFloat(rawAmount);
         if (isNaN(amount) || amount <= 0) {
           errors.push(`Row ${imported + errors.length + 1}: invalid amount`);
           continue;

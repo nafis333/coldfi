@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { usePersonalStore } from '../stores/personalStore';
 import { useGroupStore } from '../stores/groupStore';
 import { useAuthStore } from '../stores/authStore';
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 import { useOverview } from '../hooks/useOverview';
 import QuickActions from '../components/dashboard/QuickActions';
 import OverviewCards from '../components/dashboard/OverviewCards';
@@ -203,7 +203,7 @@ export default function DashboardPage() {
                       {expense.payee || cat?.name || 'Expense'}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                      <span>{new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                      <span>{parseLocalDate(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                     </div>
                   </div>
                   <div className="text-right shrink-0">

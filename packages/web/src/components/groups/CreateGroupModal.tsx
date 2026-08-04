@@ -22,8 +22,11 @@ export default function CreateGroupModal({ onClose, onGroupCreated }: Props) {
 
     setLoading(true);
     try {
-      const gid = await createGroup(name.trim());
-      setGroupId(gid);
+      let gid = groupId;
+      if (!gid) {
+        gid = await createGroup(name.trim());
+        setGroupId(gid);
+      }
       const data = await generateInvite(gid);
       setInviteCode(data.code);
     } catch (err) {

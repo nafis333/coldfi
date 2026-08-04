@@ -614,7 +614,11 @@ function detectConflict(
     if (cv > sv && sv > 0) clientHasNewer = true;
   }
 
-  return serverHasNewer && clientHasNewer;
+  // Any case where the server has data the client is missing means the
+  // client is operating on a stale blob — reject it (409) so the client
+  // refetches and re-applies its mutation on top of fresh data instead of
+  // silently overwriting another member's changes.
+  return serverHasNewer;
 }
 
 function mergeClocks(

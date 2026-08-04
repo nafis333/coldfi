@@ -4,8 +4,10 @@ import type { OverviewData } from '../../hooks/useOverview';
 export default function SpendingTrendChart({ data }: { data: OverviewData }) {
   const { dailySpending, maxDaily, defaultCurrency } = data;
 
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
   const weekTotal = dailySpending.reduce((s, d) => s + d.total, 0);
 
   return (

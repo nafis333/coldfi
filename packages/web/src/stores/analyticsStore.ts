@@ -5,6 +5,7 @@ import { useGroupStore } from './groupStore';
 import { useGroupExpenseStore } from './groupExpenseStore';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
+import { parseLocalDate } from '@coldfi/shared';
 
 interface CategorySummary {
   id: string;
@@ -87,13 +88,13 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       const { daysInMonth } = monthBoundaries(month);
 
       const monthExpenses = allExpenses.filter((e) => {
-        const d = new Date(e.date);
+        const d = parseLocalDate(e.date);
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         return ym === month;
       });
 
       const monthIncome = allIncomeLogs.filter((i) => {
-        const d = new Date(i.date);
+        const d = parseLocalDate(i.date);
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         return ym === month;
       });
@@ -113,7 +114,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       // Top spending day of the month
       const dayTotals: Record<number, number> = {};
       for (const e of defaultMonthExpenses) {
-        const day = new Date(e.date).getDate();
+        const day = parseLocalDate(e.date).getDate();
         dayTotals[day] = (dayTotals[day] || 0) + e.amount;
       }
       let topSpendingDay = { day: 1, total: 0 };
@@ -127,7 +128,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       let weekdayTotal = 0;
       let weekendTotal = 0;
       for (const e of defaultMonthExpenses) {
-        const d = new Date(e.date).getDay();
+        const d = parseLocalDate(e.date).getDay();
         if (d === 0 || d === 6) weekendTotal += e.amount;
         else weekdayTotal += e.amount;
       }

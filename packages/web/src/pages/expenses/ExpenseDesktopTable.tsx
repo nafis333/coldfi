@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 import type { Expense, Category } from '../../lib/personalSync';
 
 interface ExpenseDesktopTableProps {
@@ -55,10 +55,10 @@ export default function ExpenseDesktopTable({
                   <tr key={expense.id} onClick={() => onNavigate(`/expenses/${expense.id}/edit`)} className="cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700/30 transition-colors">
                     <td className="whitespace-nowrap px-5 py-3.5">
                       <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                        {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {parseLocalDate(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </span>
                       <span className="ml-1.5 text-xs text-neutral-400 dark:text-neutral-500">
-                        {new Date(expense.date).toLocaleDateString('en-US', { year: 'numeric' })}
+                        {parseLocalDate(expense.date).toLocaleDateString('en-US', { year: 'numeric' })}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">

@@ -3,6 +3,19 @@ import ItemRowEditor from './ItemRowEditor';
 
 interface Member { userId: string; displayName?: string; email?: string; }
 
+export function percentageSplitDefaultValues(count: number): string[] {
+  if (count <= 0) return [];
+  const base = Math.floor((100 / count) * 10) / 10;
+  const values: string[] = [];
+  let total = 0;
+  for (let i = 0; i < count; i++) {
+    const v = i === count - 1 ? Math.round((100 - total) * 10) / 10 : base;
+    values.push(v.toFixed(1));
+    total += v;
+  }
+  return values;
+}
+
 interface ItemRow {
   id: string; name: string; amount: string;
   participants: string[];
@@ -60,9 +73,8 @@ export default function ItemizedList({
         const val = (amt / count).toFixed(2);
         for (const pid of newParticipants) splitValues[pid] = val;
       } else if (bulkSplitMode === 'percentage') {
-        const count = newParticipants.length || 1;
-        const val = (100 / count).toFixed(1);
-        for (const pid of newParticipants) splitValues[pid] = val;
+        const values = percentageSplitDefaultValues(newParticipants.length);
+        for (let i = 0; i < newParticipants.length; i++) splitValues[newParticipants[i]!] = values[i]!;
       }
       const updated = { ...item, splitMode: bulkSplitMode, participants: newParticipants, splitValues };
       updated.validationError = validateItem(updated, members.length);

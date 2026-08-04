@@ -1,4 +1,4 @@
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 import type { Expense, Category } from '../../lib/personalSync';
 
 interface ExpenseMobileCardsProps {
@@ -40,7 +40,7 @@ export default function ExpenseMobileCards({
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{expense.payee || cat?.name || 'Expense'}</p>
                       <div className="flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500">
-                        <span>{new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span>{parseLocalDate(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                         {expense.note && (<><span className="text-neutral-300 dark:text-neutral-600">·</span><span className="truncate max-w-[80px]">{expense.note}</span></>)}
                       </div>
                       {expense.items && expense.items.length > 0 && (

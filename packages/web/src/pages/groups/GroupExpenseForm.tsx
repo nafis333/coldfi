@@ -5,7 +5,7 @@ import { useGroupExpenseStore } from '../../stores/groupExpenseStore';
 import { useAuthStore } from '../../stores/authStore';
 import { SplitMode as EngineSplitMode } from '@coldfi/shared';
 import CategoryPicker from './CategoryPicker';
-import ItemizedList from './ItemizedList';
+import ItemizedList, { percentageSplitDefaultValues } from './ItemizedList';
 
 interface ItemRow {
   id: string; name: string; amount: string;
@@ -75,8 +75,13 @@ export default function GroupExpenseForm() {
         const splitValues: Record<string, string> = {};
         if (i.splitValues) for (const [k, v] of Object.entries(i.splitValues)) splitValues[k] = String(v);
         else if (i.splitMode && i.splitMode !== 'equal' && i.assignedTo) {
-          const defaultVal = i.splitMode === 'percentage' ? (100 / i.assignedTo.length).toFixed(1) : (i.amount / i.assignedTo.length).toFixed(2);
-          for (const pid of i.assignedTo) splitValues[pid] = defaultVal;
+          if (i.splitMode === 'percentage') {
+            const values = percentageSplitDefaultValues(i.assignedTo.length);
+            for (let k = 0; k < i.assignedTo.length; k++) splitValues[i.assignedTo[k]!] = values[k]!;
+          } else {
+            const defaultVal = (i.amount / i.assignedTo.length).toFixed(2);
+            for (const pid of i.assignedTo) splitValues[pid] = defaultVal;
+          }
         }
         return {
           id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -171,9 +176,8 @@ export default function GroupExpenseForm() {
         const defaultVal = (amt / count).toFixed(2);
         for (const pid of item.participants) splitValues[pid] = defaultVal;
       } else {
-        const count = item.participants.length || 1;
-        const defaultVal = (100 / count).toFixed(1);
-        for (const pid of item.participants) splitValues[pid] = defaultVal;
+        const values = percentageSplitDefaultValues(item.participants.length);
+        for (let i = 0; i < item.participants.length; i++) splitValues[item.participants[i]!] = values[i]!;
       }
       const updated = { ...item, splitMode: mode, splitValues };
       return { ...updated, validationError: validateItem(updated, members.length) };
@@ -223,6 +227,7 @@ export default function GroupExpenseForm() {
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
     if (!description.trim()) { setError('Description is required'); return; }
     if (!category) { setError('Select a category'); return; }
@@ -297,7 +302,7 @@ export default function GroupExpenseForm() {
     } finally {
       setSubmitting(false);
     }
-  }, [description, category, payerId, items, createGroupExpense, updateGroupExpense, groupId, navigate, members, isEditing, expenseId, activeMemberIds]);
+  }, [description, category, payerId, items, createGroupExpense, updateGroupExpense, groupId, navigate, members, isEditing, expenseId, activeMemberIds, submitting]);
 
   return (
     <div className="mx-auto max-w-3xl">

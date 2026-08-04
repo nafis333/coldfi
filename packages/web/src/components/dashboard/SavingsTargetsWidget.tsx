@@ -16,10 +16,13 @@ export default function SavingsTargetsWidget({ data }: { data: OverviewData }) {
   const [name, setName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [currentAmount, setCurrentAmount] = useState('0');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!name.trim() || !targetAmount) return;
+    setSubmitting(true);
     try {
       await addSavingsTarget({
         name: name.trim(),
@@ -34,6 +37,8 @@ export default function SavingsTargetsWidget({ data }: { data: OverviewData }) {
       addToast('success', 'Savings target created');
     } catch {
       addToast('error', 'Failed to create savings target');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -89,8 +94,8 @@ export default function SavingsTargetsWidget({ data }: { data: OverviewData }) {
               />
             </div>
           </div>
-          <button type="submit" className="btn-primary w-full text-sm">
-            Create Target
+          <button type="submit" disabled={submitting} className="btn-primary w-full text-sm">
+            {submitting ? 'Creating...' : 'Create Target'}
           </button>
         </form>
       )}

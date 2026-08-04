@@ -234,10 +234,15 @@ export async function modifySyncBlob(
 export async function createGroupNotification(type: string, title: string, body: string, groupId: string, settlementId?: string, recipientIds?: string[]) {
   if (!useAuthStore.getState().accessToken) return;
   try {
+    const actorId = useAuthStore.getState().userId;
+    const recipients = Array.isArray(recipientIds)
+      ? recipientIds.filter((id) => id !== actorId)
+      : recipientIds;
+    if (Array.isArray(recipients) && recipients.length === 0) return;
     await apiClient('/api/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, title, body, groupId, settlementId, recipientIds }),
+      body: JSON.stringify({ type, title, body, groupId, settlementId, recipientIds: recipients }),
     });
   } catch (err) { silentCatch('groupSync.notification', err); }
 }

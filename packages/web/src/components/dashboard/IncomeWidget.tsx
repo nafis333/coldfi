@@ -3,6 +3,7 @@ import { usePersonalStore } from '../../stores/personalStore';
 import { usePersonalIncomeStore } from '../../stores/personalIncomeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
+import { localDateString } from '../../lib/dates';
 import { formatCurrency } from '@coldfi/shared';
 import type { OverviewData } from '../../hooks/useOverview';
 
@@ -15,13 +16,16 @@ export default function IncomeWidget({ data }: { data: OverviewData }) {
   const [showForm, setShowForm] = useState(false);
   const [source, setSource] = useState('');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateString(new Date()));
+  const [submitting, setSubmitting] = useState(false);
 
   const recentIncome = useMemo(() => incomeLogs.slice(0, 5), [incomeLogs]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!source.trim() || !amount) return;
+    setSubmitting(true);
     try {
       await addIncome({
         source: source.trim(),
@@ -35,6 +39,8 @@ export default function IncomeWidget({ data }: { data: OverviewData }) {
       addToast('success', 'Income added');
     } catch {
       addToast('error', 'Failed to add income');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -88,8 +94,8 @@ export default function IncomeWidget({ data }: { data: OverviewData }) {
               />
             </div>
           </div>
-          <button type="submit" className="btn-primary w-full text-sm">
-            Add Income
+          <button type="submit" disabled={submitting} className="btn-primary w-full text-sm">
+            {submitting ? 'Adding...' : 'Add Income'}
           </button>
         </form>
       )}

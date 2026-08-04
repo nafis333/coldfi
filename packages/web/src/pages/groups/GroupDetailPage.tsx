@@ -3,6 +3,7 @@ import { useParams, Outlet, useLocation, Link, useNavigate } from 'react-router-
 import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
 import { useAuthStore } from '../../stores/authStore';
+import { joinGroupRoom, leaveGroupRoom } from '../../hooks/useWebSocket';
 import { formatCurrency } from '@coldfi/shared';
 
 const TABS = [
@@ -29,15 +30,31 @@ export default function GroupDetailPage() {
     return () => { if (useGroupStore.getState().error !== null) useGroupStore.setState({ isLoading: false, error: null }); };
   }, [id, fetchGroupById]);
 
+  useEffect(() => {
+    if (!id) return;
+    joinGroupRoom(id);
+    return () => leaveGroupRoom(id);
+  }, [id]);
+
   const activeTab = location.pathname.replace(`/groups/${id}`, '') || '';
   const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
+  const [leaving, setLeaving] = useState(false);
 
   async function handleLeave() {
-    if (!id) return;
+    if (!id || leaving) return;
+    setLeaving(true);
+    setLeaveError('');
     try {
       await leaveGroup(id);
       navigate('/groups', { replace: true });
-    } catch (err) { silentCatch('GroupDetailPage.leave', err); }
+    } catch (err) {
+      setLeaveError(err instanceof Error ? err.message : 'Failed to leave group. Please try again.');
+      silentCatch('GroupDetailPage.leave', err);
+      setLeaveConfirm(false);
+    } finally {
+      setLeaving(false);
+    }
   }
 
   if (isLoading) {
@@ -79,7 +96,7 @@ export default function GroupDetailPage() {
           <div className="flex-1 min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white truncate">{currentGroup.name}</h1>
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
-              <span className="font-medium">{currentGroup.members?.length || 0}</span> members
+              <span className="font-medium">{currentGroup.members?.filter((m) => !m.leftAt).length || 0}</span> members
               <span className="mx-2 text-neutral-300 dark:text-neutral-600">·</span>
               Your balance:{' '}
               <span className={`font-semibold ${(currentGroup.myBalance || 0) >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-500 dark:text-danger-400'}`}>
@@ -95,7 +112,9 @@ export default function GroupDetailPage() {
           </Link>
           {leaveConfirm ? (
             <div className="flex items-center gap-2">
-              <button onClick={handleLeave} className="btn-ghost text-sm border border-danger-300 dark:border-danger-600 text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20">Confirm Leave</button>
+              <button onClick={handleLeave} disabled={leaving} className="btn-ghost text-sm border border-danger-300 dark:border-danger-600 text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20">
+                {leaving ? 'Leaving...' : 'Confirm Leave'}
+              </button>
               <button onClick={() => setLeaveConfirm(false)} className="btn-ghost text-sm">Cancel</button>
             </div>
           ) : (
@@ -106,6 +125,12 @@ export default function GroupDetailPage() {
           )}
         </div>
       </div>
+
+      {leaveError && (
+        <div className="mb-4 rounded-xl border border-danger-200 dark:border-danger-800/50 bg-danger-50 dark:bg-danger-900/20 p-3">
+          <p className="text-sm text-danger-700 dark:text-danger-300">{leaveError}</p>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="mb-6 border-b border-neutral-200/80 dark:border-neutral-700/60">

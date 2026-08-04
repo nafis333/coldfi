@@ -6,6 +6,16 @@ import { useNotificationStore } from '../stores/notificationStore';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
+let roomActions: { join: (groupId: string) => void; leave: (groupId: string) => void } | null = null;
+
+export function joinGroupRoom(groupId: string): void {
+  roomActions?.join(groupId);
+}
+
+export function leaveGroupRoom(groupId: string): void {
+  roomActions?.leave(groupId);
+}
+
 export function useWebSocket() {
   const socketRef = useRef<Socket | null>(null);
   const reconnectAttempts = useRef(0);
@@ -123,12 +133,29 @@ export function useWebSocket() {
   scheduleReconnectRef.current = scheduleReconnect;
 
   useEffect(() => {
+    roomActions = {
+      join: (groupId: string) => {
+        joinedRooms.current.add(groupId);
+        if (socketRef.current?.connected) {
+          socketRef.current.emit('join-group', { groupId });
+        }
+      },
+      leave: (groupId: string) => {
+        joinedRooms.current.delete(groupId);
+        if (socketRef.current?.connected) {
+          socketRef.current.emit('leave-group', { groupId });
+        }
+      },
+    };
     if (accessToken) {
       connect();
     } else {
       disconnect();
     }
-    return () => disconnect();
+    return () => {
+      disconnect();
+      roomActions = null;
+    };
   }, [accessToken, connect, disconnect]);
 
   return {
