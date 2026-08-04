@@ -29,7 +29,7 @@ interface AuthState {
   isGoogleUser: boolean;
 
   login: (email: string, passphrase: string) => Promise<void>;
-  googleLogin: (idToken: string) => Promise<void>;
+  googleLogin: (idToken: string) => Promise<string | null>;
   verify2FA: (code: string, passphrase: string) => Promise<void>;
   register: (email: string, displayName: string, passphrase: string) => Promise<string | undefined>;
   logout: () => Promise<void>;
@@ -145,7 +145,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const data = await res.json();
-      const { accessToken, userId, displayName, email, rawPek, personalSalt, encryptedPek } = data;
+      const { accessToken, userId, displayName, email, rawPek, personalSalt, encryptedPek, recoveryCode } = data;
       let pek: CryptoKey | null = null;
       if (rawPek) {
         try {
@@ -174,6 +174,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
       broadcastLogin(userId);
+      return recoveryCode ? String(recoveryCode) : null;
     } catch (error) {
         const msg = error instanceof Error ? error.message : 'Google login failed';
         if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {

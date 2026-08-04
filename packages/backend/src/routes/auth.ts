@@ -210,6 +210,7 @@ export async function authRoutes(app: FastifyInstance) {
         email: result.email,
         isGoogleUser: true,
         googleNewUser: result.googleNewUser,
+        recoveryCode: result.googleNewUser ? result.recoveryCode : undefined,
       });
     } catch (err: any) {
       if (err.statusCode) {

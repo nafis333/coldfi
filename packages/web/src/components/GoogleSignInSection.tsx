@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { silentCatch } from '../lib/errorHandler';
+import RecoveryCodeDisplay from '../pages/register/RecoveryCodeDisplay';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
@@ -32,6 +33,7 @@ export default function GoogleSignInSection() {
   const location = useLocation();
   const googleLogin = useAuthStore((s) => s.googleLogin);
   const addToast = useToastStore((s) => s.addToast);
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
@@ -43,8 +45,12 @@ export default function GoogleSignInSection() {
       if (credential) {
         window.location.hash = '';
         googleLogin(credential)
-          .then(() => {
-            navigate('/dashboard', { replace: true });
+          .then((code) => {
+            if (code) {
+              setRecoveryCode(code);
+            } else {
+              navigate('/dashboard', { replace: true });
+            }
           })
           .catch((err) => {
             console.error('[GoogleSignIn] Login failed:', err);
@@ -54,6 +60,10 @@ export default function GoogleSignInSection() {
       }
     }
   }, [location.hash, googleLogin, navigate, addToast]);
+
+  if (recoveryCode) {
+    return <RecoveryCodeDisplay code={recoveryCode} onGoToDashboard={() => navigate('/dashboard', { replace: true })} />;
+  }
 
   const handleClick = () => {
     const redirectUri = `${window.location.origin}${window.location.pathname === '/register' ? '/register' : '/login'}`;

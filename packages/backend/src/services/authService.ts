@@ -290,12 +290,14 @@ export async function googleLogin(
   const pekBytes = crypto.randomBytes(32);
   const pekBase64 = pekBytes.toString('base64');
   const serverEncryptedPek = encryptServerKey(pekBase64);
+  const recoveryCode = generateRecoveryCode();
+  const recoveryCodeHash = hashRecoveryCode(recoveryCode);
 
   await transaction(async (client) => {
     await client.query(
-      `INSERT INTO users (id, email, display_name, password_hash, auth_key_hash, personal_salt, encrypted_pek, server_encrypted_pek, role, google_id, personal_data_enc, personal_vc, default_currency, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())`,
-      [userId, email, displayName || null, authKeyHash, authKeyHash, personalSaltBytes, pekBase64, serverEncryptedPek, role, googleId, Buffer.from(''), '[]', 'BDT']
+      `INSERT INTO users (id, email, display_name, password_hash, auth_key_hash, personal_salt, encrypted_pek, server_encrypted_pek, recovery_code_hash, role, google_id, personal_data_enc, personal_vc, default_currency, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())`,
+      [userId, email, displayName || null, authKeyHash, authKeyHash, personalSaltBytes, pekBase64, serverEncryptedPek, recoveryCodeHash, role, googleId, Buffer.from(''), '[]', 'BDT']
     );
 
     await client.query(
@@ -314,7 +316,7 @@ export async function googleLogin(
   });
 
   const tokens = await generateTokens(userId);
-  return { ...tokens, googleNewUser: true, personalSalt: personalSaltBytes, encryptedPek: pekBase64 };
+  return { ...tokens, googleNewUser: true, personalSalt: personalSaltBytes, encryptedPek: pekBase64, recoveryCode };
 }
 
 export async function updateProfile(
