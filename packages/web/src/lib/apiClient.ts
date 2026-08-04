@@ -57,8 +57,16 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
       return fetch(fullUrl, { ...options, headers, credentials: 'include' });
     }
 
-    sessionExpired = true;
     refreshPromise = null;
+    if (useAuthStore.getState().accessToken) {
+      // Session was kept alive (backend unreachable, e.g. cold start) — do not
+      // log the user out; surface the error so they can retry.
+      const err = new Error('Failed to fetch');
+      triggerCriticalError(err, `${API_BASE}/api/auth/refresh`);
+      throw err;
+    }
+
+    sessionExpired = true;
     const { logout } = useAuthStore.getState();
     await logout();
     const err = new Error('Session expired');

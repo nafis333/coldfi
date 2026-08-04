@@ -376,12 +376,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      let res: Response | null = null;
+      let lastError: Error | null = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          res = await fetch(`${API_BASE}/api/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          if (attempt < 3) { await new Promise((r) => setTimeout(r, 800 * attempt)); continue; }
+          throw lastError;
+        }
+        if (res.ok) break;
+        if (res.status === 401) throw new Error(`Refresh failed: ${res.status}`);
+        if (attempt < 3) { await new Promise((r) => setTimeout(r, 800 * attempt)); continue; }
+        throw new Error(`Refresh failed: ${res.status}`);
+      }
 
-      if (!res.ok) {
+      if (!res || !res.ok) {
         set({ isInitialized: true });
         return;
       }
@@ -446,6 +460,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   refreshToken: (() => {
     let pending: Promise<string> | null = null;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     return async () => {
       if (pending) return pending;
 
@@ -463,33 +478,79 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       pending = (async () => {
-        const res = await fetch(`${API_BASE}/api/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          const stored = storage().getItem(AUTH_STORAGE_KEY);
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              const expiry = getJwtExpiry(parsed.accessToken);
-              if (expiry && expiry > Date.now() && parsed.accessToken !== get().accessToken) {
-                set({ accessToken: parsed.accessToken, isAuthenticated: true });
-                return parsed.accessToken;
-              }
-            } catch (err) { silentCatch('authStore.refreshToken.parseStoredFallback', err); }
+        // Transient failures (cold start, brief blips, refresh races between
+        // tabs) must NOT log the user out — retry before giving up.
+        const MAX_ATTEMPTS = 3;
+        let lastError: Error | null = null;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          let res: Response;
+          try {
+            res = await fetch(`${API_BASE}/api/auth/refresh`, {
+              method: 'POST',
+              credentials: 'include',
+            });
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            if (attempt < MAX_ATTEMPTS) { await sleep(800 * attempt); continue; }
+            break;
           }
+
+          if (res.ok) {
+            const data = await res.json();
+            const { accessToken, userId, email, displayName, role, isGoogleUser } = data;
+            if (userId) {
+              saveAuthToStorage({ accessToken, userId, email, displayName, role, isGoogleUser });
+            }
+            set({ accessToken: data.accessToken, isAuthenticated: true });
+            return data.accessToken as string;
+          }
+
+          const reuseError = res.status === 401
+            && (await res.json().catch(() => ({}))).error === 'ERR_TOKEN_REUSED';
+
+          if (reuseError) {
+            // Another tab rotated the token — wait for its Set-Cookie to land,
+            // then retry with the fresh cookie.
+            if (attempt < MAX_ATTEMPTS) { await sleep(600 * attempt); continue; }
+            lastError = new Error('Refresh token reused');
+            break;
+          }
+
+          if ((res.status >= 500 || res.status === 429) && attempt < MAX_ATTEMPTS) {
+            await sleep(800 * attempt);
+            continue;
+          }
+
+          lastError = new Error(`Token refresh failed: ${res.status}`);
+          break;
+        }
+
+        const stored = storage().getItem(AUTH_STORAGE_KEY);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            const expiry = getJwtExpiry(parsed.accessToken);
+            if (expiry && expiry > Date.now() && parsed.accessToken !== get().accessToken) {
+              set({ accessToken: parsed.accessToken, isAuthenticated: true });
+              return parsed.accessToken;
+            }
+          } catch (err) { silentCatch('authStore.refreshToken.parseStoredFallback', err); }
+        }
+        if (lastError?.message === 'Refresh token reused') {
           clearAuthStorage();
           set({ isAuthenticated: false, accessToken: null });
-          throw new Error('Token refresh failed');
+          throw lastError;
         }
-        const data = await res.json();
-        const { accessToken, userId, email, displayName, role, isGoogleUser } = data;
-        if (userId) {
-          saveAuthToStorage({ accessToken, userId, email, displayName, role, isGoogleUser });
+        const isNetworkFailure = !lastError || lastError.message.startsWith('Failed to fetch')
+          || lastError.message.includes('NetworkError') || lastError.message.includes('fetch');
+        if (isNetworkFailure) {
+          // Backend unreachable (e.g., cold start) — keep the session intact;
+          // a later request will retry refresh successfully.
+          throw new Error('Failed to fetch during token refresh. The server may be starting up.');
         }
-        set({ accessToken: data.accessToken, isAuthenticated: true });
-        return data.accessToken as string;
+        clearAuthStorage();
+        set({ isAuthenticated: false, accessToken: null });
+        throw lastError || new Error('Token refresh failed');
       })();
       try {
         return await pending;

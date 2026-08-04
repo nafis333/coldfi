@@ -81,11 +81,17 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenPai
     const storedToken = tokenResult.rows[0];
 
     if (storedToken.revoked_at) {
-      await client.query(
-        `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
-        [storedToken.user_id]
-      );
-      throw new AuthError('ERR_TOKEN_REUSED', 'Refresh token has been revoked. All sessions have been invalidated.');
+      const revokedAgoMs = Date.now() - new Date(storedToken.revoked_at).getTime();
+      // A just-revoked token is almost always a benign refresh race between
+      // two tabs sharing the same cookie — the loser can retry with the
+      // rotated cookie. Only treat old reuse as theft and revoke everything.
+      if (revokedAgoMs > 60_000) {
+        await client.query(
+          `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+          [storedToken.user_id]
+        );
+      }
+      throw new AuthError('ERR_TOKEN_REUSED', 'Refresh token has been revoked. Please log in again.');
     }
 
     if (new Date(storedToken.expires_at) < new Date()) {
@@ -111,11 +117,18 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenPai
     );
 
     if (updateResult.rowCount === 0) {
-      await client.query(
-        `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
-        [storedToken.user_id]
+      const row = await client.query(
+        `SELECT revoked_at FROM refresh_tokens WHERE id = $1`,
+        [storedToken.id]
       );
-      throw new AuthError('ERR_TOKEN_REUSED', 'Refresh token has been revoked. All sessions have been invalidated.');
+      const revokedAt = row.rows[0]?.revoked_at;
+      if (revokedAt && Date.now() - new Date(revokedAt).getTime() > 60_000) {
+        await client.query(
+          `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+          [storedToken.user_id]
+        );
+      }
+      throw new AuthError('ERR_TOKEN_REUSED', 'Refresh token has been revoked. Please log in again.');
     }
 
     return storedToken.user_id;
