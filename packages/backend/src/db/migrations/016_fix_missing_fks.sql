@@ -3,9 +3,16 @@
 -- discovered during security audit.
 
 -- 1. receipts.expense_id → expenses(id) ON DELETE CASCADE
-ALTER TABLE receipts DROP CONSTRAINT IF EXISTS receipts_expense_id_fkey;
-ALTER TABLE receipts ADD CONSTRAINT receipts_expense_id_fkey
-  FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE;
+--    (if expenses table exists; skip silently if not — expenses live in the
+--    encrypted personal/group blobs, so this table may not exist)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'expenses') THEN
+    ALTER TABLE receipts DROP CONSTRAINT IF EXISTS receipts_expense_id_fkey;
+    ALTER TABLE receipts ADD CONSTRAINT receipts_expense_id_fkey
+      FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE;
+  END IF;
+END $$;
 
 -- 2. notification_reminders.group_id → groups(id) ON DELETE CASCADE
 ALTER TABLE notification_reminders DROP CONSTRAINT IF EXISTS notification_reminders_group_id_fkey;
