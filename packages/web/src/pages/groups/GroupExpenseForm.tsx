@@ -33,6 +33,19 @@ function validateItem(item: ItemRow, membersCount: number): string {
   return '';
 }
 
+function roundToCentsWithRemainder(shares: Record<string, number>): Record<string, number> {
+  const pids = Object.keys(shares);
+  const total = pids.reduce((s, pid) => s + (shares[pid] || 0), 0);
+  const rounded: Record<string, number> = {};
+  for (const pid of pids) rounded[pid] = Math.round((shares[pid] || 0) * 100) / 100;
+  const roundedTotal = pids.reduce((s, pid) => s + rounded[pid]!, 0);
+  let diffCents = Math.round((total - roundedTotal) * 100);
+  for (let i = 0; i < Math.abs(diffCents); i++) {
+    rounded[pids[i % pids.length]!]! += diffCents > 0 ? 0.01 : -0.01;
+  }
+  return rounded;
+}
+
 export default function GroupExpenseForm() {
   const { id: groupId, expenseId } = useParams<{ id: string; expenseId?: string }>();
   const navigate = useNavigate();
@@ -115,7 +128,7 @@ export default function GroupExpenseForm() {
         validationError: '',
       }]);
     }
-  }, [expenseId, existingExpense, members, isEditing, memberIds, activeMemberIds, payerId]);
+  }, [expenseId, existingExpense, members, isEditing, memberIds, activeMemberIds]);
 
   const totalAmount = useMemo(() =>
     items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0),
@@ -246,16 +259,21 @@ export default function GroupExpenseForm() {
       for (const item of items) {
         const amt = parseFloat(item.amount) || 0;
         const participants = item.participants;
+        const itemShares: Record<string, number> = {};
         if (item.splitMode === 'equal') {
           const share = participants.length > 0 ? amt / participants.length : 0;
-          for (const pid of participants) splitsMap[pid] = (splitsMap[pid] || 0) + share;
+          for (const pid of participants) itemShares[pid] = share;
         } else if (item.splitMode === 'exact') {
-          for (const pid of participants) splitsMap[pid] = (splitsMap[pid] || 0) + (parseFloat(item.splitValues[pid] || '0') || 0);
+          for (const pid of participants) itemShares[pid] = parseFloat(item.splitValues[pid] || '0') || 0;
         } else if (item.splitMode === 'percentage') {
           const totalPct = participants.reduce((s, pid) => s + (parseFloat(item.splitValues[pid] || '0') || 0), 0);
           for (const pid of participants) {
-            splitsMap[pid] = (splitsMap[pid] || 0) + (totalPct > 0 ? (amt * (parseFloat(item.splitValues[pid] || '0') || 0)) / totalPct : 0);
+            itemShares[pid] = totalPct > 0 ? (amt * (parseFloat(item.splitValues[pid] || '0') || 0)) / totalPct : 0;
           }
+        }
+        const roundedShares = roundToCentsWithRemainder(itemShares);
+        for (const pid of Object.keys(roundedShares)) {
+          splitsMap[pid] = (splitsMap[pid] || 0) + roundedShares[pid]!;
         }
       }
 

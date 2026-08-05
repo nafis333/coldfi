@@ -155,6 +155,18 @@ export function clearGroupKey(groupId: string): void {
   groupKeyCache.delete(groupId);
 }
 
+export async function refreshGroupKey(groupId: string): Promise<CryptoKey | null> {
+  try {
+    const { fetchGroupEncryptionKey } = await import('../stores/groupStore');
+    const ek = await fetchGroupEncryptionKey(groupId);
+    if (!ek) return null;
+    clearGroupKey(groupId);
+    return await cacheGroupKey(groupId, ek);
+  } catch {
+    return null;
+  }
+}
+
 export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -169,9 +181,10 @@ export function hexToBytes(hex: string): Uint8Array {
 
 export async function modifySyncBlob(
   groupId: string,
-  groupKey: CryptoKey,
+  initialGroupKey: CryptoKey,
   mutate: (data: GroupSyncData) => void
 ): Promise<void> {
+  let groupKey: CryptoKey = initialGroupKey;
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -188,14 +201,26 @@ export async function modifySyncBlob(
         logs: [],
       };
       if (syncData.encryptedBlob) {
-        const decrypted = await decryptData(groupKey, syncData.encryptedBlob);
-        const parsed: any = migrateGroupBlob(JSON.parse(decrypted));
-        groupData = {
-          expenses: parsed.expenses || [],
-          settlements: parsed.settlements || [],
-          categories: parsed.categories || [],
-          logs: parsed.logs || [],
-        };
+        try {
+          const decrypted = await decryptData(groupKey, syncData.encryptedBlob);
+          const parsed: any = migrateGroupBlob(JSON.parse(decrypted));
+          groupData = {
+            expenses: parsed.expenses || [],
+            settlements: parsed.settlements || [],
+            categories: parsed.categories || [],
+            logs: parsed.logs || [],
+          };
+        } catch (e) {
+          if (attempt === 0 && e instanceof Error && e.message.startsWith('Decryption failed')) {
+            const fresh = await refreshGroupKey(groupId);
+            if (fresh) {
+              groupKey = fresh;
+              lastError = new Error('Group key rotated. Retrying...');
+              continue;
+            }
+          }
+          throw e;
+        }
       }
 
       mutate(groupData);
@@ -221,7 +246,7 @@ export async function modifySyncBlob(
 
       return;
     } catch (e) {
-      if (e instanceof Error && e.message !== 'Data conflict. Retrying...') {
+      if (e instanceof Error && e.message !== 'Data conflict. Retrying...' && e.message !== 'Group key rotated. Retrying...') {
         throw e;
       }
       lastError = e instanceof Error ? e : new Error('Failed to modify sync data');

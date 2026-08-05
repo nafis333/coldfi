@@ -19,6 +19,17 @@ interface Category {
   color: string;
 }
 
+const DEFAULT_CATEGORIES: Category[] = [
+  { id: 'food_drink', name: 'Food & Drink', icon: '🍕', color: '#ef4444' },
+  { id: 'transport', name: 'Transport', icon: '🚗', color: '#f97316' },
+  { id: 'accommodation', name: 'Accommodation', icon: '🏠', color: '#eab308' },
+  { id: 'entertainment', name: 'Entertainment', icon: '🎬', color: '#8b5cf6' },
+  { id: 'shopping', name: 'Shopping', icon: '🛍️', color: '#ec4899' },
+  { id: 'utilities', name: 'Utilities', icon: '💡', color: '#14b8a6' },
+  { id: 'health', name: 'Health', icon: '💊', color: '#22c55e' },
+  { id: 'other', name: 'Other', icon: '📝', color: '#6366f1' },
+];
+
 export interface BudgetFormData {
   categoryId: string;
   amount: string;
@@ -52,7 +63,10 @@ export default function BudgetFormModal({ editingId, budgets, categories, onClos
   const [saving, setSaving] = useState(false);
 
   const existingCatIds = new Set(budgets.filter((b) => b.id !== editingId).map((b) => b.categoryId));
-  const available = categories.filter((c) => !existingCatIds.has(c.id) || c.id === categoryId);
+  const allCategories = [...DEFAULT_CATEGORIES, ...categories.filter(
+    (c) => !DEFAULT_CATEGORIES.some((dc) => dc.id === c.id)
+  )];
+  const available = allCategories.filter((c) => !existingCatIds.has(c.id) || c.id === categoryId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import * as groupService from '../services/groupService';
-import { emitToGroup } from '../plugins/websocket';
+import { emitToGroup, evictUserFromGroup } from '../plugins/websocket';
 import { requireGroupAccess, requireGroupAdmin } from '../middleware';
 import { createRateLimiter } from '../middleware/rateLimiter';
 
@@ -213,6 +213,7 @@ export async function groupRoutes(app: FastifyInstance) {
 
     const r = await groupService.leaveGroup(groupId, userId) as any;
 
+    try { evictUserFromGroup(groupId, userId); } catch {}
     try { emitToGroup(groupId, 'member-left', { groupId, userId, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo }); } catch {}
 
     return reply.send({ success: true, leftAt: r.leftAt, adminTransferredTo: r.adminTransferredTo });
@@ -247,6 +248,7 @@ export async function groupRoutes(app: FastifyInstance) {
 
     const r = await groupService.removeMember(groupId, targetUserId, userId) as any;
 
+    try { evictUserFromGroup(groupId, targetUserId); } catch {}
     try { emitToGroup(groupId, 'member-left', { groupId, userId: targetUserId, removedBy: userId, leftAt: r.leftAt }); } catch {}
 
     return reply.send({ success: true, leftAt: r.leftAt, newEncryptionKey: r.newEncryptionKey });

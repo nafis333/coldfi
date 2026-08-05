@@ -49,6 +49,7 @@ describe('authStore', () => {
     });
     vi.clearAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   describe('initial state', () => {
@@ -71,26 +72,71 @@ describe('authStore', () => {
   });
 
   describe('initialize', () => {
-    it('should restore the PEK from sessionStorage on the fast path (valid stored JWT)', async () => {
+    it('should restore the PEK from storage on the fast path (valid stored JWT)', async () => {
       const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }));
       const token = `header.${payload}.sig`;
-      sessionStorage.setItem('coldfi:auth', JSON.stringify({
+      localStorage.setItem('coldfi:auth', JSON.stringify({
         accessToken: token,
         userId: 'user-1',
         email: 'test@test.com',
         displayName: '',
         role: 'user',
         isGoogleUser: false,
+        personalSalt: 'c2FsdA==',
+        encryptedPek: 'ZW5j',
         storedAt: Date.now(),
       }));
-      sessionStorage.setItem('coldfi:pek', 'dGVzdA==');
+      localStorage.setItem('coldfi:pek', 'dGVzdA==');
 
       await useAuthStore.getState().initialize();
 
-      expect(useAuthStore.getState().isAuthenticated).toBe(true);
-      expect(useAuthStore.getState().pek).toEqual({} as CryptoKey);
-      expect(useAuthStore.getState().userId).toBe('user-1');
+      const state = useAuthStore.getState();
+      expect(state.isAuthenticated).toBe(true);
+      expect(state.pek).toEqual({} as CryptoKey);
+      expect(state.userId).toBe('user-1');
+      expect(state.personalSalt).toBe('c2FsdA==');
+      expect(state.encryptedPek).toBe('ZW5j');
+      expect(state.pekMissing).toBe(false);
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should refresh via the cookie when the stored JWT is expired and restore the profile', async () => {
+      const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 60 }));
+      const expired = `header.${payload}.sig`;
+      localStorage.setItem('coldfi:auth', JSON.stringify({
+        accessToken: expired,
+        userId: 'user-1',
+        email: 'old@test.com',
+        isGoogleUser: false,
+        storedAt: Date.now() - 60000,
+      }));
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          accessToken: 'token-refreshed',
+          userId: 'user-1',
+          email: 'test@test.com',
+          displayName: 'Test',
+          role: 'user',
+          personalSalt: 'c2FsdA==',
+          encryptedPek: 'ZW5j',
+          isGoogleUser: false,
+        }),
+      } as Response);
+
+      await useAuthStore.getState().initialize();
+
+      const state = useAuthStore.getState();
+      expect(state.isAuthenticated).toBe(true);
+      expect(state.userId).toBe('user-1');
+      expect(state.accessToken).toBe('token-refreshed');
+      expect(state.displayName).toBe('Test');
+      expect(state.personalSalt).toBe('c2FsdA==');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/auth/refresh'),
+        expect.objectContaining({ method: 'POST', credentials: 'include' })
+      );
     });
   });
 

@@ -5,7 +5,6 @@ import { useGroupStore } from '../../stores/groupStore';
 import { useGroupExpenseStore } from '../../stores/groupExpenseStore';
 import { formatCurrency } from '@coldfi/shared';
 import { downloadReceiptPDF, type ReceiptData } from '../../lib/receiptPDF';
-import { silentCatch } from '../../lib/errorHandler';
 import TimeRangeFilter from './TimeRangeFilter';
 
 interface GroupExpenseData {
@@ -70,6 +69,7 @@ function timeAgo(timestamp: string): string {
 export default function ExpensesTab() {
   const { groupId, group } = useOutletContext<TabContext>();
   const [showAll, setShowAll] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ text: string; isError: boolean } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rangeDays, setRangeDays] = useState(0);
   const [customStart, setCustomStart] = useState('');
@@ -112,9 +112,13 @@ export default function ExpensesTab() {
   const deleteExpense = useGroupExpenseStore((s) => s.deleteGroupExpense);
   const isDeleting = useGroupExpenseStore((s) => s.isLoading);
 
-  function handleDelete(expenseId: string) {
+  async function handleDelete(expenseId: string) {
     if (!window.confirm('Are you sure you want to delete this expense? This cannot be undone.')) return;
-    deleteExpense(groupId, expenseId).catch((err) => silentCatch('ExpensesTab.delete', err));
+    setActionMsg(null);
+    await deleteExpense(groupId, expenseId).catch(() => {});
+    const err = useGroupExpenseStore.getState().error;
+    setActionMsg(err ? { text: err, isError: true } : { text: 'Expense deleted', isError: false });
+    setTimeout(() => setActionMsg(null), 3000);
   }
 
   const allExpenses = (group.expenses ?? [])
@@ -123,11 +127,13 @@ export default function ExpensesTab() {
 
   const expenses = useMemo(() => {
     const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86400000 : 0;
-    const customStartMs = customStart ? new Date(customStart).getTime() : 0;
+    const customStartMs = customStart ? new Date(customStart + 'T00:00:00').getTime() : 0;
     const customEndMs = customEnd ? new Date(customEnd + 'T23:59:59').getTime() : Infinity;
 
     return allExpenses.filter((e) => {
-      const d = new Date(e.date || e.createdAt).getTime();
+      const d = e.date
+        ? new Date(e.date + 'T00:00:00').getTime()
+        : new Date(e.createdAt).getTime();
       if (rangeDays > 0 && d < cutoff) return false;
       if (customStart && d < customStartMs) return false;
       if (customEnd && d > customEndMs) return false;
@@ -139,6 +145,12 @@ export default function ExpensesTab() {
 
   return (
     <div className="space-y-3">
+      {actionMsg && (
+        <div className={`px-3 py-2 rounded-lg text-xs font-medium ${
+          actionMsg.isError ? 'bg-danger-50 text-danger-700 dark:bg-danger-900/20 dark:text-danger-300' :
+          'bg-success-50 text-success-700 dark:bg-success-900/20 dark:text-success-300'
+        }`}>{actionMsg.text}</div>
+      )}
       {allExpenses.length === 0 ? (
         <div className="card p-8 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 dark:bg-neutral-700/50 mb-3">

@@ -12,6 +12,7 @@ export default function AdminUsersPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [confirmDialog, setConfirmDialog] = useState<{ action: string; title: string; message: string; reason?: boolean; hours?: boolean } | null>(null);
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     fetchUsers({ page, search, status: statusFilter || undefined });
@@ -45,6 +46,7 @@ export default function AdminUsersPage() {
   async function handleConfirmAction(action: string, userId: string, reason: string, duration?: string) {
     setActionLoading(true);
     setConfirmDialog(null);
+    setActionError('');
     try {
       switch (action) {
         case 'force-logout': await forceLogout(userId); break;
@@ -55,6 +57,8 @@ export default function AdminUsersPage() {
       }
       if (selectedUserId === userId) selectUser(userId);
       fetchUsers({ page, search, status: statusFilter || undefined });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setActionLoading(false);
     }
@@ -63,6 +67,12 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-neutral-900">User Management</h1>
+
+      {actionError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
 
       <div className="flex gap-3">
         <input type="text" placeholder="Search by display name..." value={search}

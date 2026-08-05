@@ -87,6 +87,7 @@ export async function authRoutes(app: FastifyInstance) {
       role: tokens.role,
       accessToken: tokens.accessToken,
       displayName: tokens.displayName,
+      rawPek: tokens.rawPek,
       recoveryCode: result.recoveryCode,
     });
   });
@@ -129,6 +130,7 @@ export async function authRoutes(app: FastifyInstance) {
       personalSalt: tokens.personalSalt,
       encryptedPek: tokens.encryptedPek,
       email: tokens.email,
+      rawPek: tokens.rawPek,
       isGoogleUser: tokens.isGoogleUser,
     });
   });
@@ -178,6 +180,7 @@ export async function authRoutes(app: FastifyInstance) {
       personalSalt: tokens.personalSalt,
       encryptedPek: tokens.encryptedPek,
       email: tokens.email,
+      rawPek: tokens.rawPek,
       isGoogleUser: tokens.isGoogleUser,
     });
   });
@@ -208,6 +211,7 @@ export async function authRoutes(app: FastifyInstance) {
         personalSalt: result.personalSalt,
         encryptedPek: result.encryptedPek,
         email: result.email,
+        rawPek: result.rawPek,
         isGoogleUser: true,
         googleNewUser: result.googleNewUser,
         recoveryCode: result.googleNewUser ? result.recoveryCode : undefined,
@@ -259,6 +263,7 @@ export async function authRoutes(app: FastifyInstance) {
       personalSalt: tokens.personalSalt,
       encryptedPek: tokens.encryptedPek,
       email: tokens.email,
+      rawPek: tokens.rawPek,
       isGoogleUser: tokens.isGoogleUser,
     });
   });

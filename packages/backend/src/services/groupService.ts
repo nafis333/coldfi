@@ -75,6 +75,7 @@ export async function listUserGroups(userId: string): Promise<any[]> {
       (SELECT COUNT(*) FROM group_members WHERE group_id = g.id AND left_at IS NULL) as member_count
      FROM groups g
      JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = $1 AND gm.left_at IS NULL
+     WHERE g.is_active = TRUE
      ORDER BY g.created_at DESC`,
     [userId]
   );
@@ -92,7 +93,7 @@ export async function getGroupDetail(groupId: string, userId: string): Promise<a
   const membership = await query(
     `SELECT gm.id FROM group_members gm
      JOIN groups g ON g.id = gm.group_id
-     WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.left_at IS NULL`,
+     WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.left_at IS NULL AND g.is_active = TRUE`,
     [groupId, userId]
   );
 
@@ -379,6 +380,22 @@ export async function syncGroupBlob(
   }
 
   return transaction(async (client) => {
+    const keyRes = await client.query(
+      `SELECT encryption_key FROM groups WHERE id = $1 FOR UPDATE`,
+      [groupId]
+    );
+    if (keyRes.rows.length === 0) throw new AppError('ERR_NOT_FOUND', 'Group not found', 404);
+
+    // Reject uploads that cannot be decrypted with the group's current key —
+    // e.g. a client that fetched the blob before a membership change rotated
+    // the key. Storing such a blob would brick access for every member.
+    let currentKeyValid = true;
+    try {
+      decryptGroupBlob(keyRes.rows[0].encryption_key, encryptedBlob);
+    } catch {
+      currentKeyValid = false;
+    }
+
     const existing = await client.query(
       `SELECT encrypted_blob, vector_clock FROM group_sync WHERE group_id = $1 FOR UPDATE`,
       [groupId]
@@ -386,11 +403,19 @@ export async function syncGroupBlob(
 
     if (existing.rows.length > 0) {
       const serverClock = existing.rows[0].vector_clock || {};
-      const conflict = detectConflict(serverClock, vectorClock);
+      if (currentKeyValid) {
+        const conflict = detectConflict(serverClock, vectorClock);
 
-      if (conflict) {
+        if (conflict) {
+          return { conflict: true, serverClock, clientClock: vectorClock };
+        }
+      } else {
+        // Blob was encrypted with a stale/rotated key — force the client to
+        // refetch the blob and the current key before retrying.
         return { conflict: true, serverClock, clientClock: vectorClock };
       }
+    } else if (!currentKeyValid) {
+      throw new AppError('ERR_ENCRYPTION', 'Blob cannot be decrypted with the current group key', 409);
     }
 
     const mergedClock = mergeClocks(

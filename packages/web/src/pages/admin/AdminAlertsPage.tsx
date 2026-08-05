@@ -93,7 +93,7 @@ export default function AdminAlertsPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1">Window (min)</label>
-                  <input type="number" value={form.windowMinutes || 5} onChange={e => setForm({ ...form, windowMinutes: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded text-sm" />
+                  <input type="number" value={form.window_minutes || 5} onChange={e => setForm({ ...form, window_minutes: parseInt(e.target.value) })} className="w-full px-3 py-2 border rounded text-sm" />
                 </div>
               </div>
               <div className="flex items-center gap-2">

@@ -163,6 +163,7 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
               expenses: [...(freshBlob.expenses || []), ...(blob.expenses || []).filter(e => !freshBlob.expenses?.some((fe: any) => fe.id === e.id))],
               budgets: [...(freshBlob.budgets || []), ...(blob.budgets || []).filter(b => !freshBlob.budgets?.some((fb: any) => fb.id === b.id))],
               categories: [...(freshBlob.categories || []), ...(blob.categories || []).filter(c => !freshBlob.categories?.some((fc: any) => fc.id === c.id))],
+              recurringBills: [...(freshBlob.recurringBills || []), ...(blob.recurringBills || []).filter(r => !freshBlob.recurringBills?.some((fr: any) => fr.id === r.id))],
               incomeLogs: [...(freshBlob.incomeLogs || []), ...(blob.incomeLogs || []).filter(i => !freshBlob.incomeLogs?.some((fi: any) => fi.id === i.id))],
               savingsTargets: [...(freshBlob.savingsTargets || []), ...(blob.savingsTargets || []).filter(s => !freshBlob.savingsTargets?.some((fs: any) => fs.id === s.id))],
             };

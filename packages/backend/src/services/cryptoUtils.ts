@@ -35,9 +35,13 @@ export function generateRecoveryCode(): string {
 }
 
 export function hashRecoveryCode(code: string): string {
-  return bcrypt.hashSync(code, 10);
+  return bcrypt.hashSync(normalizeRecoveryCode(code), 10);
+}
+
+function normalizeRecoveryCode(code: string): string {
+  return code.trim().toLowerCase().replace(/-/g, '');
 }
 
 export function verifyRecoveryCode(code: string, hash: string): boolean {
-  return bcrypt.compareSync(code, hash);
+  return bcrypt.compareSync(normalizeRecoveryCode(code), hash);
 }

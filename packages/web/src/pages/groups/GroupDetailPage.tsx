@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
 import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
@@ -30,6 +30,11 @@ export default function GroupDetailPage() {
     return () => { if (useGroupStore.getState().error !== null) useGroupStore.setState({ isLoading: false, error: null }); };
   }, [id, fetchGroupById]);
 
+  const groupDataVersion = useGroupStore((s) => (id ? s.groupDataVersions?.[id] || 0 : 0));
+  useEffect(() => {
+    if (id && groupDataVersion > 0) fetchGroupById(id);
+  }, [id, groupDataVersion, fetchGroupById]);
+
   useEffect(() => {
     if (!id) return;
     joinGroupRoom(id);
@@ -40,6 +45,15 @@ export default function GroupDetailPage() {
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [leaveError, setLeaveError] = useState('');
   const [leaving, setLeaving] = useState(false);
+
+  const isGroupAdmin = useMemo(
+    () => currentGroup?.members.some((m) => m.userId === userId && m.role === 'admin' && !m.leftAt) ?? false,
+    [currentGroup, userId]
+  );
+  const visibleTabs = useMemo(
+    () => (isGroupAdmin ? TABS : TABS.filter((t) => t.path !== 'settings')),
+    [isGroupAdmin]
+  );
 
   async function handleLeave() {
     if (!id || leaving) return;
@@ -135,7 +149,7 @@ export default function GroupDetailPage() {
       {/* Tabs */}
       <div className="mb-6 border-b border-neutral-200/80 dark:border-neutral-700/60">
         <nav className="-mb-px flex gap-1 overflow-x-auto">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const isActive =
               (tab.path === '' && activeTab === '') ||
               (tab.path !== '' && activeTab === '/' + tab.path);

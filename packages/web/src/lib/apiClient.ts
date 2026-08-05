@@ -75,9 +75,7 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
   }
 
   if (res.status >= 500) {
-    const err = new Error(`Server error: ${res.status} ${res.statusText}`);
-    triggerCriticalError(err, fullUrl);
-    throw err;
+    throw new Error(`Server error: ${res.status} ${res.statusText}`);
   }
 
   return res;

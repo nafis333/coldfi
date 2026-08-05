@@ -62,6 +62,21 @@ export function emitToUser(
   }
 }
 
+export function evictUserFromGroup(groupId: string, userId: string): void {
+  if (!io) return;
+  const sockets = userSockets.get(userId);
+  if (!sockets) return;
+  for (const sid of sockets) {
+    const socket = io.sockets.sockets.get(sid);
+    if (!socket) continue;
+    const groups = socketGroups.get(sid);
+    if (groups?.has(groupId)) {
+      socket.leave(`group:${groupId}`);
+      groups.delete(groupId);
+    }
+  }
+}
+
 export function getGroupConnectionCount(groupId: string): number {
   const server = getIO();
   const room = server.sockets.adapter.rooms.get(`group:${groupId}`);

@@ -78,11 +78,9 @@ interface GroupState {
   clearError: () => void;
 }
 
-async function fetchGroupEncryptionKey(groupId: string): Promise<string | null> {
+export async function fetchGroupEncryptionKey(groupId: string): Promise<string | null> {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/group/${groupId}/encryption-key`, {
-      headers: { 'Authorization': `Bearer ${useAuthStore.getState().accessToken || ''}` },
-    });
+    const res = await apiClient(`/api/group/${groupId}/encryption-key`);
     if (res.ok) {
       const data = await res.json();
       return data.encryptionKey || null;
@@ -100,9 +98,7 @@ async function computeGroupBalance(groupId: string, userId: string, defaultCurre
     }
     if (!gk) return null;
 
-    const syncRes = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/group/${groupId}/sync`, {
-      headers: { 'Authorization': `Bearer ${useAuthStore.getState().accessToken || ''}` },
-    });
+    const syncRes = await apiClient(`/api/group/${groupId}/sync`);
     if (!syncRes.ok) return null;
     const syncData = await syncRes.json();
     if (!syncData.encryptedBlob) return null;
@@ -298,7 +294,7 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to create group');
+        throw new Error(data.message || data.error || 'Failed to create group');
       }
 
       const data = await res.json();
@@ -347,7 +343,7 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to join group');
+        throw new Error(data.message || data.error || 'Failed to join group');
       }
 
       const data = await res.json();
@@ -390,7 +386,7 @@ export const useGroupStore = create<GroupState>((set) => ({
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to leave group');
+        throw new Error(data.message || data.error || 'Failed to leave group');
       }
 
       clearGroupKey(groupId);
@@ -537,7 +533,7 @@ export const useGroupStore = create<GroupState>((set) => ({
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to delete group');
+        throw new Error(data.message || data.error || 'Failed to delete group');
       }
       set({ currentGroup: null, isLoading: false });
       const state = useGroupStore.getState();

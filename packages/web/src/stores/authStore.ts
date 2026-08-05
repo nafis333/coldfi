@@ -96,7 +96,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         const { accessToken, userId, displayName, personalSalt, encryptedPek, role } = data;
         const pek = await deriveAndStorePek(passphrase, personalSalt, encryptedPek);
-        saveAuthToStorage({ accessToken, userId, email, displayName, role: role || 'user', isGoogleUser: false });
+        saveAuthToStorage({ accessToken, userId, email, displayName, role: role || 'user', isGoogleUser: false, personalSalt, encryptedPek });
 
         set({
           userId,
@@ -155,7 +155,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           silentCatch('authStore.googleLogin.importRawPek');
         }
       }
-      saveAuthToStorage({ accessToken, userId, email, displayName, role: data.role, isGoogleUser: true });
+      saveAuthToStorage({ accessToken, userId, email, displayName, role: data.role, isGoogleUser: true, personalSalt: personalSalt || undefined, encryptedPek: encryptedPek || undefined });
 
       set({
         userId,
@@ -207,7 +207,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const data = await res.json();
       const { accessToken, userId, displayName, encryptedPek, role } = data;
       const pek = await deriveAndStorePek(passphrase, personalSalt!, encryptedPek);
-      saveAuthToStorage({ accessToken, userId, email: email || '', displayName, role, isGoogleUser: false });
+      saveAuthToStorage({ accessToken, userId, email: email || '', displayName, role, isGoogleUser: false, personalSalt: personalSalt || undefined, encryptedPek });
 
       set({
         userId,
@@ -250,7 +250,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, displayName, authKeyHash, personalSalt, encryptedPek }),
+        body: JSON.stringify({ email, displayName, authKeyHash, personalSalt, encryptedPek, rawPek: uint8ArrayToBase64(pekBytes) }),
       });
 
       if (!res.ok) {
@@ -263,7 +263,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const pek = await importKey(pekBytes);
 
       storePekBytes(pekBytes);
-      saveAuthToStorage({ accessToken, userId, email, displayName, role, isGoogleUser: false });
+      saveAuthToStorage({ accessToken, userId, email, displayName, role, isGoogleUser: false, personalSalt, encryptedPek });
 
       set({
         userId,
@@ -310,27 +310,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         silentCatch('authStore.logout', err);
       }
 
-      resetAllStores();
-      clearPekStorage();
-      clearAuthStorage();
-      storage().removeItem(LAST_ACTIVITY_KEY);
-      set({
-        userId: null,
-        email: null,
-        displayName: null,
-        accessToken: null,
-        pek: null,
-        personalSalt: null,
-        encryptedPek: null,
-        role: null,
-        isAuthenticated: false,
-        isLoading: false,
-        pekMissing: false,
-        pekErrorMessage: null,
-        error: null,
-      });
+      try {
+        resetAllStores();
+        clearPekStorage();
+        clearAuthStorage();
+        storage().removeItem(LAST_ACTIVITY_KEY);
+        set({
+          userId: null,
+          email: null,
+          displayName: null,
+          accessToken: null,
+          pek: null,
+          personalSalt: null,
+          encryptedPek: null,
+          role: null,
+          isAuthenticated: false,
+          isLoading: false,
+          pekMissing: false,
+          pekErrorMessage: null,
+          error: null,
+        });
 
-      broadcastLogout();
+        broadcastLogout();
+      } finally {
+        isLoggingOut = false;
+      }
     };
   })(),
 
@@ -370,88 +374,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             displayName: parsed.displayName || null,
             accessToken: parsed.accessToken,
             role: parsed.role || 'user',
+            pek,
+            personalSalt: parsed.personalSalt || null,
+            encryptedPek: parsed.encryptedPek || null,
+            pekMissing: !!(parsed.personalSalt && !pek && !parsed.isGoogleUser),
             isAuthenticated: true,
             isInitialized: true,
-            pek,
-            personalSalt: null,
-            encryptedPek: null,
-            pekMissing: false,
             isGoogleUser: !!parsed.isGoogleUser,
           });
           return;
         }
       } catch {
-        storage().removeItem(AUTH_STORAGE_KEY);
+        // Corrupt blob — fall through to refresh with the cookie.
       }
     }
 
     try {
-      let res: Response | null = null;
-      let lastError: Error | null = null;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          res = await fetch(`${API_BASE}/api/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
-          });
-        } catch (err) {
-          lastError = err instanceof Error ? err : new Error(String(err));
-          if (attempt < 3) { await new Promise((r) => setTimeout(r, 800 * attempt)); continue; }
-          throw lastError;
-        }
-        if (res.ok) break;
-        if (res.status === 401) throw new Error(`Refresh failed: ${res.status}`);
-        if (attempt < 3) { await new Promise((r) => setTimeout(r, 800 * attempt)); continue; }
-        throw new Error(`Refresh failed: ${res.status}`);
-      }
-
-      if (!res || !res.ok) {
-        set({ isInitialized: true });
-        return;
-      }
-
-      const data = await res.json();
-      const { accessToken, userId, email, displayName, personalSalt, encryptedPek, role, isGoogleUser, rawPek } = data;
-
-      let pek: CryptoKey | null = null;
-      const storedPek = storage().getItem(PEK_STORAGE_KEY);
-      if (storedPek) {
-        try {
-          pek = await importKey(base64ToUint8Array(storedPek));
-        } catch {
-          silentCatch('authStore.initialize.importStoredPek');
-          storage().removeItem(PEK_STORAGE_KEY);
-        }
-      }
-      if (!pek && rawPek) {
-        try {
-          pek = await importKey(base64ToUint8Array(rawPek));
-          storePekBytes(base64ToUint8Array(rawPek));
-        } catch {
-          silentCatch('authStore.initialize.importRawPek');
-        }
-      }
-
-      saveAuthToStorage({ accessToken, userId, email, displayName, role, isGoogleUser });
-
-      set({
-        userId,
-        email,
-        displayName,
-        accessToken,
-        personalSalt,
-        encryptedPek,
-        pek,
-        role: role || 'user',
-        isAuthenticated: true,
-        isInitialized: true,
-        pekMissing: !!(personalSalt && !pek && !isGoogleUser),
-        isGoogleUser: !!isGoogleUser,
-      });
+      // Reuse refreshToken() instead of duplicating the refresh loop: it
+      // dedupes concurrent refreshes (initialize vs. apiClient 401 handling)
+      // and retries ERR_TOKEN_REUSED, so a benign multi-tab/rotation race
+      // can never silently log the user out.
+      await get().refreshToken();
     } catch (err) {
       silentCatch('authStore.initialize.refresh', err);
-      set({ isInitialized: true });
     }
+    set({ isInitialized: true });
   },
 
   setPek: async (pek: CryptoKey) => {
@@ -479,6 +426,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   refreshToken: (() => {
     let pending: Promise<string> | null = null;
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const restoreStoredProfile = (parsed: any): string | null => {
+      const expiry = getJwtExpiry(parsed.accessToken);
+      if (!expiry || expiry <= Date.now() || !parsed.userId) return null;
+      set({
+        userId: parsed.userId,
+        email: parsed.email || null,
+        displayName: parsed.displayName || null,
+        accessToken: parsed.accessToken,
+        role: parsed.role || 'user',
+        personalSalt: parsed.personalSalt || null,
+        encryptedPek: parsed.encryptedPek || null,
+        pekMissing: !!(parsed.personalSalt && !get().pek && !parsed.isGoogleUser),
+        isAuthenticated: true,
+        isGoogleUser: !!parsed.isGoogleUser,
+      });
+      return parsed.accessToken as string;
+    };
     return async () => {
       if (pending) return pending;
 
@@ -487,11 +451,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (stored) {
         try {
           const parsed = JSON.parse(stored);
-          const expiry = getJwtExpiry(parsed.accessToken);
-          if (expiry && expiry > Date.now() && parsed.accessToken !== currentToken) {
-            set({ accessToken: parsed.accessToken });
-            return parsed.accessToken;
-          }
+          const restored = restoreStoredProfile(parsed);
+          if (restored && parsed.accessToken !== currentToken) return restored;
         } catch (err) { silentCatch('authStore.refreshToken.parseStored', err); }
       }
 
@@ -515,12 +476,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
           if (res.ok) {
             const data = await res.json();
-            const { accessToken, userId, email, displayName, role, isGoogleUser } = data;
+            const { accessToken, userId, email, displayName, personalSalt, encryptedPek, role, isGoogleUser, rawPek } = data;
             if (userId) {
-              saveAuthToStorage({ accessToken, userId, email, displayName, role, isGoogleUser });
+              saveAuthToStorage({ accessToken, userId, email, displayName, role, isGoogleUser, personalSalt, encryptedPek });
             }
-            set({ accessToken: data.accessToken, isAuthenticated: true });
-            return data.accessToken as string;
+
+            let pek = get().pek;
+            if (!pek) {
+              const storedPek = storage().getItem(PEK_STORAGE_KEY);
+              if (storedPek) {
+                try {
+                  pek = await importKey(base64ToUint8Array(storedPek));
+                } catch {
+                  silentCatch('authStore.refreshToken.importStoredPek');
+                  storage().removeItem(PEK_STORAGE_KEY);
+                }
+              }
+            }
+            if (!pek && rawPek) {
+              try {
+                pek = await importKey(base64ToUint8Array(rawPek));
+                storePekBytes(base64ToUint8Array(rawPek));
+              } catch {
+                silentCatch('authStore.refreshToken.importRawPek');
+              }
+            }
+
+            set({
+              accessToken,
+              userId: userId || get().userId,
+              email: email || get().email,
+              displayName: displayName ?? get().displayName,
+              role: role || get().role || 'user',
+              personalSalt: personalSalt || get().personalSalt || null,
+              encryptedPek: encryptedPek || get().encryptedPek || null,
+              pek,
+              pekMissing: !!(personalSalt && !pek && !isGoogleUser),
+              isAuthenticated: true,
+              isGoogleUser: !!isGoogleUser,
+            });
+            return accessToken as string;
           }
 
           const reuseError = res.status === 401
@@ -547,11 +542,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (stored) {
           try {
             const parsed = JSON.parse(stored);
-            const expiry = getJwtExpiry(parsed.accessToken);
-            if (expiry && expiry > Date.now() && parsed.accessToken !== get().accessToken) {
-              set({ accessToken: parsed.accessToken, isAuthenticated: true });
-              return parsed.accessToken;
-            }
+            const restored = restoreStoredProfile(parsed);
+            if (restored && parsed.accessToken !== get().accessToken) return restored;
           } catch (err) { silentCatch('authStore.refreshToken.parseStoredFallback', err); }
         }
         if (lastError?.message === 'Refresh token reused') {

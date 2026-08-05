@@ -138,7 +138,7 @@ export default function GroupSettingsTab() {
                 <div>
                   <code className="text-sm font-mono text-primary-600 dark:text-primary-400">{inv.code}</code>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                    Used {inv.use_count} time{inv.use_count !== 1 ? 's' : ''} · {inv.is_active ? 'Active' : 'Revoked'}
+                    Used {inv.use_count} time{inv.use_count !== 1 ? 's' : ''} · {!inv.is_active ? 'Revoked' : inv.expires_at && new Date(inv.expires_at).getTime() <= Date.now() ? 'Expired' : 'Active'}
                   </p>
                 </div>
                 <div className="flex gap-2">

@@ -29,14 +29,14 @@ export function useWebSocket() {
   const connectRef = useRef<() => void>(() => {});
   const scheduleReconnectRef = useRef<() => void>(() => {});
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback((clearRooms = false) => {
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current);
       reconnectTimer.current = null;
     }
     socketRef.current?.disconnect();
     socketRef.current = null;
-    joinedRooms.current.clear();
+    if (clearRooms) joinedRooms.current.clear();
     reconnectAttempts.current = 0;
     setConnectionState('disconnected');
   }, []);
@@ -72,6 +72,12 @@ export function useWebSocket() {
       useGroupStore.getState().incrementGroupDataVersion(data.groupId);
     });
     socket.on('member-left', (data: { groupId: string }) => {
+      useGroupStore.getState().incrementGroupDataVersion(data.groupId);
+    });
+    socket.on('member-role-changed', (data: { groupId: string }) => {
+      useGroupStore.getState().incrementGroupDataVersion(data.groupId);
+    });
+    socket.on('group-deleted', (data: { groupId: string }) => {
       useGroupStore.getState().incrementGroupDataVersion(data.groupId);
     });
     socket.on('encryption-key-changed', (data: { groupId: string }) => {
@@ -148,9 +154,13 @@ export function useWebSocket() {
       },
     };
     if (accessToken) {
-      connect();
+      if (!socketRef.current) {
+        connect();
+      } else {
+        socketRef.current.auth = { token: accessToken };
+      }
     } else {
-      disconnect();
+      disconnect(true);
     }
     return () => {
       disconnect();

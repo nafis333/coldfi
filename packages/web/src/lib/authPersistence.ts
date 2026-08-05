@@ -6,7 +6,7 @@ export const LAST_ACTIVITY_KEY = 'coldfi:lastActivity';
 
 export function storage(): Storage {
   try {
-    return sessionStorage;
+    return localStorage;
   } catch {
     return sessionStorage;
   }
@@ -21,7 +21,7 @@ export function getJwtExpiry(token: string): number | null {
   }
 }
 
-export function saveAuthToStorage(data: { accessToken: string; userId: string; email?: string; displayName?: string; role?: string; isGoogleUser?: boolean }) {
+export function saveAuthToStorage(data: { accessToken: string; userId: string; email?: string; displayName?: string; role?: string; isGoogleUser?: boolean; personalSalt?: string; encryptedPek?: string }) {
   try {
     storage().setItem(AUTH_STORAGE_KEY, JSON.stringify({
       accessToken: data.accessToken,
@@ -30,6 +30,8 @@ export function saveAuthToStorage(data: { accessToken: string; userId: string; e
       displayName: data.displayName || '',
       role: data.role || 'user',
       isGoogleUser: !!data.isGoogleUser,
+      personalSalt: data.personalSalt || '',
+      encryptedPek: data.encryptedPek || '',
       storedAt: Date.now(),
     }));
   } catch { /* quota exceeded, ignore */ }

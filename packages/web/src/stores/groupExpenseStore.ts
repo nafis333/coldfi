@@ -5,6 +5,7 @@ import {
   getGroupKey,
   modifySyncBlob,
   createGroupNotification,
+  refreshGroupKey,
   GroupExpenseInput,
   GroupExpenseData,
   GroupCategory,
@@ -92,11 +93,14 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       const shortName = groupName.trim() ? groupName.split(' ').map((w: string) => w[0] || '').join('').toLowerCase().slice(0, 6) : 'g';
       const defaultCurrency = useGroupStore.getState().currentGroup?.defaultCurrency || useAuthStore.getState().defaultCurrency;
       const now = new Date().toISOString();
+      const localNow = new Date();
+      const localDate = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
 
       let created = false;
       let lastError: Error | null = null;
       let latestDisplayId = '';
       let latestExpenseId = '';
+      let keyForAttempt: CryptoKey = gk;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const syncRes = await apiClient(`/api/group/${groupId}/sync`);
@@ -108,8 +112,20 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
           let groupData: { expenses: GroupExpenseData[]; settlements: any[]; categories: GroupCategory[] } = { expenses: [], settlements: [], categories: [] };
 
           if (syncData.encryptedBlob) {
-            const decrypted = await decryptData(gk, syncData.encryptedBlob);
-            groupData = migrateGroupBlob(JSON.parse(decrypted)) as typeof groupData;
+            try {
+              const decrypted = await decryptData(keyForAttempt, syncData.encryptedBlob);
+              groupData = migrateGroupBlob(JSON.parse(decrypted)) as typeof groupData;
+            } catch (e) {
+              if (attempt === 0 && e instanceof Error && e.message.startsWith('Decryption failed')) {
+                const fresh = await refreshGroupKey(groupId);
+                if (fresh) {
+                  keyForAttempt = fresh;
+                  lastError = new Error('Group key rotated. Retrying...');
+                  continue;
+                }
+              }
+              throw e;
+            }
           }
 
           const existing = groupData.expenses.filter((e) => e.displayId?.startsWith(`#${shortName}`));
@@ -133,7 +149,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
             ...data,
             categoryId: data.category || data.categoryId || '',
             paidBy: data.payerId || data.paidBy || '',
-            date: now.split('T')[0],
+            date: localDate,
             displayId,
             createdAt: now,
             updatedAt: now,
