@@ -291,13 +291,13 @@ export function toEngineExpenses(
       paidBy,
       paymentMethod: PaymentMethod.CASH,
       splitMode: SplitMode.FIXED,
-      splits: e.splits.map((s) => ({
+      splits: (e.splits || []).map((s) => ({
         memberId: s.userId,
         ratio: e.amount > 0 ? s.amount / e.amount : 0,
         fixedAmount: s.amount,
         isPaid: false,
       })),
-      itemizedItems: e.itemized?.map((i) => {
+      itemizedItems: (e.itemized || []).map((i) => {
         const participants = (i as any).assignedTo;
         return {
           id: `item_${i.name}`,
@@ -305,7 +305,7 @@ export function toEngineExpenses(
           amount: i.amount,
           assignedTo: Array.isArray(participants) && participants.length > 0
             ? participants
-            : e.splits.map((s) => s.userId),
+            : (e.splits || []).map((s) => s.userId),
           splitMode: (i as any).splitMode || undefined,
           splitAmounts: (i as any).splitValues || undefined,
         };

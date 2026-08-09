@@ -63,7 +63,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
         });
 
         for (const computed of engineResult.splits) {
-          const submitted = data.splits.find((s) => s.userId === computed.memberId);
+          const submitted = (data.splits || []).find((s) => s.userId === computed.memberId);
           if (submitted) {
             if (Math.abs(submitted.amount - computed.amount) > 0.02) {
               throw new Error(
@@ -76,7 +76,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
           }
         }
       } else {
-        const splitTotal = data.splits.reduce((sum, s) => sum + s.amount, 0);
+        const splitTotal = (data.splits || []).reduce((sum, s) => sum + s.amount, 0);
         if (Math.abs(splitTotal - data.amount) > 0.01) {
           throw new Error(`Split total (${splitTotal.toFixed(2)}) must equal expense amount (${data.amount.toFixed(2)})`);
         }
@@ -145,8 +145,11 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
           }
           latestDisplayId = displayId;
           latestExpenseId = expenseId;
+          const { splitMode: _sm, splitParams: _sp, category: _cat, payerId: _payer, splits, itemized, ...storedFields } = data;
           groupData.expenses.push({
-            ...data,
+            ...storedFields,
+            splits: splits || [],
+            itemized,
             categoryId: data.category || data.categoryId || '',
             paidBy: data.payerId || data.paidBy || '',
             date: localDate,
@@ -156,7 +159,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
             id: expenseId,
           });
 
-          const encrypted = await encryptData(gk, JSON.stringify(groupData));
+          const encrypted = await encryptData(keyForAttempt, JSON.stringify(groupData));
 
           const putRes = await apiClient(`/api/group/${groupId}/sync`, {
             method: 'PUT',

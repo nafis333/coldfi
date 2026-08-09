@@ -98,6 +98,8 @@ function normalizeGroupExpense(exp: Record<string, unknown>): Record<string, unk
   result.categoryId = (exp.categoryId as string) ?? (exp.category as string) ?? '';
   result.paidBy = (exp.paidBy as string) ?? (exp.payerId as string) ?? '';
   result.createdAt = (exp.createdAt as string) ?? new Date().toISOString();
+  result.date = (exp.date as string) ?? new Date().toISOString().split('T')[0];
+  result.splits = ensureArray(exp.splits);
   delete result.category;
   delete result.payerId;
   return result;

@@ -111,7 +111,7 @@ async function computeGroupBalance(groupId: string, userId: string, defaultCurre
     const memberIdsSet = new Set<string>([userId]);
     for (const exp of expenses) {
       memberIdsSet.add(exp.paidBy || exp.payerId || '');
-      for (const s of exp.splits) memberIdsSet.add(s.userId);
+      for (const s of exp.splits || []) memberIdsSet.add(s.userId);
     }
     for (const st of settlements) {
       memberIdsSet.add(st.fromUserId);
@@ -237,7 +237,7 @@ export const useGroupStore = create<GroupState>((set) => ({
       const memberIdsSet = new Set<string>(data.members.map((m: GroupMember) => m.userId));
       for (const exp of expenses) {
         memberIdsSet.add(exp.paidBy || exp.payerId || '');
-        for (const s of exp.splits) {
+        for (const s of exp.splits || []) {
           memberIdsSet.add(s.userId);
         }
       }

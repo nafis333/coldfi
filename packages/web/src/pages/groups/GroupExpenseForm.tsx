@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useGroupStore } from '../../stores/groupStore';
 import { useGroupExpenseStore } from '../../stores/groupExpenseStore';
 import { useAuthStore } from '../../stores/authStore';
-import { SplitMode as EngineSplitMode } from '@coldfi/shared';
 import CategoryPicker from './CategoryPicker';
 import ItemizedList, { percentageSplitDefaultValues } from './ItemizedList';
 
@@ -311,7 +310,7 @@ export default function GroupExpenseForm() {
       } else {
         await createGroupExpense(groupId!, {
           amount: total, description: description.trim(), categoryId: category, paidBy: payerId,
-          splits: finalSplits, itemized: itemizedData, splitMode: EngineSplitMode.RATIO,
+          splits: finalSplits, itemized: itemizedData,
         });
       }
       navigate(`/groups/${groupId}`);
