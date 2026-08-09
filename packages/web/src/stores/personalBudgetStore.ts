@@ -19,6 +19,11 @@ export const usePersonalBudgetStore = create<PersonalBudgetState>((set) => ({
   error: null,
 
   addBudget: async (budget) => {
+    const personalStore = usePersonalStore.getState();
+    if (!personalStore.personalBlob) {
+      await personalStore.fetchPersonalBlob();
+    }
+
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
     const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 

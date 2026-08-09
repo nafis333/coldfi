@@ -139,7 +139,6 @@ export default function ExpenseFormPage() {
       const expenseItems: ExpenseItem[] = result.data.items.map((i) => ({ name: i.name, amount: i.amount }));
       const expenseData = {
         amount: expenseItems.reduce((s, i) => s + i.amount, 0),
-        currency: defaultCurrency,
         categoryId: result.data.categoryId,
         date: result.data.date,
         payee: result.data.payee || null,
@@ -153,7 +152,7 @@ export default function ExpenseFormPage() {
       if (isEditing && id) {
         await updateExpense(id, expenseData);
       } else {
-        await addExpense(expenseData);
+        await addExpense({ ...expenseData, currency: defaultCurrency });
       }
 
       navigate('/expenses');

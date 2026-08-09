@@ -164,7 +164,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
         const allGroupSheets: { groupName: string; description: string; amount: number; date: string }[] = [];
         for (const [gid, entry] of Object.entries(cache)) {
           for (const exp of entry.expenses) {
-            const d = new Date(exp.date || exp.createdAt);
+            const d = parseLocalDate(exp.date || exp.createdAt);
             const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             if (ym === month) {
               allGroupSheets.push({
@@ -229,8 +229,8 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       // Budget progress
       const monthBudgets = allBudgets.filter((b) => {
         if ((b.currency || defaultCurrency) !== defaultCurrency) return false;
-        const start = new Date(b.periodStart);
-        const end = new Date(b.periodEnd);
+        const start = parseLocalDate(b.periodStart);
+        const end = parseLocalDate(b.periodEnd);
         const ymStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
         const ymEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}`;
         return ymStart <= month && ymEnd >= month;

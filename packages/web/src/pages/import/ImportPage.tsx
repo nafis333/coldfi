@@ -275,7 +275,7 @@ export default function ImportPage() {
                     <td className="px-4 py-2 text-neutral-700">{row[mapping.date]}</td>
                     <td className="px-4 py-2 text-neutral-700 max-w-xs truncate">{row[mapping.description]}</td>
                     <td className="px-4 py-2 text-neutral-700">{row[mapping.category]}</td>
-                    <td className="px-4 py-2 text-neutral-900 font-semibold text-right">{formatCurrency(parseFloat(row[mapping.amount] || '0'), useAuthStore.getState().defaultCurrency)}</td>
+                    <td className="px-4 py-2 text-neutral-900 font-semibold text-right">{formatCurrency(parseFloat(String(row[mapping.amount] ?? '').replace(/[^\d.-]/g, '') || '0'), useAuthStore.getState().defaultCurrency)}</td>
                   </tr>
                 ))}
               </tbody>

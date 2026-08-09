@@ -26,6 +26,11 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
 
     set({ isLoading: true, error: null });
 
+    const personalStore = usePersonalStore.getState();
+    if (!personalStore.personalBlob) {
+      await personalStore.fetchPersonalBlob();
+    }
+
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
     const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
 

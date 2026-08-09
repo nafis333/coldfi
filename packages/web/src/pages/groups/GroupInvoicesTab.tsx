@@ -130,13 +130,23 @@ export default function GroupInvoicesTab() {
   }, []);
 
   const filteredExpenses = useMemo(() => {
-    const cutoff = rangeDays > 0 ? new Date(now - rangeDays * 86400000).toISOString() : null;
-    const customStartMs = customStart ? new Date(customStart).getTime() : 0;
-    const customEndMs = customEnd ? new Date(customEnd + 'T23:59:59').getTime() : Infinity;
+    const nowD = new Date();
+    const startOfToday = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
+    const cutoff = rangeDays > 0 ? startOfToday - rangeDays * 86400000 : null;
+    const customStartMs = customStart
+      ? (() => { const [y, m, d] = customStart.split('-').map(Number); return new Date(y, m - 1, d).getTime(); })()
+      : 0;
+    const customEndMs = customEnd
+      ? (() => { const [y, m, d] = customEnd.split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime(); })()
+      : Infinity;
 
     return (group.expenses || []).filter((e) => {
-      const d = new Date(e.date || e.createdAt).getTime();
-      if (cutoff && d < new Date(cutoff).getTime()) return false;
+      const dateStr = e.date || e.createdAt;
+      const parts = dateStr.split('-').map(Number);
+      const d = parts.length === 3 && parts.every((n) => !isNaN(n))
+        ? new Date(parts[0], parts[1] - 1, parts[2]).getTime()
+        : new Date(dateStr).getTime();
+      if (cutoff !== null && d < cutoff) return false;
       if (customStart && d < customStartMs) return false;
       if (customEnd && d > customEndMs) return false;
       return true;
@@ -159,6 +169,28 @@ export default function GroupInvoicesTab() {
 
   const balances = useMemo(() => {
     const allMemberIds = group.members.map((m) => m.userId);
+    const nowD = new Date();
+    const startOfToday = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
+    const cutoff = rangeDays > 0 ? startOfToday - rangeDays * 86400000 : null;
+    const customStartMs = customStart
+      ? (() => { const [y, m, d] = customStart.split('-').map(Number); return new Date(y, m - 1, d).getTime(); })()
+      : 0;
+    const customEndMs = customEnd
+      ? (() => { const [y, m, d] = customEnd.split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime(); })()
+      : Infinity;
+
+    // Only apply settlements whose timestamps fall inside the same time window
+    // as the filtered expenses — mixing all-time settlements with filtered
+    // expenses creates phantom reversed debts and wrong "Settle All" proposals.
+    const inWindow = (ts: string | undefined | null): boolean => {
+      const t = new Date(ts || 0).getTime();
+      if (isNaN(t)) return false;
+      if (cutoff !== null && t < cutoff) return false;
+      if (customStart && t < customStartMs) return false;
+      if (customEnd && t > customEndMs) return false;
+      return true;
+    };
+
     const mockExpenses = filteredExpenses.map((e) => ({
       id: e.id,
       groupId,
@@ -182,7 +214,9 @@ export default function GroupInvoicesTab() {
       updatedAt: e.createdAt,
       createdBy: e.paidBy || e.payerId || '',
     }));
-    const settlementInputs = (group.settlements || []).map((s: any) => ({
+    const settlementInputs = (group.settlements || [])
+      .filter((s: any) => inWindow(s.proposedAt || s.createdAt))
+      .map((s: any) => ({
       id: s.id,
       groupId,
       fromUserId: s.fromUserId,

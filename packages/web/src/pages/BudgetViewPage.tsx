@@ -204,9 +204,9 @@ export default function BudgetViewPage() {
             const ps = data.budgetType === 'custom' ? data.periodStart : monthStart;
             const pe = data.budgetType === 'custom' ? data.periodEnd : monthEnd;
             if (editingId) {
-              await updateBudget(editingId, { type: data.budgetType, amount: amt, alertThreshold: parseFloat(data.alertThreshold) || 80, rollover: data.rollover, periodStart: ps, periodEnd: pe });
+              await updateBudget(editingId, { type: data.budgetType, amount: amt, alertThreshold: isNaN(parseFloat(data.alertThreshold)) ? 80 : parseFloat(data.alertThreshold), rollover: data.rollover, periodStart: ps, periodEnd: pe });
             } else {
-              await addBudget({ categoryId: data.categoryId, type: data.budgetType, amount: amt, currency: defaultCurrency, periodStart: ps, periodEnd: pe, alertThreshold: parseFloat(data.alertThreshold) || 80, rollover: data.rollover, unusedRolloverAmount: 0 });
+              await addBudget({ categoryId: data.categoryId, type: data.budgetType, amount: amt, currency: defaultCurrency, periodStart: ps, periodEnd: pe, alertThreshold: isNaN(parseFloat(data.alertThreshold)) ? 80 : parseFloat(data.alertThreshold), rollover: data.rollover, unusedRolloverAmount: 0 });
             }
             setShowForm(false);
             setEditingId(null);

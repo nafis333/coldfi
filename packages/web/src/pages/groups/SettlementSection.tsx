@@ -61,9 +61,9 @@ function OverdueAlert({ overdueSettlements, members, defaultCurrency }: {
 }
 
 function SettlementList({ settlements, members, currentUserId, defaultCurrency, actionMsg, onMarkPaid, onAccept, onReject, onCancel }: SettlementSectionProps) {
+  const [showAll, setShowAll] = useState(false);
   if (!settlements || settlements.length === 0) return null;
 
-  const [showAll, setShowAll] = useState(false);
   const sorted = [...settlements].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const displayed = showAll ? sorted : sorted.slice(0, 10);
 

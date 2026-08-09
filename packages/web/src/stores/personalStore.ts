@@ -120,6 +120,7 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
 
     const plaintext = JSON.stringify(blob);
     let encryptedBlob = await encryptData(pek, plaintext);
+    let savedBlob = blob;
 
     let vectorClock = ++personalVectorClock;
     let lastError: Error | null = null;
@@ -135,16 +136,16 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
         if (data.vectorClock) {
           setLastVectorClock(data.vectorClock);
         }
-        const { statuses: budgetStatuses, updatedBudgets } = computeBudgetStatuses(blob.budgets, blob.expenses);
+        const { statuses: budgetStatuses, updatedBudgets } = computeBudgetStatuses(savedBlob.budgets, savedBlob.expenses);
 
         set({
-          personalBlob: { ...blob, budgets: updatedBudgets },
-          expenses: blob.expenses,
+          personalBlob: { ...savedBlob, budgets: updatedBudgets },
+          expenses: savedBlob.expenses,
           budgets: updatedBudgets,
-          categories: blob.categories,
+          categories: savedBlob.categories,
           budgetStatuses,
-          incomeLogs: blob.incomeLogs || [],
-          savingsTargets: blob.savingsTargets || [],
+          incomeLogs: savedBlob.incomeLogs || [],
+          savingsTargets: savedBlob.savingsTargets || [],
         });
         return;
       }
@@ -169,6 +170,7 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
             };
             const mergedPlaintext = JSON.stringify(merged);
             encryptedBlob = await encryptData(pek, mergedPlaintext);
+            savedBlob = merged;
           }
         } else {
           vectorClock = Date.now();

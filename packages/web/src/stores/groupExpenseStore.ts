@@ -17,6 +17,7 @@ import { SplitMode, GroupLogEventType } from '@coldfi/shared';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
 import { useLogStore } from './logStore';
+import { useGroupStore } from './groupStore';
 
 interface GroupExpenseState {
   groupExpensesCache: Record<string, { name: string; expenses: GroupExpenseData[]; currency: string }>;
@@ -191,6 +192,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       if (!created) throw lastError || new Error('Failed to save expense due to a data conflict. Please try again.');
       set({ isLoading: false });
       await useGroupStore.getState().fetchGroupById(groupId);
+      syncCacheFromGroup(groupId);
       const gExpNotificationRecipients = useGroupStore.getState().currentGroup?.members.filter(m => !m.leftAt).map(m => m.userId);
       try {
         await createGroupNotification('expense_added', 'Expense Added', `New expense of ${data.amount} ${defaultCurrency}`, groupId, undefined, gExpNotificationRecipients);
@@ -232,6 +234,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       });
       const { useGroupStore } = await import('./groupStore');
       await useGroupStore.getState().fetchGroupById(groupId);
+      syncCacheFromGroup(groupId);
       set({ isLoading: false });
       const delActorId = useAuthStore.getState().userId || '';
       const delActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
@@ -265,6 +268,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       });
       const { useGroupStore } = await import('./groupStore');
       await useGroupStore.getState().fetchGroupById(groupId);
+      syncCacheFromGroup(groupId);
       set({ isLoading: false });
       const updActorId = useAuthStore.getState().userId || '';
       const updActorName = useAuthStore.getState().displayName || useAuthStore.getState().email || '';
@@ -324,6 +328,21 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
 
   clearError: () => set({ error: null }),
 }));
+
+function syncCacheFromGroup(groupId: string) {
+  const g = useGroupStore.getState().currentGroup;
+  if (!g || g.id !== groupId) return;
+  useGroupExpenseStore.setState((state) => ({
+    groupExpensesCache: {
+      ...state.groupExpensesCache,
+      [groupId]: {
+        name: g.name,
+        expenses: g.expenses || [],
+        currency: g.defaultCurrency || useAuthStore.getState().defaultCurrency,
+      },
+    },
+  }));
+}
 
 onLogout(() => {
   useGroupExpenseStore.setState({

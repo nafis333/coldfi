@@ -248,17 +248,20 @@ export default function ExpensesTab() {
 
                   {isExpanded && hasItems && (
                     <div className="border-t border-neutral-100 dark:border-neutral-700/60 bg-neutral-50/60 dark:bg-neutral-800/30 animate-fade-in">
-                      {items!.map((item: { name: string; amount: number; assignedTo: string[] }, idx: number) => (
+                      {items!.map((item: { name: string; amount: number; assignedTo?: string[] }, idx: number) => {
+                        const participants = item.assignedTo || [];
+                        return (
                         <div key={idx} className="flex items-center justify-between px-4 py-2.5 text-sm border-b border-neutral-100 dark:border-neutral-700/30 last:border-b-0">
                           <div className="flex-1 min-w-0">
                             <span className="text-neutral-700 dark:text-neutral-300">{item.name}</span>
                             <span className="ml-2 text-xs text-neutral-400">
-                              ({item.assignedTo.length} participant{item.assignedTo.length !== 1 ? 's' : ''}: {item.assignedTo.map((id) => memberName(group.members, id)).join(', ')})
+                              ({participants.length} participant{participants.length !== 1 ? 's' : ''}: {participants.map((id) => memberName(group.members, id)).join(', ')})
                             </span>
                           </div>
                           <span className="font-semibold text-neutral-900 dark:text-white shrink-0 ml-3">{formatCurrency(item.amount, defaultCurrency)}</span>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

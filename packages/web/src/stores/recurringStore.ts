@@ -44,9 +44,7 @@ export function computeBillStatus(bill: RecurringBill): BillStatus {
   const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
   if (bill.lastPaidDate) {
-    const paidDate = toLocalDate(bill.lastPaidDate);
-    const prevDueDate = previousDueDate(bill.nextDueDate, bill.frequency);
-    if (paidDate >= prevDueDate && diffDays > 0) return 'paid';
+    if (diffDays > 0) return 'paid';
   }
 
   if (diffDays < 0) return 'overdue';
@@ -59,22 +57,6 @@ export function getDaysUntilDue(nextDueDate: string): number {
   const today = todayLocal();
   const due = toLocalDate(nextDueDate);
   return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function previousDueDate(current: string, frequency: Frequency): Date {
-  const d = toLocalDate(current);
-  switch (frequency) {
-    case 'weekly':
-      d.setDate(d.getDate() - 7);
-      break;
-    case 'monthly':
-      d.setMonth(d.getMonth() - 1);
-      break;
-    case 'yearly':
-      d.setFullYear(d.getFullYear() - 1);
-      break;
-  }
-  return d;
 }
 
 function generateId(): string {
@@ -269,7 +251,18 @@ export const useRecurringStore = create<RecurringState>((set) => ({
           : b
       );
 
-      const updatedBlob = { ...blob, recurringBills: updatedBills };
+      // Remove auto-generated expenses for this bill's skipped cycle(s), so a
+      // re-visit of the page does not generate duplicates.
+      const bill = (blob.recurringBills ?? []).find((b) => b.id === id);
+      const restoredFrom = bill?.previousNextDueDate;
+      let expenses = blob.expenses || [];
+      if (bill && restoredFrom) {
+        expenses = expenses.filter(
+          (e) => !(e.isRecurring && e.payee === bill.name && e.date >= restoredFrom)
+        );
+      }
+
+      const updatedBlob = { ...blob, expenses, recurringBills: updatedBills };
       await state.savePersonalBlob(updatedBlob);
       set({ recurringBills: updatedBills });
     } catch (error) {
