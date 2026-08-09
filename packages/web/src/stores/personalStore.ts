@@ -208,9 +208,17 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
 
     try {
       const { pek } = useAuthStore.getState();
-      if (pek) {
-        await get().savePersonalBlob(updated);
+      if (!pek) {
+        set({
+          personalBlob: prevBlob,
+          categories: prevBlob?.categories || [],
+          budgetStatuses: previous.budgetStatuses,
+          incomeLogs: previous.incomeLogs,
+          savingsTargets: previous.savingsTargets,
+        });
+        throw new Error('No encryption key loaded');
       }
+      await get().savePersonalBlob(updated);
     } catch (err) {
       set({
         personalBlob: prevBlob,
@@ -240,9 +248,11 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
 
     try {
       const { pek } = useAuthStore.getState();
-      if (pek) {
-        await get().savePersonalBlob(updated);
+      if (!pek) {
+        set({ personalBlob: previousBlob, categories: previousBlob.categories });
+        throw new Error('No encryption key loaded');
       }
+      await get().savePersonalBlob(updated);
     } catch (err) {
       set({ personalBlob: previousBlob, categories: previousBlob.categories });
       throw err;

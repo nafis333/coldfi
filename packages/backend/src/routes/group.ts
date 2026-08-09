@@ -169,7 +169,7 @@ export async function groupRoutes(app: FastifyInstance) {
         type: 'object',
         required: ['encryptedBlob', 'vectorClock'],
         properties: {
-          encryptedBlob: { type: 'string', minLength: 1 },
+          encryptedBlob: { type: 'string', minLength: 1, maxLength: 10 * 1024 * 1024 },
           vectorClock: { type: 'object' },
         },
       },

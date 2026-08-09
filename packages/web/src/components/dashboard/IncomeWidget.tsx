@@ -4,7 +4,7 @@ import { usePersonalIncomeStore } from '../../stores/personalIncomeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
 import { localDateString } from '../../lib/dates';
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 import type { OverviewData } from '../../hooks/useOverview';
 
 export default function IncomeWidget({ data }: { data: OverviewData }) {
@@ -114,7 +114,7 @@ export default function IncomeWidget({ data }: { data: OverviewData }) {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">{income.source}</p>
                 <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                  {new Date(income.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {parseLocalDate(income.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">

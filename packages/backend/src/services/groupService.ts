@@ -539,6 +539,22 @@ export async function updateMemberRole(
     if (targetRes.rows[0].left_at) throw new AppError('ERR_CONFLICT', 'Cannot change role of former member', 400);
     if (targetUserId === adminUserId) throw new AppError('ERR_VALIDATION', 'Cannot change your own role', 400);
 
+    if (newRole === 'member' && targetRes.rows[0].role === 'admin') {
+      const remainingAdmins = await client.query(
+        `SELECT 1 FROM group_members
+         WHERE group_id = $1 AND left_at IS NULL AND role = 'admin' AND user_id != $2
+         LIMIT 1`,
+        [groupId, targetUserId]
+      );
+      if (remainingAdmins.rows.length === 0) {
+        throw new AppError(
+          'ERR_LAST_ADMIN',
+          'Cannot demote the last admin. Promote another member first.',
+          400
+        );
+      }
+    }
+
     await client.query(
       `UPDATE group_members SET role = $1 WHERE id = $2`,
       [newRole, targetRes.rows[0].id]

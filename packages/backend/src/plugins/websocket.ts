@@ -4,6 +4,8 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { query } from '../db/pool';
 import { config } from '../config';
 import { parse } from 'cookie';
+import { assertUserNotRestricted } from '../services/userRestrictions';
+import { AppError } from '../errors';
 
 interface AuthenticatedSocket extends Socket {
   userId: string;
@@ -122,10 +124,16 @@ async function websocketPlugin(
       if (!decoded.userId) {
         return next(new Error('Invalid token payload'));
       }
+      // Mirror the HTTP middleware: banned/suspended users must not get a live
+      // channel to group data even though their JWT may still be valid.
+      await assertUserNotRestricted(decoded.userId);
       (socket as AuthenticatedSocket).userId = decoded.userId;
       (socket as AuthenticatedSocket).role = decoded.role || 'user';
       next();
-    } catch {
+    } catch (err: any) {
+      if (err instanceof AppError && err.statusCode === 403) {
+        return next(new Error(err.message));
+      }
       next(new Error('Invalid or expired token'));
     }
   });

@@ -68,12 +68,20 @@ export const useNotificationStore = create<NotificationState>((set) => ({
     try {
       await apiClient(`/api/notifications/${id}/read`, { method: 'PATCH' });
 
-      set((state) => ({
-        notifications: state.notifications.map((n) =>
-          n.id === id ? { ...n, isRead: true } : n
-        ),
-        unreadCount: Math.max(0, state.unreadCount - 1),
-      }));
+      set((state) => {
+        let wasUnread = false;
+        const notifications = state.notifications.map((n) => {
+          if (n.id === id) {
+            wasUnread = !n.isRead;
+            return { ...n, isRead: true };
+          }
+          return n;
+        });
+        return {
+          notifications,
+          unreadCount: wasUnread ? Math.max(0, state.unreadCount - 1) : state.unreadCount,
+        };
+      });
     } catch (err: any) {
       silentCatch('notificationStore.markAsRead', err);
       console.error('markAsRead failed:', err.message);

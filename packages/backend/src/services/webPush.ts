@@ -192,7 +192,11 @@ export class WebPushService {
     return result.rows[0];
   }
 
-  private async getSubscriptions(
+  isVapidConfigured(): boolean {
+    return vapidConfigured;
+  }
+
+  async getSubscriptions(
     userId: string
   ): Promise<WebPushSubscription[]> {
     const result = await this.pool.query(

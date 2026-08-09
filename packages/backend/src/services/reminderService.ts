@@ -103,10 +103,19 @@ export class ReminderService {
       if (sent > 0) {
         await this.markSent(reminder.id);
         return true;
-      } else {
+      }
+
+      // 0 sends means: quiet hours, push category disabled, no subscription,
+      // or VAPID unconfigured. Quiet hours / disabled prefs are temporary —
+      // keep the reminder pending so it fires when they end. Only a user with
+      // no subscription (or VAPID unconfigured) is a permanent miss, so mark
+      // that as failed instead of leaving an unretryable queue item.
+      const subscriptions = await this.pushService.getSubscriptions(reminder.user_id);
+      if (subscriptions.length === 0 || !this.pushService.isVapidConfigured()) {
         await this.markFailed(reminder.id);
         return false;
       }
+      return false;
     } catch (error) {
       logger.error(`Failed to process reminder ${reminder.id}`, { module: 'reminder', error: String(error) });
       await this.markFailed(reminder.id);

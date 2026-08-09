@@ -8,11 +8,18 @@ type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecti
 
 let roomActions: { join: (groupId: string) => void; leave: (groupId: string) => void } | null = null;
 
+// Rooms requested before the socket layer is ready (e.g. a route component
+// mounts before AppLayout's effect assigns roomActions, or before the socket
+// connects). Kept at module level so the effect drains them once wired up.
+const pendingRooms = new Set<string>();
+
 export function joinGroupRoom(groupId: string): void {
+  pendingRooms.add(groupId);
   roomActions?.join(groupId);
 }
 
 export function leaveGroupRoom(groupId: string): void {
+  pendingRooms.delete(groupId);
   roomActions?.leave(groupId);
 }
 
@@ -159,7 +166,11 @@ export function useWebSocket() {
       } else {
         socketRef.current.auth = { token: accessToken };
       }
+      for (const groupId of pendingRooms) {
+        roomActions.join(groupId);
+      }
     } else {
+      pendingRooms.clear();
       disconnect(true);
     }
     return () => {

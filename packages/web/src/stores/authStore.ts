@@ -326,6 +326,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           role: null,
           isAuthenticated: false,
           isLoading: false,
+          isInitialized: false,
           pekMissing: false,
           pekErrorMessage: null,
           error: null,

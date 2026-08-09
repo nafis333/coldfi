@@ -1,4 +1,4 @@
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 
 interface StatCardsProps {
   totalSpent: number;
@@ -69,7 +69,7 @@ export default function StatCards({
               {formatCurrency(biggestDay.amount, defaultCurrency)}
             </p>
             <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
-              {new Date(biggestDay.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {parseLocalDate(biggestDay.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
             </p>
           </>
         ) : (

@@ -89,6 +89,12 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
 
       if (expenses.length === 0 && budgets.length === 0) {
         await fetchPersonalBlob();
+        // fetchPersonalBlob swallows failures (sets store.error) — abort here
+        // so a transient failure cannot replace a good recap with zeros.
+        const fetchError = usePersonalStore.getState().error;
+        if (fetchError) {
+          throw new Error(fetchError);
+        }
       }
 
       const state = usePersonalStore.getState();

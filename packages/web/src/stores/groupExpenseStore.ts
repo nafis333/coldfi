@@ -11,8 +11,7 @@ import {
   GroupCategory,
   GroupSummary,
   migrateGroupBlob,
-} from '../lib/groupSync';
-import { decryptData, encryptData } from '../lib/crypto';
+} from '../lib/groupSync';import { decryptData, encryptData } from '../lib/crypto';
 import { SplitMode, GroupLogEventType } from '@coldfi/shared';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
@@ -298,7 +297,16 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       const cache: Record<string, { name: string; expenses: GroupExpenseData[]; currency: string }> = {};
 
       for (const g of groups) {
-        const gk = getGroupKey(g.id);
+        let gk = getGroupKey(g.id);
+        if (!gk) {
+          // Keys are cached per-visit; on a fresh login none exist yet.
+          // Fetch them so analytics/combined views aren't silently empty.
+          try {
+            gk = (await refreshGroupKey(g.id)) ?? undefined;
+          } catch (err) {
+            silentCatch('groupExpenseStore.fetchKey', err);
+          }
+        }
         if (!gk) continue;
 
         try {

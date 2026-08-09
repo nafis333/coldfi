@@ -1,4 +1,4 @@
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 
 interface RecapSectionListProps {
   groupTopExpenses: { groupName: string; description: string; amount: number; date: string }[];
@@ -36,7 +36,7 @@ export default function RecapSectionList({
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 text-xs font-bold text-amber-700 dark:text-amber-300">{i + 1}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 truncate">{e.description}</p>
-                    <p className="text-[11px] text-neutral-400">{e.groupName} · {new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                    <p className="text-[11px] text-neutral-400">{e.groupName} · {parseLocalDate(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
                   </div>
                 </div>
                 <span className="text-base font-bold text-amber-700 dark:text-amber-300 shrink-0 ml-3">{formatCurrency(e.amount, defaultCurrency)}</span>
@@ -62,7 +62,7 @@ export default function RecapSectionList({
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30 text-xs font-bold text-primary-700 dark:text-primary-300">{i + 1}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 truncate">{e.description}</p>
-                    <p className="text-[11px] text-neutral-400">{new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                    <p className="text-[11px] text-neutral-400">{parseLocalDate(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
                   </div>
                 </div>
                 <span className="text-base font-bold text-danger-600 dark:text-danger-400 shrink-0 ml-3">{formatCurrency(e.amount, defaultCurrency)}</span>

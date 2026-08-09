@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { buildPersonalLog, SplitMode, ExpenseStatus, PaymentMethod, formatCurrency } from '@coldfi/shared';
+import { buildPersonalLog, SplitMode, ExpenseStatus, PaymentMethod, formatCurrency, parseLocalDate } from '@coldfi/shared';
 import { useGroupStore } from '../../stores/groupStore';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -145,7 +145,7 @@ export default function PersonalLogTab() {
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-neutral-900 dark:text-white">{entry.description}</p>
-                  <p className="text-xs text-neutral-400">{new Date(entry.date).toLocaleDateString()}</p>
+                  <p className="text-xs text-neutral-400">{parseLocalDate(entry.date).toLocaleDateString()}</p>
                   {entry.counterparty && (
                     <p className="text-xs text-neutral-500 dark:text-neutral-400">{entry.counterparty}</p>
                   )}

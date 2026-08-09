@@ -81,13 +81,23 @@ export default function GroupOverviewTab() {
 
   const filteredExpenses = useMemo(() => {
     if (!currentGroup) return [];
-    const cutoff = rangeDays > 0 ? new Date(now - rangeDays * 86400000).toISOString() : null;
-    const customStartMs = customStart ? new Date(customStart).getTime() : 0;
-    const customEndMs = customEnd ? new Date(customEnd + 'T23:59:59').getTime() : Infinity;
+    const nowD = new Date(now);
+    const startOfToday = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
+    const cutoff = rangeDays > 0 ? startOfToday - rangeDays * 86400000 : null;
+    const customStartMs = customStart
+      ? (() => { const [y, m, d] = customStart.split('-').map(Number); return new Date(y, m - 1, d).getTime(); })()
+      : 0;
+    const customEndMs = customEnd
+      ? (() => { const [y, m, d] = customEnd.split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime(); })()
+      : Infinity;
 
     return (currentGroup.expenses || []).filter((e) => {
-      const d = new Date(e.date || e.createdAt).getTime();
-      if (cutoff && d < new Date(cutoff).getTime()) return false;
+      const dateStr = e.date || e.createdAt;
+      const parts = dateStr.split('-').map(Number);
+      const d = parts.length === 3 && parts.every((n) => !isNaN(n))
+        ? new Date(parts[0], parts[1] - 1, parts[2]).getTime()
+        : new Date(dateStr).getTime();
+      if (cutoff !== null && d < cutoff) return false;
       if (customStart && d < customStartMs) return false;
       if (customEnd && d > customEndMs) return false;
       return true;

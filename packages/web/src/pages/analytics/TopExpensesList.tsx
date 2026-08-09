@@ -1,4 +1,4 @@
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 
 interface TopExpensesListProps {
   topExpenses: {
@@ -34,7 +34,7 @@ export default function TopExpensesList({ topExpenses, categoryLookup, defaultCu
                   {expense.description}
                 </p>
                 <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                  {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {parseLocalDate(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   {cat && <span className="ml-1.5">· {cat.icon} {expense.categoryName}</span>}
                 </p>
               </div>

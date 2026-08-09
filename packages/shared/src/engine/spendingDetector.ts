@@ -1,4 +1,5 @@
 import type { PersonalExpense } from '../types/personal';
+import { parseLocalDate } from '../utils/dates';
 
 export interface SpendingAlert {
   categoryId: string;
@@ -25,7 +26,7 @@ function groupByCategory(
 ): Map<string, number> {
   const map = new Map<string, number>();
   for (const exp of expenses) {
-    const d = new Date(exp.date);
+    const d = parseLocalDate(exp.date);
     if (d >= start && d < end) {
       map.set(exp.categoryId, (map.get(exp.categoryId) ?? 0) + exp.amount);
     }

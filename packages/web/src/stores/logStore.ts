@@ -357,6 +357,10 @@ export const useLogStore = create<LogState>((set) => ({
           console.error('[logStore] Retry PUT failed:', retryPutRes.status);
           return;
         }
+        // The in-memory list must mirror the server chain: the retry re-linked
+        // the entry to the fresh tail, so append that entry — not the stale
+        // first-attempt one built from the old chain.
+        logs = mergedLogs;
       }
 
       set((state) => ({ logs: [...state.logs, logs[logs.length - 1]!] }));

@@ -424,7 +424,13 @@ export const useGroupStore = create<GroupState>((set) => ({
     // The server re-encrypts the blob with the rotated key; just refresh our local
     // key cache so the admin can keep decrypting group data immediately.
     if (result.newEncryptionKey) {
-      await cacheGroupKey(groupId, result.newEncryptionKey);
+      try {
+        await cacheGroupKey(groupId, result.newEncryptionKey);
+      } catch (err) {
+        // Removal already succeeded server-side; a key-cache hiccup must not
+        // surface as a failed removal.
+        silentCatch('groupStore.removeMember.cacheKey', err);
+      }
     }
 
     const rmActorId = useAuthStore.getState().userId || '';
@@ -611,6 +617,7 @@ export const useGroupStore = create<GroupState>((set) => ({
   addMemberFromSocket: (groupId: string, member: GroupMember) => {
     set((state) => {
       if (state.currentGroup?.id !== groupId) return state;
+      if (state.currentGroup.members.some((m) => m.userId === member.userId)) return state;
       return {
         currentGroup: {
           ...state.currentGroup,

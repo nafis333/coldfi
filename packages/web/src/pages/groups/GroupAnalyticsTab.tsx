@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { formatCurrency } from '@coldfi/shared';
+import { formatCurrency, parseLocalDate } from '@coldfi/shared';
 import { useAuthStore } from '../../stores/authStore';
 
 interface Member {
@@ -194,7 +194,7 @@ export default function GroupAnalyticsTab() {
                   }`}>{i + 1}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 truncate">{e.description}</p>
-                    <p className="text-xs text-neutral-400">{memberName(group.members, e.paidBy || e.payerId || '')} · {new Date(e.date || e.createdAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-neutral-400">{memberName(group.members, e.paidBy || e.payerId || '')} · {parseLocalDate(e.date || e.createdAt).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <span className="text-sm font-semibold text-danger-600 dark:text-danger-400 shrink-0">{formatCurrency(e.amount, defaultCurrency)}</span>
