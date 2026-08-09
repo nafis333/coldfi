@@ -26,7 +26,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: config.NODE_ENV !== 'test',
     ajv: { customOptions: { coerceTypes: 'array' } },
-    bodyLimit: 1048576,
+    bodyLimit: 10485760,
     trustProxy: true,
   });
 
