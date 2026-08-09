@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { silentCatch } from '../../lib/errorHandler';
-import { useAnalyticsStore } from '../../stores/analyticsStore';
+import { useAnalyticsStore, activeDaysInMonth } from '../../stores/analyticsStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '@coldfi/shared';
 import MonthlyRecapHeader from './MonthlyRecapHeader';
@@ -86,8 +86,7 @@ function aggregateRecaps(recapList: any[]): AggregatedRecap | null {
   const totalIncome = recapList.reduce((s, r) => s + r.totalIncome, 0);
   const expenseCount = recapList.reduce((s, r) => s + r.expenseCount, 0);
   const totalDays = recapList.reduce((s, r) => {
-    const [y, m] = r.month.split('-').map(Number);
-    return s + new Date(y, m, 0).getDate();
+    return s + activeDaysInMonth(r.month);
   }, 0);
 
   const catTotals: Record<string, { name: string; amount: number }> = {};

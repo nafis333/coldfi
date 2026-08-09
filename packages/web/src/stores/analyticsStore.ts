@@ -63,6 +63,19 @@ function monthBoundaries(month: string) {
   return { start, end, daysInMonth: new Date(Date.UTC(year, m, 0)).getUTCDate() };
 }
 
+// Days to divide daily-average math by: full month for past months, days
+// elapsed so far (including today) for the current month.
+export function activeDaysInMonth(month: string): number {
+  const { daysInMonth } = monthBoundaries(month);
+  const [year, m] = month.split('-').map(Number);
+  const now = new Date();
+  const currentIndex = now.getFullYear() * 12 + now.getMonth();
+  const monthIndex = year * 12 + (m - 1);
+  if (monthIndex === currentIndex) return Math.max(1, now.getDate());
+  if (monthIndex < currentIndex) return daysInMonth;
+  return daysInMonth;
+}
+
 export const useAnalyticsStore = create<AnalyticsState>((set) => ({
   recaps: [],
   isLoading: false,
@@ -85,8 +98,6 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       const allIncomeLogs = state.incomeLogs || [];
       const defaultCurrency = useAuthStore.getState().defaultCurrency || 'BDT';
 
-      const { daysInMonth } = monthBoundaries(month);
-
       const monthExpenses = allExpenses.filter((e) => {
         const d = parseLocalDate(e.date);
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -108,7 +119,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
       const totalIncome = defaultMonthIncome.reduce((sum, i) => sum + i.amount, 0);
       const netSavings = totalIncome - totalSpent;
       const expenseCount = defaultMonthExpenses.length;
-      const dailyAverage = daysInMonth > 0 ? totalSpent / daysInMonth : 0;
+      const dailyAverage = activeDaysInMonth(month) > 0 ? totalSpent / activeDaysInMonth(month) : 0;
       const averageTransaction = expenseCount > 0 ? totalSpent / expenseCount : 0;
 
       // Top spending day of the month
