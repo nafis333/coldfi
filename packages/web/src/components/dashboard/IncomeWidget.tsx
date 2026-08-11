@@ -47,7 +47,10 @@ export default function IncomeWidget({ data }: { data: OverviewData }) {
   return (
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-700/50">
-        <h3 className="section-title">Income</h3>
+        <div>
+          <h3 className="section-title">Income</h3>
+          <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5">Earnings are for reference only — they don't affect budgets or balances</p>
+        </div>
         <button
           onClick={() => setShowForm(!showForm)}
           className="btn-secondary text-xs px-3 py-1.5"

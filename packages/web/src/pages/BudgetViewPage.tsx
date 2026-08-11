@@ -51,8 +51,19 @@ export default function BudgetViewPage() {
     });
   }, [budgetStatuses, budgets, defaultCurrency]);
 
-  const totalBudgeted = useMemo(() => defaultCurrencyBudgetStatuses.reduce((s, b) => s + b.budgetAmount, 0), [defaultCurrencyBudgetStatuses]);
-  const totalSpent = useMemo(() => defaultCurrencyBudgetStatuses.reduce((s, b) => s + b.spent, 0), [defaultCurrencyBudgetStatuses]);
+  // An "all categories" budget already covers everything — when one exists
+  // it IS the overview; summing per-category budgets on top double counts.
+  const overviewStatuses = useMemo(() => {
+    const allIds = new Set(defaultCurrencyBudgetStatuses.filter((bs) => {
+      const b = budgets.find((x) => x.id === bs.budgetId);
+      return !!b && (b.categoryId === '__all__');
+    }).map((bs) => bs.budgetId));
+    if (allIds.size === 0) return defaultCurrencyBudgetStatuses;
+    return defaultCurrencyBudgetStatuses.filter((bs) => allIds.has(bs.budgetId));
+  }, [defaultCurrencyBudgetStatuses, budgets]);
+
+  const totalBudgeted = useMemo(() => overviewStatuses.reduce((s, b) => s + b.budgetAmount, 0), [overviewStatuses]);
+  const totalSpent = useMemo(() => overviewStatuses.reduce((s, b) => s + b.spent, 0), [overviewStatuses]);
   const overallPercent = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
 
   const categoryBreakdown = useMemo(() => {
@@ -109,7 +120,9 @@ export default function BudgetViewPage() {
             <button onClick={() => setShowForm(true)} className="btn-secondary mt-4">Create Budget</button>
           </div>
         ) : defaultCurrencyBudgetStatuses.map((status) => {
-          const cat = categoryMap[status.categoryId];
+          const cat = status.categoryId === '__all__'
+            ? { name: 'All Categories', icon: '📊', color: '#6366f1' }
+            : categoryMap[status.categoryId];
           const budget = budgets.find((b) => b.id === status.budgetId);
           const si = getStatusLabel(status.percentUsed);
           return (

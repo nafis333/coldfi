@@ -14,6 +14,7 @@ interface Preferences {
   member_left: boolean;
   balance_adjusted: boolean;
   reminders: boolean;
+  budget_alert: boolean;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
   quiet_hours_enabled: boolean;
@@ -31,6 +32,7 @@ const DEFAULT_PREFS: Preferences = {
   member_left: true,
   balance_adjusted: true,
   reminders: true,
+  budget_alert: true,
   quiet_hours_start: null,
   quiet_hours_end: null,
   quiet_hours_enabled: false,
@@ -133,6 +135,7 @@ export default function NotificationPreferencesSettings() {
             <ToggleRow label="Member left" checked={prefs.member_left} onChange={() => toggle('member_left')} />
             <ToggleRow label="Balance adjusted" checked={prefs.balance_adjusted} onChange={() => toggle('balance_adjusted')} />
             <ToggleRow label="Reminders" checked={prefs.reminders} onChange={() => toggle('reminders')} />
+            <ToggleRow label="Budget alerts" desc="When a budget crosses its alert threshold or goes over" checked={prefs.budget_alert} onChange={() => toggle('budget_alert')} />
           </div>
         </div>
 

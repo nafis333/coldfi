@@ -59,7 +59,9 @@ export default function BudgetHealthWidget({ data }: { data: OverviewData }) {
           {budgetStatuses.length > 0 && (
             <div className="mt-4 space-y-2.5">
               {budgetStatuses.slice(0, 4).map((status: BudgetStatusResult) => {
-                const cat = categoryMap[status.categoryId];
+                const cat = status.categoryId === '__all__'
+                  ? { name: 'All Categories', icon: '📊' }
+                  : categoryMap[status.categoryId];
                 return (
                   <div key={status.budgetId}>
                     <div className="mb-1 flex items-center justify-between">

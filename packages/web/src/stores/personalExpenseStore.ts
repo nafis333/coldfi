@@ -2,7 +2,16 @@ import { create } from 'zustand';
 import { usePersonalStore } from './personalStore';
 import { useAuthStore } from './authStore';
 import { PersonalBlob, Expense, generateId } from '../lib/personalSync';
+import { fireBudgetAlerts } from '../lib/budgetAlerts';
 import { onLogout } from '../lib/resetStores';
+
+async function checkBudgetAlertsAfterSave(prevStatuses: any[]): Promise<void> {
+  const personal = usePersonalStore.getState();
+  if (personal.budgetStatuses.length === 0) return;
+  const names: Record<string, string> = {};
+  for (const c of personal.categories) names[c.id] = c.name;
+  await fireBudgetAlerts(personal.budgets, names, prevStatuses, personal.budgetStatuses);
+}
 
 interface PersonalExpenseState {
   isLoading: boolean;
@@ -56,7 +65,9 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     };
 
     try {
+      const prevStatuses = usePersonalStore.getState().budgetStatuses;
       await savePersonalBlob(updated);
+      await checkBudgetAlertsAfterSave(prevStatuses);
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to add expense' });
       throw err;
@@ -82,7 +93,9 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     };
 
     try {
+      const prevStatuses = usePersonalStore.getState().budgetStatuses;
       await savePersonalBlob(updated);
+      await checkBudgetAlertsAfterSave(prevStatuses);
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to update expense' });
       throw err;

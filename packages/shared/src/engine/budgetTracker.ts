@@ -15,12 +15,20 @@ export interface BudgetStatusResult {
   projectedStatus: BudgetStatus;
 }
 
+// Reserved category id: a budget for ALL categories (covers every expense in
+// its period/currency, not just one category).
+export const ALL_CATEGORIES_BUDGET_ID = '__all__';
+
+export function isAllCategoriesBudget(categoryId: string): boolean {
+  return categoryId === ALL_CATEGORIES_BUDGET_ID;
+}
+
 export function computeBudgetStatus(
   budget: PersonalBudget,
   expenses: PersonalExpense[]
 ): BudgetStatusResult {
   const periodExpenses = expenses.filter((e) => {
-    if (e.categoryId !== budget.categoryId) return false;
+    if (!isAllCategoriesBudget(budget.categoryId) && e.categoryId !== budget.categoryId) return false;
     if (e.currency !== budget.currency) return false;
     // Date-only strings must be compared by local calendar day; the end day is inclusive.
     const expenseDate = parseLocalDate(e.date);
@@ -100,7 +108,12 @@ export function computeBudgetSummary(
   let budgetsOverBudget = 0;
   let budgetsOnTrack = 0;
 
+  // An "all categories" budget already covers every expense — summing the
+  // per-category budgets on top would double count.
+  const hasAllBudget = budgets.some((b) => isAllCategoriesBudget(b.categoryId));
+
   for (const budget of budgets) {
+    if (hasAllBudget && !isAllCategoriesBudget(budget.categoryId)) continue;
     const status = computeBudgetStatus(budget, expenses);
     totalBudgeted += budget.amount;
     totalSpent += status.spent;

@@ -87,6 +87,30 @@ describe('computeBudgetStatus', () => {
     const result = computeBudgetStatus(budget, expenses);
     expect(result.spent).toBe(100);
   });
+
+  it('all-categories budget counts every category (__all__)', () => {
+    const expenses = [
+      makeExpense({ amount: 60, categoryId: 'cat-food' }),
+      makeExpense({ id: 'exp-2', amount: 40, categoryId: 'cat-transport' }),
+      makeExpense({ id: 'exp-3', amount: 500, categoryId: 'cat-food', date: '2024-05-15' }),
+    ];
+    const budget = makeBudget({ categoryId: '__all__', amount: 200 });
+    const result = computeBudgetStatus(budget, expenses);
+    expect(result.spent).toBe(100);
+    expect(result.remaining).toBe(100);
+    expect(result.status).toBe('green');
+  });
+
+  it('all-categories budget goes red when total spending passes it', () => {
+    const expenses = [
+      makeExpense({ amount: 150, categoryId: 'cat-food' }),
+      makeExpense({ id: 'exp-2', amount: 100, categoryId: 'cat-transport' }),
+    ];
+    const budget = makeBudget({ categoryId: '__all__', amount: 200 });
+    const result = computeBudgetStatus(budget, expenses);
+    expect(result.spent).toBe(250);
+    expect(result.status).toBe('red');
+  });
 });
 
 describe('computeBudgetSummary', () => {
@@ -112,5 +136,20 @@ describe('computeBudgetSummary', () => {
     expect(summary.totalSpent).toBe(0);
     expect(summary.budgetsOverBudget).toBe(0);
     expect(summary.budgetsOnTrack).toBe(0);
+  });
+
+  it('all-categories budget alone counts toward summary totals', () => {
+    const budgets = [
+      makeBudget({ categoryId: '__all__', amount: 500 }),
+      makeBudget({ id: 'b2', categoryId: 'cat-food', amount: 200 }),
+    ];
+    const expenses = [
+      makeExpense({ amount: 150, categoryId: 'cat-food' }),
+      makeExpense({ id: 'e2', amount: 80, categoryId: 'cat-transport' }),
+    ];
+    const summary = computeBudgetSummary(budgets, expenses);
+    // Per-category budgets are not double counted when __all__ exists.
+    expect(summary.totalBudgeted).toBe(500);
+    expect(summary.totalSpent).toBe(230);
   });
 });

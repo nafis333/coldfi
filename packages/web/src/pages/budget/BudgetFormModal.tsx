@@ -20,6 +20,7 @@ interface Category {
 }
 
 const DEFAULT_CATEGORIES: Category[] = [
+  { id: '__all__', name: 'All Categories', icon: '📊', color: '#6366f1' },
   { id: 'food_drink', name: 'Food & Drink', icon: '🍕', color: '#ef4444' },
   { id: 'transport', name: 'Transport', icon: '🚗', color: '#f97316' },
   { id: 'accommodation', name: 'Accommodation', icon: '🏠', color: '#eab308' },

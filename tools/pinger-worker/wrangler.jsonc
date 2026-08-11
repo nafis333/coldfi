@@ -1,0 +1,9 @@
+{
+  "name": "coldfi-keepalive",
+  "main": "src/index.js",
+  "compatibility_date": "2025-12-01",
+  "cron": ["*/5 * * * *"],
+  "vars": {
+    "BACKEND_URL": "https://coldfi.onrender.com/health/live"
+  }
+}

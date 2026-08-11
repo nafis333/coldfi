@@ -8,6 +8,45 @@ import { resetSessionExpired } from '../lib/apiClient';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
+function isNetworkError(msg: string): boolean {
+  return msg === 'Failed to fetch' || msg.includes('NetworkError') || msg.includes('ERR_INTERNET_DISCONNECTED');
+}
+
+// Auth endpoints are raw fetches (no token to refresh), and the backend
+// sleeps on free tiers — a first request during cold boot can fail at the
+// network layer. Retrying only NETWORK-level failures is safe: the request
+// never reached a server, so nothing was double-executed. HTTP responses
+// (401/423/429/500...) are returned as-is.
+async function authFetch(url: string, init: RequestInit): Promise<Response> {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      return res;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!isNetworkError(msg)) throw err;
+      if (attempt < 2) await sleep(8000 * (attempt + 1));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Failed to fetch');
+}
+
+async function restorePekFromRawPek(rawPek: string | undefined, email: string | undefined, isGoogleUser: boolean): Promise<CryptoKey | null> {
+  if (!rawPek) return null;
+  try {
+    const pekBytes = base64ToUint8Array(rawPek);
+    const pek = await importKey(pekBytes);
+    storePekBytes(pekBytes);
+    return pek;
+  } catch (err) {
+    silentCatch('authStore.restorePekFromRawPek', err);
+    return null;
+  }
+}
+
 interface AuthState {
   userId: string | null;
   email: string | null;
@@ -68,7 +107,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       try {
         const authKeyHash = await computeAuthKeyHash(passphrase, email);
-        const res = await fetch(`${API_BASE}/api/auth/login`, {
+        const res = await authFetch(`${API_BASE}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -94,8 +133,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           throw new Error('2FA_REQUIRED');
         }
 
-        const { accessToken, userId, displayName, personalSalt, encryptedPek, role } = data;
-        const pek = await deriveAndStorePek(passphrase, personalSalt, encryptedPek);
+        const { accessToken, userId, displayName, personalSalt, encryptedPek, role, rawPek } = data;
+        let pek: CryptoKey | null = null;
+        try {
+          pek = await deriveAndStorePek(passphrase, personalSalt, encryptedPek);
+        } catch (err) {
+          // The server already verified the password (authKeyHash) before
+          // returning this payload, so falling back to the server-kept raw
+          // PEK is safe and lets legacy/corrupt encrypted_pek accounts in.
+          silentCatch('authStore.login.deriveFallback', err);
+          pek = await restorePekFromRawPek(rawPek, email, false);
+          if (!pek) throw err;
+        }
         saveAuthToStorage({ accessToken, userId, email, displayName, role: role || 'user', isGoogleUser: false, personalSalt, encryptedPek });
 
         set({
@@ -118,7 +167,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         resetSessionExpired();
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Login failed';
-        if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        if (isNetworkError(msg)) {
           triggerCriticalError(error, `${API_BASE}/api/auth/login`);
         }
         if (msg !== '2FA_REQUIRED') {
@@ -132,7 +181,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/google`, {
+      const res = await authFetch(`${API_BASE}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -191,7 +240,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return recoveryCode ? String(recoveryCode) : null;
     } catch (error) {
         const msg = error instanceof Error ? error.message : 'Google login failed';
-        if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        if (isNetworkError(msg)) {
           triggerCriticalError(error, `${API_BASE}/api/auth/google`);
         }
         if (msg !== '2FA_REQUIRED') {
@@ -208,7 +257,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { tempToken, email, personalSalt } = get();
       if (!tempToken) throw new Error('No 2FA session. Please log in again.');
 
-      const res = await fetch(`${API_BASE}/api/auth/2fa/verify`, {
+      const res = await authFetch(`${API_BASE}/api/auth/2fa/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -251,7 +300,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       broadcastLogin(userId);
     } catch (error) {
         const msg = error instanceof Error ? error.message : '2FA verification failed';
-        if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        if (isNetworkError(msg)) {
           triggerCriticalError(error, `${API_BASE}/api/auth/2fa/verify`);
         }
         set({ isLoading: false, isInitialized: true, error: msg });
@@ -270,7 +319,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const wrappingKey = await deriveWrappingKey(passphrase, personalSalt);
       const encryptedPek = await encryptPEK(pekBytes, wrappingKey);
 
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
+      const res = await authFetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -307,7 +356,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return recoveryCode as string | undefined;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Registration failed';
-      if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+      if (isNetworkError(msg)) {
         triggerCriticalError(error, `${API_BASE}/api/auth/register`);
       }
       set({ isLoading: false, isInitialized: true, error: msg });

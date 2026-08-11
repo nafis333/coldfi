@@ -60,8 +60,19 @@ export function useOverview(): OverviewData {
     });
   }, [budgetStatuses, budgets, defaultCurrency]);
 
-  const totalBudget = useMemo(() => matchingBudgetStatuses.reduce((s, b) => s + b.budgetAmount, 0), [matchingBudgetStatuses]);
-  const totalBudgetedSpent = useMemo(() => matchingBudgetStatuses.reduce((s, b) => s + b.spent, 0), [matchingBudgetStatuses]);
+  // An "all categories" budget covers every expense — when one exists it is
+  // the only budget that counts toward the overall totals.
+  const overviewStatuses = useMemo(() => {
+    const allIds = new Set(matchingBudgetStatuses.filter((bs) => {
+      const b = budgets.find((x: any) => x.id === bs.budgetId);
+      return !!b && b.categoryId === '__all__';
+    }).map((bs) => bs.budgetId));
+    if (allIds.size === 0) return matchingBudgetStatuses;
+    return matchingBudgetStatuses.filter((bs) => allIds.has(bs.budgetId));
+  }, [matchingBudgetStatuses, budgets]);
+
+  const totalBudget = useMemo(() => overviewStatuses.reduce((s, b) => s + b.budgetAmount, 0), [overviewStatuses]);
+  const totalBudgetedSpent = useMemo(() => overviewStatuses.reduce((s, b) => s + b.spent, 0), [overviewStatuses]);
   const budgetPercent = totalBudget > 0 ? (totalBudgetedSpent / totalBudget) * 100 : 0;
   const remaining = totalBudget - totalBudgetedSpent;
 

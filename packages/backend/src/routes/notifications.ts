@@ -27,6 +27,7 @@ const VALID_PREFERENCE_KEYS = [
   'member_left',
   'balance_adjusted',
   'reminders',
+  'budget_alert',
   'quiet_hours_start',
   'quiet_hours_end',
   'quiet_hours_enabled',
@@ -112,6 +113,8 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
           groupId: { type: 'string' },
           expenseId: { type: 'string' },
           settlementId: { type: 'string' },
+          push: { type: 'boolean' },
+          pushCategory: { type: 'string' },
           recipientIds: {
             type: 'array',
             items: { type: 'string' },
@@ -122,7 +125,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user.userId;
-    const { type, title, body, groupId, expenseId, settlementId, recipientIds } = request.body as any;
+    const { type, title, body, groupId, expenseId, settlementId, recipientIds, push, pushCategory } = request.body as any;
 
       if (groupId) {
         const senderResult = await query(
@@ -166,6 +169,21 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
       await createNotificationForMultipleUsers(recipientIds, { type, title, body, groupId, expenseId, settlementId });
     } else {
       await createNotification({ userId, type, title, body, groupId, expenseId, settlementId });
+      if (push === true) {
+        // Self-notifications can also trigger a browser push (e.g. budget
+        // threshold alerts). Failures must never break the notification itself.
+        try {
+          await pushService.sendWebPush({
+            userId,
+            title,
+            body: body || title,
+            data: { type },
+            category: typeof pushCategory === 'string' ? pushCategory : 'budget_alert',
+          });
+        } catch (err) {
+          request.log.error(err, 'Failed to send web push for notification');
+        }
+      }
     }
     return reply.status(201).send({ success: true });
   });
@@ -265,6 +283,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
           member_left: true,
           balance_adjusted: true,
           reminders: true,
+          budget_alert: true,
           quiet_hours_start: null,
           quiet_hours_end: null,
           quiet_hours_enabled: false,
@@ -296,6 +315,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
           member_left: { type: 'boolean' },
           balance_adjusted: { type: 'boolean' },
           reminders: { type: 'boolean' },
+          budget_alert: { type: 'boolean' },
           quiet_hours_start: { type: 'string' },
           quiet_hours_end: { type: 'string' },
           quiet_hours_enabled: { type: 'boolean' },

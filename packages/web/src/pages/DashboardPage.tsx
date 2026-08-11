@@ -9,6 +9,7 @@ import QuickActions from '../components/dashboard/QuickActions';
 import OverviewCards from '../components/dashboard/OverviewCards';
 import SpendingTrendChart from '../components/dashboard/SpendingTrendChart';
 import BudgetHealthWidget from '../components/dashboard/BudgetHealthWidget';
+import CategoryDetailWidget from '../components/dashboard/CategoryDetailWidget';
 import IncomeWidget from '../components/dashboard/IncomeWidget';
 import SavingsTargetsWidget from '../components/dashboard/SavingsTargetsWidget';
 
@@ -93,6 +94,8 @@ export default function DashboardPage() {
         <SpendingTrendChart data={data} />
         <BudgetHealthWidget data={data} />
       </div>
+
+      <CategoryDetailWidget />
 
       <div className="grid gap-6 sm:grid-cols-2">
         <IncomeWidget data={data} />

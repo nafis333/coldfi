@@ -53,6 +53,7 @@ export interface NotificationPreferences {
   member_left: boolean;
   balance_adjusted: boolean;
   reminders: boolean;
+  budget_alert: boolean;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
   quiet_hours_enabled: boolean;

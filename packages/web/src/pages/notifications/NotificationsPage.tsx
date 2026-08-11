@@ -6,7 +6,9 @@ import { useNotificationStore } from '../../stores/notificationStore';
 type NotificationType =
   | 'expense_added' | 'expense_updated'
   | 'settlement_proposed' | 'settlement_confirmed' | 'settlement_rejected'
-  | 'group_invite' | 'member_joined' | 'member_left' | 'general';
+  | 'group_invite' | 'member_joined' | 'member_left'
+  | 'budget_threshold' | 'budget_exceeded'
+  | 'general';
 
 interface Notification {
   id: string;
@@ -29,8 +31,12 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   group_invite: 'Mail',
   member_joined: 'Wave',
   member_left: 'Exit',
+  budget_threshold: '⚠️',
+  budget_exceeded: '🚨',
   general: 'N',
 };
+
+const BUDGET_ALERT_TYPES = new Set<NotificationType>(['budget_threshold', 'budget_exceeded']);
 
 function timeAgo(timestamp: string): string {
   const diffMs = Date.now() - new Date(timestamp).getTime();
@@ -54,19 +60,29 @@ function NotificationCard({
   onMarkRead: () => void;
 }) {
   const icon = NOTIFICATION_ICONS[notification.type] ?? 'N';
+  const isBudgetAlert = BUDGET_ALERT_TYPES.has(notification.type);
+  const alertStyle = isBudgetAlert
+    ? notification.type === 'budget_exceeded'
+      ? 'border-danger-400/80 dark:border-danger-700/70 bg-danger-50/70 dark:bg-danger-900/20 shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_4px_14px_rgba(239,68,68,0.15)]'
+      : 'border-warning-400/80 dark:border-warning-700/70 bg-warning-50/70 dark:bg-warning-900/20 shadow-[0_0_0_1px_rgba(245,158,11,0.25),0_4px_14px_rgba(245,158,11,0.15)]'
+    : null;
 
   return (
     <button
       onClick={onPress}
       className={`flex w-full items-start gap-3 sm:gap-4 rounded-2xl border p-4 text-left transition-all duration-200 ${
-        !notification.isRead
+        alertStyle
+        ?? (!notification.isRead
           ? 'border-primary-200/80 dark:border-primary-800/50 bg-primary-50/60 dark:bg-primary-900/15 shadow-sm'
-          : 'border-neutral-200/80 dark:border-neutral-700/60 bg-white dark:bg-neutral-800/80 hover:bg-neutral-50 dark:hover:bg-neutral-700/30 hover:shadow-sm'
+          : 'border-neutral-200/80 dark:border-neutral-700/60 bg-white dark:bg-neutral-800/80 hover:bg-neutral-50 dark:hover:bg-neutral-700/30 hover:shadow-sm')
       }`}
     >
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-700/60">
+      <div className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isBudgetAlert ? 'bg-white/80 dark:bg-neutral-800/80 text-base' : 'bg-neutral-100 dark:bg-neutral-700/60'}`}>
         <span className="text-base">{icon}</span>
-        {!notification.isRead && (
+        {isBudgetAlert && !notification.isRead && (
+          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger-500 text-[9px] font-bold text-white">!</span>
+        )}
+        {!notification.isRead && !isBudgetAlert && (
           <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white dark:border-neutral-800 bg-primary-600" />
         )}
       </div>
