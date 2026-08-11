@@ -1,0 +1,25 @@
+name: Keep Backend Awake (offset)
+
+on:
+  schedule:
+    - cron: "*/16 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep backend alive
+        run: |
+          url="${{ secrets.BACKEND_URL }}/health/live"
+          for i in 1 2 3 4 5 6; do
+            if curl -sf --max-time 20 "$url"; then
+              echo "Backend is awake (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i failed, waiting for cold boot... (sleep 10)"
+            sleep 10
+          done
+          echo "Backend unreachable after 6 attempts"
+          exit 1

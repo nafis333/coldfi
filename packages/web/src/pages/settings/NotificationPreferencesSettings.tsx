@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { silentCatch } from '../../lib/errorHandler';
 import { apiClient } from '../../lib/apiClient';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 interface Preferences {
   push_enabled: boolean;
@@ -44,6 +45,7 @@ export default function NotificationPreferencesSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { enabled: browserPushEnabled, loading: browserPushLoading, enable: enableBrowserPush } = usePushNotifications();
 
   useEffect(() => {
     (async () => {
@@ -121,6 +123,17 @@ export default function NotificationPreferencesSettings() {
 
       <div className="mb-6 space-y-4">
         <ToggleRow label="Push notifications" desc="Receive push notifications on this device" checked={prefs.push_enabled} onChange={() => toggle('push_enabled')} />
+
+        <ToggleRow
+          label="Browser notifications"
+          desc="Get notifications in your browser even when this tab is closed (requires HTTPS)"
+          checked={browserPushEnabled}
+          onChange={enableBrowserPush}
+        />
+        {browserPushLoading && <p className="text-xs text-neutral-500 dark:text-neutral-400">Enabling browser notifications…</p>}
+        {typeof Notification !== 'undefined' && Notification.permission === 'denied' && (
+          <p className="text-xs text-danger-600">Notifications are blocked for this browser. Allow them in your browser settings to enable push notifications.</p>
+        )}
 
         <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4">
           <h3 className="mb-2 text-sm font-semibold text-neutral-800 dark:text-neutral-200">Events</h3>
