@@ -10,6 +10,31 @@ export function resetSessionExpired(): void {
   sessionExpired = false;
 }
 
+// Render free-tier instances sleep after ~15 min idle and cold-boot in 30-60s,
+// during which fetch() fails with a network TypeError. Retry idempotent
+// requests with backoff so a cold start is transparent instead of surfacing
+// as "Failed to fetch". POST is excluded — a retried POST could double-execute.
+const RETRYABLE_METHODS = new Set(['GET', 'PUT', 'PATCH', 'DELETE']);
+
+async function fetchWithRetry(fullUrl: string, init: RequestInit): Promise<Response> {
+  const method = (init.method || 'GET').toUpperCase();
+  if (!RETRYABLE_METHODS.has(method)) {
+    return fetch(fullUrl, init);
+  }
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    try {
+      return await fetch(fullUrl, init);
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 15000 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 export async function apiClient(url: string, options: RequestInit = {}): Promise<Response> {
   const { accessToken } = useAuthStore.getState();
   const headers = new Headers(options.headers);
@@ -21,7 +46,7 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
 
   let res: Response;
   try {
-    res = await fetch(fullUrl, {
+    res = await fetchWithRetry(fullUrl, {
       ...options,
       headers,
       credentials: 'include',

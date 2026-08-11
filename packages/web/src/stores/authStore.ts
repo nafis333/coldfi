@@ -471,7 +471,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             });
           } catch (err) {
             lastError = err instanceof Error ? err : new Error(String(err));
-            if (attempt < MAX_ATTEMPTS) { await sleep(800 * attempt); continue; }
+            if (attempt < MAX_ATTEMPTS) { await sleep(15000 * attempt); continue; }
             break;
           }
 
