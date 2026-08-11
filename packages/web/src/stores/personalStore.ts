@@ -187,8 +187,16 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
 
   addCategory: async (category) => {
     const previous = get();
-    const prevBlob = previous.personalBlob;
-    const current = prevBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
+    let prevBlob = previous.personalBlob;
+    if (!prevBlob) {
+      await get().fetchPersonalBlob();
+      prevBlob = get().personalBlob;
+      // Fail closed: saving an empty blob would silently wipe all prior data.
+      if (!prevBlob) {
+        throw new Error(get().error || 'Could not load your data. Check your connection and try again.');
+      }
+    }
+    const current = prevBlob;
 
     const { generateId } = await import('../lib/personalSync');
     const newCategory: Category = {

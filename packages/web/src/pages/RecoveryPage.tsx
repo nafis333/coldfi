@@ -21,6 +21,7 @@ export default function RecoveryPage() {
   const [step, setStep] = useState<'code' | 'password' | 'done' | 'error'>('code');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [newRecoveryCode, setNewRecoveryCode] = useState('');
   const rawPekRef = useRef<Uint8Array | null>(null);
   const [tempToken, setTempToken] = useState('');
 
@@ -95,6 +96,11 @@ export default function RecoveryPage() {
         throw new Error(data.message || 'Failed to complete recovery');
       }
 
+      const data = await res.json();
+      if (data.newRecoveryCode) {
+        setNewRecoveryCode(String(data.newRecoveryCode));
+      }
+
       const pek = await importKey(pekBytes);
       storage().setItem(PEK_STORAGE_KEY, uint8ArrayToBase64(pekBytes));
       zeroBytes(pekBytes);
@@ -119,6 +125,17 @@ export default function RecoveryPage() {
           </div>
           <h2 className="text-xl font-bold text-neutral-900 dark:text-white">Recovery Complete</h2>
           <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">Your password has been reset. All your data is preserved.</p>
+          {newRecoveryCode && (
+            <div className="mt-4 rounded-lg border border-warning-200 dark:border-warning-700 bg-warning-50 dark:bg-warning-900/20 p-4 text-left">
+              <p className="text-sm font-semibold text-warning-700 dark:text-warning-300">
+                Your new recovery code (old one no longer works):
+              </p>
+              <code className="mt-2 block break-all rounded bg-neutral-100 dark:bg-neutral-800 px-3 py-2 font-mono text-sm select-all">
+                {newRecoveryCode}
+              </code>
+              <p className="mt-2 text-xs text-warning-600 dark:text-warning-400">Save it somewhere safe. It will not be shown again.</p>
+            </div>
+          )}
           <button onClick={() => navigate('/login', { replace: true })} className="btn-primary mt-6 w-full">
             Sign in with new password
           </button>

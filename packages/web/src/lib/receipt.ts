@@ -1,5 +1,3 @@
-import { apiClient } from './apiClient';
-
 const MAX_FILE_SIZE = 2.5 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
@@ -20,7 +18,7 @@ export function validateReceiptFile(file: File): ReceiptValidationError | null {
   if (file.size > MAX_FILE_SIZE) {
     return {
       code: 'TOO_LARGE',
-      message: `File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB.`,
+      message: `File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 2.5MB.`,
     };
   }
 
@@ -61,32 +59,4 @@ export function readReceiptFile(file: File): Promise<ReceiptFile> {
     };
     reader.readAsDataURL(file);
   });
-}
-
-export async function uploadReceiptToServer(
-  file: ReceiptFile,
-  expenseId: string
-): Promise<string> {
-  const formData = new FormData();
-  const base64Data = file.base64.split(',')[1] ?? file.base64;
-  const byteString = atob(base64Data);
-  const bytes = new Uint8Array(byteString.length);
-  for (let i = 0; i < byteString.length; i++) {
-    bytes[i] = byteString.charCodeAt(i);
-  }
-  const blob = new Blob([bytes], { type: file.type });
-  formData.append('receipt', blob, file.name);
-  formData.append('expenseId', expenseId);
-
-  const res = await apiClient('/api/receipts/upload', {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!res.ok) {
-    throw new Error(`Upload failed: ${res.status}`);
-  }
-
-  const data = await res.json();
-  return data.receiptUrl;
 }

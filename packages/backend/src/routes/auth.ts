@@ -7,7 +7,7 @@ import {
   googleLogin,
   updateProfile,
 } from '../services/authService';
-import { encryptServerKey } from '../services/cryptoUtils';
+import { encryptServerKey, generateRecoveryCode, hashRecoveryCode } from '../services/cryptoUtils';
 import {
   generateTokens,
   refreshAccessToken,
@@ -201,6 +201,16 @@ export async function authRoutes(app: FastifyInstance) {
     try {
       const result = await googleLogin(idToken);
 
+      if (result.requires2FA) {
+        return reply.send({
+          requires2FA: true,
+          tempToken: result.tempToken,
+          userId: result.userId,
+          personalSalt: result.personalSalt,
+          encryptedPek: result.encryptedPek,
+        });
+      }
+
       setRefreshCookie(reply, result.refreshToken);
 
       return reply.send({
@@ -383,11 +393,15 @@ export async function authRoutes(app: FastifyInstance) {
 
       const hashedAuthKey = await bcrypt.hash(authKeyHash, SALT_ROUNDS);
       const serverEncryptedPek = encryptServerKey(data.rawPek);
+      // The recovery code is a permanent account-takeover credential — rotate
+      // it on every successful reset so the old code dies with the old password.
+      const newRecoveryCode = generateRecoveryCode();
+      const newRecoveryCodeHash = hashRecoveryCode(newRecoveryCode);
 
       await transaction(async (client) => {
         await client.query(
-          `UPDATE users SET auth_key_hash = $1, personal_salt = $2, encrypted_pek = $3, server_encrypted_pek = $4, updated_at = NOW() WHERE id = $5`,
-          [hashedAuthKey, personalSalt, encryptedPek, serverEncryptedPek, data.userId]
+          `UPDATE users SET auth_key_hash = $1, personal_salt = $2, encrypted_pek = $3, server_encrypted_pek = $4, recovery_code_hash = $5, updated_at = NOW() WHERE id = $6`,
+          [hashedAuthKey, personalSalt, encryptedPek, serverEncryptedPek, newRecoveryCodeHash, data.userId]
         );
 
         await client.query(
@@ -397,7 +411,7 @@ export async function authRoutes(app: FastifyInstance) {
       });
 
       await deleteTempToken('recover', tempToken);
-      return reply.send({ success: true });
+      return reply.send({ success: true, newRecoveryCode });
     } catch (err: any) {
       request.log.error({ err }, 'POST /recover/complete failed');
       return reply.status(500).send({ error: 'ERR_INTERNAL', message: 'Failed to complete account recovery.' });

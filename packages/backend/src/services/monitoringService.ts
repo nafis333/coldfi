@@ -88,12 +88,12 @@ export async function getAggregateStats(): Promise<AggregateStats> {
     query<{ count: number }>("SELECT COUNT(DISTINCT user_id) as count FROM user_activity_log WHERE action = 'login_success' AND created_at > NOW() - INTERVAL '90 days'"),
     query<{ count: number }>("SELECT COUNT(*) as count FROM users WHERE created_at > CURRENT_DATE"),
     query<{ count: number }>("SELECT COUNT(*) as count FROM users WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE"),
-    query<{ sum: number | null }>('SELECT SUM(octet_length(personal_data_enc)) as sum FROM users'),
+    query<{ sum: number | null }>('SELECT COALESCE(SUM(octet_length(encrypted_blob)), 0) as sum FROM personal_data'),
     query<{ id: string; name: string; member_count: number; blob_size: number | null }>(
-      `SELECT g.id, g.name, gm.member_count, u.blob_size
+      `SELECT g.id, g.name, gm.member_count, gs.blob_size
        FROM groups g
        LEFT JOIN (SELECT group_id, COUNT(*) as member_count FROM group_members WHERE left_at IS NULL GROUP BY group_id) gm ON gm.group_id = g.id
-       LEFT JOIN (SELECT id, octet_length(personal_data_enc) as blob_size FROM users) u ON u.id = g.created_by
+       LEFT JOIN (SELECT group_id, octet_length(encrypted_blob) as blob_size FROM group_sync) gs ON gs.group_id = g.id
        ORDER BY gm.member_count DESC NULLS LAST
        LIMIT 5`
     ),

@@ -3,6 +3,7 @@ import { query, transaction } from '../db/pool';
 import { AuthError, ValidationError, NotFoundError } from '../errors';
 import { decryptServerKey, encryptServerKey } from './cryptoUtils';
 import { generateRecoveryCode, hashRecoveryCode, verifyRecoveryCode } from './cryptoUtils';
+import { assertUserNotRestricted } from './userRestrictions';
 
 const SALT_ROUNDS = 12;
 
@@ -112,6 +113,9 @@ export async function recoverAccount(input: RecoverInput): Promise<{ userId: str
   if (!verifyRecoveryCode(normalizedCode, user.recovery_code_hash)) {
     throw new AuthError('ERR_INVALID_RECOVERY', 'Invalid email or recovery code');
   }
+
+  // Banned/suspended accounts must not be recoverable.
+  await assertUserNotRestricted(user.id);
 
   if (!user.server_encrypted_pek) {
     throw new AuthError('ERR_RECOVERY_FAILED', 'No recovery data found for this account');

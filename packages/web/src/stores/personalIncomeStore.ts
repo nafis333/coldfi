@@ -28,7 +28,11 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     }
 
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
+    // Fail closed: saving an empty blob would silently wipe all prior data.
+    if (!personalBlob) {
+      throw new Error(personalStore.error || 'Could not load your data. Check your connection and try again.');
+    }
+    const current = personalBlob;
 
     const newIncome: IncomeLog = {
       ...income,
@@ -122,7 +126,11 @@ export const usePersonalIncomeStore = create<PersonalIncomeState>((set) => ({
     }
 
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
+    // Fail closed: saving an empty blob would silently wipe all prior data.
+    if (!personalBlob) {
+      throw new Error(personalStore.error || 'Could not load your data. Check your connection and try again.');
+    }
+    const current = personalBlob;
 
     const newTarget: SavingsTarget = {
       ...target,

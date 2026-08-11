@@ -255,7 +255,9 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
         const spent = budgetCategories.reduce((s, e) => s + e.amount, 0);
         const remaining = Math.max(0, b.amount - spent);
         return {
-          name: b.categoryId,
+          name: b.categoryId === '__all__'
+            ? 'All categories'
+            : (allCategories.find((c) => c.id === b.categoryId)?.name ?? b.categoryId),
           budgeted: b.amount,
           spent,
           remaining,

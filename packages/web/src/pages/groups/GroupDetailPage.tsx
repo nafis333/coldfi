@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
 import { silentCatch } from '../../lib/errorHandler';
 import { useGroupStore } from '../../stores/groupStore';
@@ -25,14 +25,23 @@ export default function GroupDetailPage() {
   const { currentGroup, fetchGroupById, leaveGroup, isLoading, error: storeError } = useGroupStore();
   const userId = useAuthStore((s) => s.userId);
 
+  const groupDataVersion = useGroupStore((s) => (id ? s.groupDataVersions?.[id] || 0 : 0));
+  // The [id] effect already fetched the current version on mount — only
+  // refetch when the version moves beyond what this mount has seen.
+  const lastFetchedVersionRef = useRef(0);
   useEffect(() => {
-    if (id) fetchGroupById(id);
+    if (id) {
+      lastFetchedVersionRef.current = useGroupStore.getState().groupDataVersions?.[id] || 0;
+      fetchGroupById(id);
+    }
     return () => { if (useGroupStore.getState().error !== null) useGroupStore.setState({ isLoading: false, error: null }); };
   }, [id, fetchGroupById]);
 
-  const groupDataVersion = useGroupStore((s) => (id ? s.groupDataVersions?.[id] || 0 : 0));
   useEffect(() => {
-    if (id && groupDataVersion > 0) fetchGroupById(id);
+    if (!id || groupDataVersion === 0) return;
+    if (groupDataVersion === lastFetchedVersionRef.current) return;
+    lastFetchedVersionRef.current = groupDataVersion;
+    fetchGroupById(id);
   }, [id, groupDataVersion, fetchGroupById]);
 
   useEffect(() => {

@@ -110,6 +110,7 @@ export default function PersonalLogTab() {
       note: s.note,
       relatedExpenseIds: s.relatedExpenseIds,
       supersededBy: s.supersededBy,
+      paidAmount: s.paidAmount,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
     }));

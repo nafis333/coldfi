@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [need2FA, setNeed2FA] = useState(false);
+  const [need2FA, setNeed2FA] = useState(() => new URLSearchParams(window.location.search).get('2fa') === '1');
   const [twoFACode, setTwoFACode] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string; code?: string }>({});
   const [localError, setLocalError] = useState<string | null>(null);

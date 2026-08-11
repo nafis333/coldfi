@@ -55,11 +55,18 @@ export class ReminderService {
   }
 
   async getPendingReminders(limit: number = 100): Promise<Reminder[]> {
+    // Skip users who permanently disabled push or reminders — their rows would
+    // sit pending forever and (past the batch limit) starve everyone else's
+    // reminders. SKIP LOCKED makes batch claims safe if the worker is scaled.
     const result = await this.pool.query(
-      `SELECT * FROM notification_reminders
-       WHERE status = 'pending' AND scheduled_at <= now()
-       ORDER BY scheduled_at ASC
-       LIMIT $1`,
+      `SELECT r.* FROM notification_reminders r
+       LEFT JOIN notification_preferences p ON p.user_id = r.user_id
+       WHERE r.status = 'pending' AND r.scheduled_at <= now()
+         AND (p.push_enabled IS NULL OR p.push_enabled = true)
+         AND (p.reminders IS NULL OR p.reminders = true)
+       ORDER BY r.scheduled_at ASC
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED`,
       [limit]
     );
 

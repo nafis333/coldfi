@@ -50,12 +50,16 @@ export function markAsPaid(
     if (typeof paidAmount !== 'number' || isNaN(paidAmount) || !isFinite(paidAmount) || paidAmount <= 0) {
       return { success: false, error: 'Paid amount must be a valid positive number' };
     }
+    if (paidAmount > settlement.amount) {
+      return { success: false, error: 'Paid amount cannot exceed the settlement amount' };
+    }
     if (paidAmount < settlement.amount) {
       const remainder = Math.round((settlement.amount - paidAmount) * 100) / 100;
 
       const superseded: SettlementProposal = {
         ...settlement,
         status: SettlementStatus.SUPERSEDED,
+        paidAmount,
         markedPaidAt: now,
         updatedAt: now,
       };

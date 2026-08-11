@@ -147,14 +147,7 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
 
   const failedCount = Number(recentFails.rows[0]?.count || 0);
   if (failedCount >= config.MAX_LOGIN_ATTEMPTS) {
-    const oldestFail = await query<{ created_at: string }>(
-      `SELECT created_at FROM user_activity_log
-       WHERE user_id = $1 AND action = 'login_failed' AND created_at > NOW() - $2::interval
-       ORDER BY created_at ASC LIMIT 1`,
-      [user.id, `${config.LOGIN_WINDOW_MINUTES} minutes`]
-    );
-    const lockUntil = new Date(oldestFail.rows[0]!.created_at);
-    lockUntil.setMinutes(lockUntil.getMinutes() + config.LOGIN_WINDOW_MINUTES);
+    const lockUntil = new Date(Date.now() + config.LOGIN_WINDOW_MINUTES * 60000);
     await query(
       `UPDATE users SET locked_until = $1 WHERE id = $2`,
       [lockUntil.toISOString(), user.id]
@@ -239,7 +232,7 @@ export async function googleLogin(
 
   const existingByEmail = await transaction(async (client) => {
     const result = await client.query(
-      `SELECT id, google_id FROM users WHERE email = $1 FOR UPDATE`,
+      `SELECT id, google_id, two_factor_enabled, personal_salt, encrypted_pek, role FROM users WHERE email = $1 FOR UPDATE`,
       [email]
     );
 
@@ -259,23 +252,51 @@ export async function googleLogin(
           [googleId, displayName, user.id]
         );
       }
-      return { existing: true, userId: user.id, googleNewUser: false };
+      return { existing: true, userId: user.id, twoFactorEnabled: !!user.two_factor_enabled, personalSalt: user.personal_salt, encryptedPek: user.encrypted_pek || '', role: user.role || 'user' };
     }
     return { existing: false };
   });
 
   if (existingByEmail.existing) {
+    // 2FA must apply on every auth path, including Google.
+    if (existingByEmail.twoFactorEnabled) {
+      const tempToken = crypto.randomUUID();
+      await setTempToken('2fa-login', tempToken, { userId: existingByEmail.userId }, 300);
+      return {
+        userId: existingByEmail.userId,
+        personalSalt: existingByEmail.personalSalt,
+        encryptedPek: existingByEmail.encryptedPek,
+        role: existingByEmail.role,
+        requires2FA: true,
+        tempToken,
+        googleNewUser: false,
+      };
+    }
     const tokens = await generateTokens(existingByEmail.userId);
     return { ...tokens, googleNewUser: false };
   }
 
   const existingByGoogle = await query(
-    `SELECT id FROM users WHERE google_id = $1`,
+    `SELECT id, two_factor_enabled, personal_salt, encrypted_pek, role FROM users WHERE google_id = $1`,
     [googleId]
   );
 
   if (existingByGoogle.rows.length > 0) {
-    const tokens = await generateTokens(existingByGoogle.rows[0].id);
+    const user = existingByGoogle.rows[0];
+    if (user.two_factor_enabled) {
+      const tempToken = crypto.randomUUID();
+      await setTempToken('2fa-login', tempToken, { userId: user.id }, 300);
+      return {
+        userId: user.id,
+        personalSalt: user.personal_salt,
+        encryptedPek: user.encrypted_pek || '',
+        role: user.role || 'user',
+        requires2FA: true,
+        tempToken,
+        googleNewUser: false,
+      };
+    }
+    const tokens = await generateTokens(user.id);
     return { ...tokens, googleNewUser: false };
   }
 

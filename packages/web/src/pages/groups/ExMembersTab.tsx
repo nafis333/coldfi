@@ -49,6 +49,7 @@ export default function ExMembersTab() {
     const engineSettlements = (group.settlements || []).map((s: any) => ({
       id: s.id, groupId, fromUserId: s.fromUserId, toUserId: s.toUserId, amount: s.amount,
       currency: defaultCurrency, status: s.status, proposedAt: s.proposedAt,
+      paidAmount: s.paidAmount,
       relatedExpenseIds: [], createdAt: s.createdAt, updatedAt: s.createdAt,
     }));
     return computeNetBalances(engineExpenses as any, engineSettlements as any, allMemberIds);

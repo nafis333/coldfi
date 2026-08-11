@@ -2,6 +2,8 @@ import { usePersonalStore } from '../stores/personalStore';
 import { usePersonalExpenseStore } from '../stores/personalExpenseStore';
 import { useGroupStore } from '../stores/groupStore';
 import { useAuthStore } from '../stores/authStore';
+import { apiClient } from './apiClient';
+import { getGroupKey } from './groupSync';
 import { encryptData, decryptData, deriveKey, generateSalt, uint8ArrayToBase64, base64ToUint8Array } from './crypto';
 
 interface ExportPayload {
@@ -19,10 +21,33 @@ interface ExportPayload {
   };
 }
 
+async function fetchGroupData(): Promise<any[]> {
+  const groups = useGroupStore.getState().groups;
+  const out: any[] = [];
+  for (const g of groups) {
+    const entry: any = { ...g, decryptedData: null };
+    try {
+      const gk = getGroupKey(g.id);
+      const res = await apiClient(`/api/group/${g.id}/sync`);
+      if (res.ok && gk) {
+        const syncData = await res.json();
+        if (syncData.encryptedBlob) {
+          const plaintext = await decryptData(gk, syncData.encryptedBlob);
+          entry.decryptedData = JSON.parse(plaintext);
+        }
+      }
+    } catch (err) {
+      // Include the group summary even if its blob could not be exported.
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
 export async function exportEncryptedBackup(password: string): Promise<void> {
   const userId = useAuthStore.getState().userId ?? 'unknown';
   const { expenses, budgets, categories, incomeLogs, savingsTargets, personalBlob } = usePersonalStore.getState();
-  const groups = useGroupStore.getState().groups;
+  const groups = await fetchGroupData();
 
   const payload: ExportPayload = {
     version: 1,
@@ -117,12 +142,14 @@ export async function importEncryptedBackup(file: File, password: string): Promi
 
 export function exportExpensesCSV(): void {
   const expenses = usePersonalStore.getState().expenses;
+  const categories = usePersonalStore.getState().categories;
+  const categoryName = new Map(categories.map((c: any) => [c.id, c.name]));
 
   const headers = ['Date', 'Description', 'Category', 'Amount'];
   const rows = expenses.map((e: any) => [
     e.date ?? '',
     e.note ?? '',
-    e.categoryId ?? '',
+    categoryName.get(e.categoryId) ?? e.categoryId ?? '',
     e.amount?.toFixed(2) ?? '0.00',
   ]);
 

@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { silentCatch } from '../../lib/errorHandler';
+import { apiClient } from '../../lib/apiClient';
 import TabSyncStatus from '../../components/settings/TabSyncStatus';
 import QRCode from 'qrcode';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 export default function SecuritySettings() {
-  const accessToken = useAuthStore((s) => s.accessToken);
   const changePassword = useAuthStore((s) => s.changePassword);
 
   // --- Change Password ---
@@ -32,9 +31,7 @@ export default function SecuritySettings() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/auth/2fa/status`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const res = await apiClient('/api/auth/2fa/status');
         if (res.ok) {
           const data = await res.json();
           setTwoFaEnabled(data.enabled);
@@ -45,7 +42,7 @@ export default function SecuritySettings() {
         setTwoFaLoaded(true);
       }
     })();
-  }, [accessToken]);
+  }, []);
 
   // --- Logout All ---
   const [logoutAllLoading, setLogoutAllLoading] = useState(false);
@@ -78,11 +75,8 @@ export default function SecuritySettings() {
     setTwoFaSuccess('');
     setTwoFaLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/2fa/setup`, {
+      const res = await apiClient('/api/auth/2fa/setup', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       });
       if (!res.ok) throw new Error('Failed to start 2FA setup');
       const data = await res.json();
@@ -112,11 +106,10 @@ export default function SecuritySettings() {
     setTwoFaError('');
     setTwoFaLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/2fa/enable`, {
+      const res = await apiClient('/api/auth/2fa/enable', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ code: twoFaCode }),
       });
@@ -140,11 +133,10 @@ export default function SecuritySettings() {
     setTwoFaError('');
     setTwoFaLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/2fa/disable`, {
+      const res = await apiClient('/api/auth/2fa/disable', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ code: twoFaCode }),
       });
@@ -167,11 +159,8 @@ export default function SecuritySettings() {
     setLogoutAllMsg('');
     setLogoutAllLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/logout-all`, {
+      const res = await apiClient('/api/auth/logout-all', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       });
       if (!res.ok) throw new Error('Failed to logout all devices');
       setLogoutAllMsg('All other devices have been logged out');

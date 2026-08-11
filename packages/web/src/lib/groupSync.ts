@@ -104,6 +104,7 @@ export interface SettlementData {
   cancelledAt?: string;
   relatedExpenseIds: string[];
   supersededBy?: string;
+  paidAmount?: number;
   createdAt: string;
   updatedAt: string;
 }

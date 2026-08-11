@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { silentCatch } from '../../lib/errorHandler';
+import { apiClient } from '../../lib/apiClient';
 import { useGroupStore } from '../../stores/groupStore';
 
 interface Props {
@@ -19,10 +20,7 @@ export default function JoinGroupModal({ onClose }: Props) {
     const timer = setTimeout(async () => {
       setPreviewLoading(true);
       try {
-        const { accessToken } = (await import('../../stores/authStore')).useAuthStore.getState();
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/group/invite/${inviteCode.trim()}`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-        });
+        const res = await apiClient(`/api/group/invite/${inviteCode.trim()}`, { method: 'GET' });
         if (res.ok) {
           const data = await res.json();
           setGroupInfo({ name: data.name });

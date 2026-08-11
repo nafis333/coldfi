@@ -30,6 +30,13 @@ export function createRateLimiter(options: RateLimitOptions) {
 
       if (current > maxAttempts) {
         const ttl = await redis.ttl(key);
+        logger.warn(`Rate limit hit: ${key}`, {
+          module: 'rate-limiter',
+          ip: request.ip,
+          action: 'rate_limit_hit',
+          key,
+          limit: maxAttempts,
+        });
         reply.status(429).header('Retry-After', String(ttl)).send({
           error: 'ERR_RATE_LIMIT',
           message: `Too many attempts. Try again in ${Math.ceil(ttl / 60)} minutes.`,

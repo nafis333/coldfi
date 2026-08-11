@@ -146,6 +146,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const data = await res.json();
       const { accessToken, userId, displayName, email, rawPek, personalSalt, encryptedPek, recoveryCode } = data;
+
+      if (data.requires2FA) {
+        set({
+          userId: data.userId,
+          personalSalt: data.personalSalt,
+          tempToken: data.tempToken,
+          email: email || '',
+          isLoading: false,
+          isInitialized: true,
+          isGoogleUser: true,
+        });
+        throw new Error('2FA_REQUIRED');
+      }
+
       let pek: CryptoKey | null = null;
       if (rawPek) {
         try {
@@ -180,7 +194,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
           triggerCriticalError(error, `${API_BASE}/api/auth/google`);
         }
-        set({ isLoading: false, isInitialized: true, error: msg });
+        if (msg !== '2FA_REQUIRED') {
+          set({ isLoading: false, isInitialized: true, error: msg });
+        }
         throw error;
       }
     },
@@ -205,9 +221,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const data = await res.json();
-      const { accessToken, userId, displayName, encryptedPek, role } = data;
-      const pek = await deriveAndStorePek(passphrase, personalSalt!, encryptedPek);
-      saveAuthToStorage({ accessToken, userId, email: email || '', displayName, role, isGoogleUser: false, personalSalt: personalSalt || undefined, encryptedPek });
+      const { accessToken, userId, displayName, encryptedPek, role, rawPek } = data;
+      let pek: CryptoKey | null = null;
+      if (rawPek) {
+        // Google-linked accounts have no password to derive from; the raw PEK
+        // is returned server-side (server-encrypted at rest).
+        pek = await importKey(base64ToUint8Array(rawPek));
+        storePekBytes(base64ToUint8Array(rawPek));
+      } else {
+        pek = await deriveAndStorePek(passphrase, personalSalt!, encryptedPek);
+      }
+      saveAuthToStorage({ accessToken, userId, email: email || '', displayName, role, isGoogleUser: !!data.isGoogleUser, personalSalt: personalSalt || undefined, encryptedPek });
 
       set({
         userId,
@@ -221,7 +245,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isInitialized: true,
         pek,
         pekMissing: false,
-        isGoogleUser: false,
+        isGoogleUser: !!data.isGoogleUser,
       });
 
       broadcastLogin(userId);
@@ -643,6 +667,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         personalSalt,
         encryptedPek,
         isLoading: false,
+      });
+      // Persist the re-wrapped PEK immediately — otherwise the auth storage
+      // still holds the pair encrypted with the old passphrase, and a later
+      // restore (after logout/PEK purge) would fail to derive the key.
+      const s = get();
+      saveAuthToStorage({
+        accessToken: s.accessToken!,
+        userId: s.userId!,
+        email: s.email || '',
+        displayName: s.displayName || undefined,
+        role: s.role || 'user',
+        isGoogleUser: s.isGoogleUser,
+        personalSalt,
+        encryptedPek,
       });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to change password';

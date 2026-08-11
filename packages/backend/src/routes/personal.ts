@@ -70,13 +70,33 @@ export async function personalRoutes(app: FastifyInstance) {
         const insertResult = await client.query(
           `INSERT INTO personal_data (user_id, encrypted_blob, vector_clock, created_at, updated_at)
            VALUES ($1, $2, $3, NOW(), NOW())
-           ON CONFLICT (user_id) DO UPDATE
-           SET encrypted_blob = EXCLUDED.encrypted_blob,
-               vector_clock = GREATEST(personal_data.vector_clock, EXCLUDED.vector_clock) + 1,
-               updated_at = NOW()
+           ON CONFLICT (user_id) DO NOTHING
            RETURNING vector_clock`,
           [userId, encryptedBlob, newClock]
         );
+
+        if (insertResult.rows.length === 0) {
+          // A row appeared between our SELECT and INSERT (concurrent first
+          // save). Re-check under the row lock so the loser gets a 409 and
+          // merges instead of silently overwriting the winner.
+          const recheck = await client.query(
+            `SELECT vector_clock FROM personal_data WHERE user_id = $1 FOR UPDATE`,
+            [userId]
+          );
+          const currentClock = recheck.rows[0].vector_clock;
+          if (vectorClock < currentClock) {
+            return { conflict: true, currentClock, requestedClock: vectorClock };
+          }
+          const updateResult = await client.query(
+            `UPDATE personal_data
+             SET encrypted_blob = $1, vector_clock = $2, updated_at = NOW()
+             WHERE user_id = $3
+             RETURNING vector_clock`,
+            [encryptedBlob, currentClock + 1, userId]
+          );
+          return { conflict: false, newClock: updateResult.rows[0].vector_clock };
+        }
+
         return { conflict: false, newClock: insertResult.rows[0].vector_clock };
       }
     });

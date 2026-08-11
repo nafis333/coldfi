@@ -1,7 +1,7 @@
 import { query } from '../db/pool';
 import { authenticator } from 'otplib';
 import { AuthError, ValidationError, NotFoundError, ConflictError } from '../errors';
-import { getTempToken, peekTempToken, deleteTempToken } from './redis';
+import { getTempToken } from './redis';
 import { generateTokens } from './tokenService';
 import { assertUserNotRestricted } from './userRestrictions';
 
@@ -81,7 +81,9 @@ export async function verify2FASetup(userId: string, code: string): Promise<void
 }
 
 export async function verify2FALogin(tempToken: string, code: string): Promise<any> {
-  const tokenData = await peekTempToken('2fa-login', tempToken);
+  // Consume the session token atomically (GETDEL) so concurrent retries
+  // cannot mint two token pairs from one 2FA challenge.
+  const tokenData = await getTempToken('2fa-login', tempToken);
   if (!tokenData) {
     throw new AuthError('ERR_TEMP_TOKEN_EXPIRED', 'Invalid or expired 2FA session');
   }
@@ -103,8 +105,6 @@ export async function verify2FALogin(tempToken: string, code: string): Promise<a
   if (!isValid) {
     throw new AuthError('ERR_INVALID_2FA', 'Invalid 2FA code');
   }
-
-  await deleteTempToken('2fa-login', tempToken);
 
   const tokens = await generateTokens(userId);
   return tokens;

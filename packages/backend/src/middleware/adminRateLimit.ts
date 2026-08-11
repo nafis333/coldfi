@@ -22,10 +22,19 @@ export async function adminRateLimit(request: FastifyRequest, reply: FastifyRepl
 
   try {
     const current = await redis.incr(key);
-    await redis.expire(key, windowSeconds);
+    if (current === 1) {
+      await redis.expire(key, windowSeconds);
+    }
 
     if (current > limit) {
       const ttl = await redis.ttl(key);
+      logger.warn(`Admin rate limit hit: ${key}`, {
+        module: 'admin-rate-limiter',
+        ip: request.ip,
+        action: 'rate_limit_hit',
+        key,
+        limit,
+      });
       reply.header('Retry-After', String(ttl));
       return reply.status(429).send({
         error: 'ERR_ADMIN_RATE_LIMIT',

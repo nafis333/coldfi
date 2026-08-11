@@ -118,8 +118,28 @@ export default function GroupOverviewTab() {
     const categories = currentGroup.groupCategories || [];
 
     const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+    const nowD = new Date(now);
+    const startOfToday = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
+    const cutoff = rangeDays > 0 ? startOfToday - rangeDays * 86400000 : null;
+    const customStartMs = customStart
+      ? (() => { const [y, m, d] = customStart.split('-').map(Number); return new Date(y, m - 1, d).getTime(); })()
+      : 0;
+    const customEndMs = customEnd
+      ? (() => { const [y, m, d] = customEnd.split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime(); })()
+      : Infinity;
+    const inWindow = (iso: string): boolean => {
+      const datePart = iso ? iso.slice(0, 10) : '';
+      const parts = datePart.split('-').map(Number);
+      const d = parts.length === 3 && parts.every((n) => !isNaN(n))
+        ? new Date(parts[0], parts[1] - 1, parts[2]).getTime()
+        : new Date(iso).getTime();
+      if (cutoff !== null && d < cutoff) return false;
+      if (customStart && d < customStartMs) return false;
+      if (customEnd && d > customEndMs) return false;
+      return true;
+    };
     const activeSettlements = settlements.filter(
-      (s) => activeMemberIds.includes(s.fromUserId) && activeMemberIds.includes(s.toUserId)
+      (s) => activeMemberIds.includes(s.fromUserId) && activeMemberIds.includes(s.toUserId) && inWindow(s.proposedAt || s.createdAt || '')
     );
     const settledAmount = activeSettlements
       .filter((s) => s.status === SettlementStatus.APPROVED)
@@ -137,6 +157,7 @@ export default function GroupOverviewTab() {
     const engineSettlements = settlements.map((s) => ({
       id: s.id, groupId, fromUserId: s.fromUserId, toUserId: s.toUserId, amount: s.amount,
       currency: defaultCurrency, status: s.status as any, proposedAt: s.proposedAt,
+      paidAmount: s.paidAmount,
       relatedExpenseIds: [], createdAt: s.createdAt, updatedAt: s.createdAt,
     }));
     const overviewBalances = computeNetBalances(engineExpenses as any, engineSettlements as any, memberIds);
@@ -179,7 +200,7 @@ export default function GroupOverviewTab() {
 
     const currentUserBalance = overviewBalances.find((b) => b.userId === currentUserId);
     return { totalSpent, expenseCount: expenses.length, totalSettled: settledAmount, outstandingDebt, memberCount: activeMembers.length, categoryBreakdown, memberSpending, monthlyTrend, recentActivity, currentUserBalance, overviewBalances };
-  }, [currentGroup, groupId, defaultCurrency, filteredExpenses, activeMemberIds]);
+  }, [currentGroup, groupId, defaultCurrency, filteredExpenses, activeMemberIds, now, rangeDays, customStart, customEnd]);
 
   if (!overview) {
     return <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Loading overview...</p></div>;

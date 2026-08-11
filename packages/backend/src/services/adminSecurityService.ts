@@ -118,6 +118,9 @@ export async function blockIPAddress(ipAddress: string, reason: string): Promise
     await redis.hset(`admin:blocked_ip:${ipAddress}`, { reason, blockedAt: new Date().toISOString() });
   } catch (err) {
     logger.error('Failed to block IP in Redis', { module: 'monitoring', error: String(err) });
+    // A silent failure would tell the admin the IP was blocked while the
+    // blocker keeps letting it through — surface it instead.
+    throw new Error('ERR_BLOCK_IP_FAILED: failed to persist IP block');
   }
 }
 

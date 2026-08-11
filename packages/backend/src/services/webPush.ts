@@ -4,11 +4,25 @@ import { logger } from './logger';
 import { config } from '../config';
 
 if (config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    config.VAPID_SUBJECT ?? config.VAPID_EMAIL ?? 'mailto:admin@coldfi.app',
-    config.VAPID_PUBLIC_KEY,
-    config.VAPID_PRIVATE_KEY
-  );
+  // web-push requires the subject to be a URL or mailto: address. Env schemas
+  // accept a bare email, so normalize it here — a bad subject must never
+  // crash the process at import time.
+  let subject = config.VAPID_SUBJECT ?? '';
+  if (!subject && config.VAPID_EMAIL) {
+    subject = `mailto:${config.VAPID_EMAIL}`;
+  }
+  if (subject && !/^(https?:\/\/|mailto:)/i.test(subject)) {
+    subject = `mailto:${subject}`;
+  }
+  try {
+    webpush.setVapidDetails(
+      subject || 'mailto:admin@coldfi.app',
+      config.VAPID_PUBLIC_KEY,
+      config.VAPID_PRIVATE_KEY
+    );
+  } catch (err) {
+    logger.warn('VAPID subject rejected — push notifications disabled', { module: 'web-push', error: String(err) });
+  }
 }
 
 const vapidConfigured = !!(config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY);

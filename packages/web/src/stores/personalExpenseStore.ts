@@ -32,7 +32,12 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
     }
 
     const { personalBlob, savePersonalBlob } = usePersonalStore.getState();
-    const current = personalBlob || { expenses: [], budgets: [], categories: [], incomeLogs: [], savingsTargets: [] };
+    // Fail closed: saving an empty blob would silently wipe all prior data.
+    if (!personalBlob) {
+      set({ error: personalStore.error || 'Could not load your data. Check your connection and try again.' });
+      throw new Error(personalStore.error || 'Could not load your data. Check your connection and try again.');
+    }
+    const current = personalBlob;
 
     let newId = generateId();
     while (current.expenses.some(e => e.id === newId)) {

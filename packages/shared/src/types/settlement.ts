@@ -16,6 +16,8 @@ export interface SettlementProposal {
   note?: string;
   relatedExpenseIds: string[];
   supersededBy?: string;
+  /** Set when a settlement was partially paid and superseded by a remainder. */
+  paidAmount?: number;
   createdAt: string;
   updatedAt: string;
 }

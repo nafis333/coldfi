@@ -122,7 +122,14 @@ export function computeNetBalances(
   }
 
   for (const settlement of settlements) {
-    if (settlement.status !== SettlementStatus.APPROVED) continue;
+    // Approved settlements settle fully; superseded ones settled only the
+    // portion actually paid (the remainder is a separate proposal).
+    const isSettled = settlement.status === SettlementStatus.APPROVED;
+    const isPartialSettled =
+      settlement.status === SettlementStatus.SUPERSEDED &&
+      typeof settlement.paidAmount === 'number' &&
+      settlement.paidAmount > 0;
+    if (!isSettled && !isPartialSettled) continue;
     if (!memberIds.includes(settlement.fromUserId) || !memberIds.includes(settlement.toUserId)) continue;
 
     let currency = currencyBucket(settlement.currency);
@@ -140,7 +147,7 @@ export function computeNetBalances(
 
     const from = settlement.fromUserId;
     const to = settlement.toUserId;
-    const amount = settlement.amount;
+    const amount = isPartialSettled ? settlement.paidAmount! : settlement.amount;
 
     const currentDebt = pairwise[currency]![from]![to] || 0;
     const remaining = currentDebt - amount;

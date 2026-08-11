@@ -26,6 +26,8 @@ interface VerifyResult {
 
 interface LogState {
   logs: LogEntry[];
+  /** Group whose entries are currently in `logs`; prevents cross-group pollution. */
+  logsGroupId: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -101,6 +103,7 @@ function fromEngineEntry(engine: EngineLogEntry, logs: LogEntry[]): LogEntry {
 
 export const useLogStore = create<LogState>((set) => ({
   logs: [],
+  logsGroupId: null,
   isLoading: false,
   error: null,
 
@@ -110,7 +113,7 @@ export const useLogStore = create<LogState>((set) => ({
     try {
       const gk = getGroupKey(groupId);
       if (!gk) {
-        set({ logs: [], isLoading: false });
+        set({ logs: [], logsGroupId: null, isLoading: false });
         return;
       }
 
@@ -123,7 +126,7 @@ export const useLogStore = create<LogState>((set) => ({
       const syncData = await res.json();
 
       if (!syncData.encryptedBlob) {
-        set({ logs: [], isLoading: false });
+        set({ logs: [], logsGroupId: null, isLoading: false });
         return;
       }
 
@@ -138,7 +141,7 @@ export const useLogStore = create<LogState>((set) => ({
           : fromEngineEntry(l, [])
       );
 
-      set({ logs, isLoading: false });
+      set({ logs, logsGroupId: groupId, isLoading: false });
     } catch (error) {
       set({
         isLoading: false,
@@ -194,9 +197,10 @@ export const useLogStore = create<LogState>((set) => ({
             if (expectedHash !== entry.hash) brokenAt.push(i);
             previousHash = entry.hash;
           }
-          set((state) => ({
-            logs: state.logs.map((log, i) => ({ ...log, isValid: !brokenAt.includes(i) })),
-          }));
+          set((state) => {
+            const brokenIds = new Set(brokenAt.map((i) => entries[i]!.id));
+            return { logs: state.logs.map((log) => ({ ...log, isValid: !brokenIds.has(log.id) })) };
+          });
           return { valid: brokenAt.length === 0, totalChecked: entries.length, brokenAt };
         }
       } catch (err) { silentCatch('logStore.verifyChain', err); }
@@ -215,9 +219,10 @@ export const useLogStore = create<LogState>((set) => ({
         if (expectedHash !== entry.hash) brokenAt.push(i);
         previousHash = entry.hash;
       }
-      set((state) => ({
-        logs: state.logs.map((log, i) => ({ ...log, isValid: !brokenAt.includes(i) })),
-      }));
+      set((state) => {
+        const brokenIds = new Set(brokenAt.map((i) => entries[i]!.id));
+        return { logs: state.logs.map((log) => ({ ...log, isValid: !brokenIds.has(log.id) })) };
+      });
       return { valid: brokenAt.length === 0, totalChecked: entries.length, brokenAt };
     } catch (err) {
       silentCatch('logStore.verifyFallback', err);
@@ -363,7 +368,12 @@ export const useLogStore = create<LogState>((set) => ({
         logs = mergedLogs;
       }
 
-      set((state) => ({ logs: [...state.logs, logs[logs.length - 1]!] }));
+      set((state) => {
+        // Only mirror the append locally when the in-memory list belongs to
+        // this group; otherwise a later fetch picks it up from the server.
+        if (state.logsGroupId !== groupId) return {};
+        return { logs: [...state.logs, logs[logs.length - 1]!] };
+      });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to add log entry' });
       console.error('[logStore] addLogEntry failed:', err);
@@ -374,6 +384,7 @@ export const useLogStore = create<LogState>((set) => ({
 onLogout(() => {
   useLogStore.setState({
     logs: [],
+    logsGroupId: null,
     isLoading: false,
     error: null,
   });

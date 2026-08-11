@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { silentCatch } from '../../lib/errorHandler';
+import { apiClient } from '../../lib/apiClient';
 import { useGroupStore } from '../../stores/groupStore';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -12,16 +13,6 @@ interface InviteCode {
   expires_at: string;
   is_active: boolean;
   created_at: string;
-}
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-
-async function authFetch(url: string) {
-  const token = useAuthStore.getState().accessToken || '';
-  return fetch(`${API_BASE}${url}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-    credentials: 'include',
-  });
 }
 
 export default function GroupSettingsTab() {
@@ -50,7 +41,7 @@ export default function GroupSettingsTab() {
   async function loadInvites() {
     setInvitesError('');
     try {
-      const res = await authFetch(`/api/group/${groupId}/invites`);
+      const res = await apiClient(`/api/group/${groupId}/invites`);
       if (res.ok) {
         const data = await res.json();
         setInvites(data.invites);
@@ -162,6 +153,7 @@ export default function GroupSettingsTab() {
       </div>
 
       {/* Group Settings */}
+      {currentGroup?.members.find(m => m.userId === useAuthStore.getState().userId)?.role === 'admin' && (
       <div className="card p-6">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Group Settings</h3>
         <form onSubmit={handleUpdateSettings} className="space-y-4 max-w-sm">
@@ -190,6 +182,7 @@ export default function GroupSettingsTab() {
           </button>
         </form>
       </div>
+      )}
 
       {/* Danger Zone */}
       {currentGroup?.members.find(m => m.userId === useAuthStore.getState().userId)?.role === 'admin' && (

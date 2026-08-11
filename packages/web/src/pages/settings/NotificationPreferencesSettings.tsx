@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuthStore } from '../../stores/authStore';
 import { silentCatch } from '../../lib/errorHandler';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+import { apiClient } from '../../lib/apiClient';
 
 interface Preferences {
   push_enabled: boolean;
@@ -39,7 +37,6 @@ const DEFAULT_PREFS: Preferences = {
 };
 
 export default function NotificationPreferencesSettings() {
-  const accessToken = useAuthStore((s) => s.accessToken);
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFS);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,9 +46,7 @@ export default function NotificationPreferencesSettings() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/notifications/preferences`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const res = await apiClient('/api/notifications/preferences');
         if (res.ok) {
           const data = await res.json();
           setPrefs({ ...DEFAULT_PREFS, ...data.preferences });
@@ -63,7 +58,7 @@ export default function NotificationPreferencesSettings() {
         setLoaded(true);
       }
     })();
-  }, [accessToken]);
+  }, []);
 
   function toggle(key: keyof Preferences) {
     setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -95,11 +90,10 @@ export default function NotificationPreferencesSettings() {
         body.quiet_hours_enabled = false;
       }
 
-      const res = await fetch(`${API_BASE}/api/notifications/preferences`, {
+      const res = await apiClient('/api/notifications/preferences', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify(body),
       });

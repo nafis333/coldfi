@@ -53,6 +53,10 @@ export default function GoogleSignInSection() {
             }
           })
           .catch((err) => {
+            if (err?.message === '2FA_REQUIRED') {
+              navigate('/login?2fa=1', { replace: true });
+              return;
+            }
             console.error('[GoogleSignIn] Login failed:', err);
             addToast('error', err?.message || 'Google sign-in failed');
             silentCatch('GoogleSignInSection.loginError', err);
