@@ -58,8 +58,12 @@ jobs:
           DATABASE_URL: postgres://coldfi:test@localhost:5432/coldfi_test
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: test-jwt-secret-for-ci-at-least-32-chars!!
+          COOKIE_SECRET: test-cookie-secret-for-ci-at-least-32-chars!
+          SERVER_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
       - name: Test web
         run: npm -w packages/web run test
         env:
           JWT_SECRET: test-jwt-secret-for-ci-at-least-32-chars!!
+          COOKIE_SECRET: test-cookie-secret-for-ci-at-least-32-chars!
+          SERVER_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
