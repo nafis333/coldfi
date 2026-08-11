@@ -1,0 +1,32 @@
+module.exports = {
+  root: true,
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+  },
+  env: {
+    node: true,
+    es2022: true,
+  },
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
+  ignorePatterns: ['dist', 'node_modules'],
+  rules: {
+    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/no-unused-vars': 'warn',
+    '@typescript-eslint/ban-ts-comment': 'off',
+    '@typescript-eslint/no-empty-object-type': 'off',
+    '@typescript-eslint/no-this-alias': 'off',
+    'no-empty': 'warn',
+    'no-empty-function': 'warn',
+    'no-useless-escape': 'warn',
+    'no-constant-condition': 'off',
+    'no-async-promise-executor': 'off',
+    'no-prototype-builtins': 'off',
+    'no-control-regex': 'off',
+    'no-unused-expressions': 'off',
+    'prefer-const': 'warn',
+    'no-undef': 'off',
+    'no-cond-assign': 'off',
+  },
+};
