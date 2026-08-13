@@ -4,6 +4,7 @@ import {
   markAsPaid,
   confirmReceipt,
   rejectPayment,
+  rejectProposal,
   cancelProposal,
   getValidTransitions,
   ProposeSettlementInput,
@@ -104,6 +105,34 @@ describe('settlementEngine', () => {
     });
   });
 
+  describe('rejectProposal', () => {
+    it('should let the recipient reject a PROPOSED proposal', () => {
+      const proposal = makeProposal();
+      const result = rejectProposal(proposal, 'alice', 'Amount is wrong');
+
+      expect(result.success).toBe(true);
+      expect(result.settlement!.status).toBe(SettlementStatus.REJECTED);
+      expect(result.settlement!.rejectedAt).toBeDefined();
+      expect(result.settlement!.note).toBe('Amount is wrong');
+    });
+
+    it('should reject if the actor is not the recipient', () => {
+      const proposal = makeProposal();
+      const result = rejectProposal(proposal, 'bob');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('recipient');
+    });
+
+    it('should reject if not in PROPOSED status', () => {
+      const proposal = makeProposal();
+      const marked = markAsPaid(proposal).settlement!;
+      const result = rejectProposal(marked, 'alice');
+
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe('cancelProposal', () => {
     it('should transition to CANCELLED by proposer', () => {
       const proposal = makeProposal();
@@ -135,6 +164,7 @@ describe('settlementEngine', () => {
       const transitions = getValidTransitions(SettlementStatus.PROPOSED);
       expect(transitions).toContain(SettlementStatus.MARKED_PAID);
       expect(transitions).toContain(SettlementStatus.CANCELLED);
+      expect(transitions).toContain(SettlementStatus.REJECTED);
     });
 
     it('should return correct transitions for MARKED_PAID', () => {

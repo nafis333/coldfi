@@ -144,7 +144,6 @@ export default function GroupOverviewTab() {
     const settledAmount = activeSettlements
       .filter((s) => s.status === SettlementStatus.APPROVED)
       .reduce((s, st) => s + st.amount, 0);
-    const outstandingDebt = Math.max(0, totalSpent - settledAmount);
     const memberIds = members.map((m) => m.userId);
 
     const engineExpenses = expenses.map((e) => ({
@@ -154,13 +153,20 @@ export default function GroupOverviewTab() {
       splits: (e.splits || []).map((s) => ({ memberId: s.userId, ratio: e.amount > 0 ? s.amount / e.amount : 0, isPaid: false, fixedAmount: s.amount })),
       status: 'unsettled' as const, isRecurring: false, createdAt: e.createdAt, updatedAt: e.createdAt, createdBy: e.paidBy || e.payerId || '',
     }));
-    const engineSettlements = settlements.map((s) => ({
+    // Only apply settlements inside the same window as the filtered expenses —
+    // mixing all-time settlements with windowed expenses creates phantom
+    // reversed debts and a misleading "Outstanding" figure.
+    const engineSettlements = activeSettlements.map((s) => ({
       id: s.id, groupId, fromUserId: s.fromUserId, toUserId: s.toUserId, amount: s.amount,
       currency: defaultCurrency, status: s.status as any, proposedAt: s.proposedAt,
       paidAmount: s.paidAmount,
       relatedExpenseIds: [], createdAt: s.createdAt, updatedAt: s.createdAt,
     }));
     const overviewBalances = computeNetBalances(engineExpenses as any, engineSettlements as any, memberIds);
+    // Real outstanding debt: every directed i→j debt counted once.
+    const outstandingDebt = Math.round(
+      overviewBalances.reduce((s, b) => s + Object.values(b.owesTo).reduce((x, v) => x + v, 0), 0) * 100
+    ) / 100;
 
     const categorySpending: Record<string, { name: string; icon: string; total: number }> = {};
     for (const e of expenses) {

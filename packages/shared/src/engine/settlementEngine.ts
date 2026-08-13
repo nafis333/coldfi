@@ -141,6 +141,37 @@ export function rejectPayment(
   return { success: true, settlement: updated };
 }
 
+export function rejectProposal(
+  settlement: SettlementProposal,
+  userId: string,
+  reason?: string
+): SettlementActionResult {
+  if (settlement.status !== SettlementStatus.PROPOSED) {
+    return {
+      success: false,
+      error: `Cannot reject proposal: current status is ${settlement.status}`,
+    };
+  }
+
+  if (settlement.toUserId !== userId) {
+    return {
+      success: false,
+      error: 'Only the recipient can reject a proposal',
+    };
+  }
+
+  const now = new Date().toISOString();
+  const updated: SettlementProposal = {
+    ...settlement,
+    status: SettlementStatus.REJECTED,
+    rejectedAt: now,
+    note: reason || settlement.note,
+    updatedAt: now,
+  };
+
+  return { success: true, settlement: updated };
+}
+
 export function cancelProposal(
   settlement: SettlementProposal,
   userId: string
@@ -190,7 +221,7 @@ export function getValidTransitions(
 ): SettlementStatus[] {
   switch (currentStatus) {
     case SettlementStatus.PROPOSED:
-      return [SettlementStatus.MARKED_PAID, SettlementStatus.CANCELLED];
+      return [SettlementStatus.MARKED_PAID, SettlementStatus.CANCELLED, SettlementStatus.REJECTED];
     case SettlementStatus.MARKED_PAID:
       return [SettlementStatus.APPROVED, SettlementStatus.REJECTED];
     default:

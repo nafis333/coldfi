@@ -67,6 +67,11 @@ export default function GroupExpenseForm() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [payerId, setPayerId] = useState('');
+  const [today] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [expenseDate, setExpenseDate] = useState(today);
 
   const [items, setItems] = useState<ItemRow[]>([]);
   const [error, setError] = useState('');
@@ -82,6 +87,7 @@ export default function GroupExpenseForm() {
     setDescription(existingExpense.description);
     setCategory(existingExpense.categoryId || existingExpense.category || '');
     setPayerId(existingExpense.paidBy || existingExpense.payerId || '');
+    setExpenseDate(/^\d{4}-\d{2}-\d{2}$/.test(existingExpense.date) ? existingExpense.date : today);
     if (existingExpense.itemized && existingExpense.itemized.length > 0) {
       setItems(existingExpense.itemized.map((i) => {
         const splitValues: Record<string, string> = {};
@@ -127,7 +133,9 @@ export default function GroupExpenseForm() {
         validationError: '',
       }]);
     }
-  }, [expenseId, existingExpense, members, isEditing, memberIds, activeMemberIds]);
+  }, [expenseId, existingExpense, members, isEditing, memberIds, activeMemberIds, today]);
+
+  const payerMembers = useMemo(() => members.filter((m) => !m.leftAt), [members]);
 
   const totalAmount = useMemo(() =>
     items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0),
@@ -305,12 +313,12 @@ export default function GroupExpenseForm() {
       if (isEditing && expenseId) {
         await updateGroupExpense(groupId!, expenseId, {
           amount: total, description: description.trim(), categoryId: category, paidBy: payerId,
-          splits: finalSplits, itemized: itemizedData,
+          splits: finalSplits, itemized: itemizedData, date: expenseDate,
         });
       } else {
         await createGroupExpense(groupId!, {
           amount: total, description: description.trim(), categoryId: category, paidBy: payerId,
-          splits: finalSplits, itemized: itemizedData,
+          splits: finalSplits, itemized: itemizedData, date: expenseDate,
         });
       }
       navigate(`/groups/${groupId}`);
@@ -351,9 +359,21 @@ export default function GroupExpenseForm() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">Date</label>
+            <input
+              type="date"
+              value={expenseDate}
+              max={today}
+              onChange={(e) => setExpenseDate(e.target.value)}
+              className="input-field"
+              required
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">Paid By</label>
             <select value={payerId} onChange={(e) => setPayerId(e.target.value)} className="input-field">
-              {members.map((m) => (
+              {payerMembers.map((m) => (
                 <option key={m.userId} value={m.userId}>{m.displayName || m.email}</option>
               ))}
             </select>

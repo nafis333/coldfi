@@ -8,7 +8,7 @@ export interface SplitResult {
 }
 
 export interface SplitWarning {
-  type: 'ratio_normalized' | 'fixed_scaled' | 'itemized_scaled';
+  type: 'ratio_normalized' | 'fixed_scaled' | 'fixed_negative' | 'itemized_scaled';
   message: string;
 }
 
@@ -116,12 +116,26 @@ function calculateFixedSplits(
     return calculateRatioSplits(totalAmount, memberIds);
   }
 
-  const specifiedTotal = memberIds.reduce((s, id) => s + (fixedAmounts[id] ?? 0), 0);
+  const warnings: SplitWarning[] = [];
+  const safeFixed: Record<string, number> = {};
+  for (const id of memberIds) {
+    const raw = fixedAmounts[id] ?? 0;
+    if (raw < 0) {
+      safeFixed[id] = 0;
+      warnings.push({
+        type: 'fixed_negative',
+        message: `Negative fixed amount for ${id} (${raw}), clamped to 0`,
+      });
+    } else {
+      safeFixed[id] = raw;
+    }
+  }
+
+  const specifiedTotal = memberIds.reduce((s, id) => s + safeFixed[id]!, 0);
   if (specifiedTotal <= 0) {
     return calculateRatioSplits(totalAmount, memberIds);
   }
 
-  const warnings: SplitWarning[] = [];
   const scaleFactor = Math.abs(specifiedTotal - totalAmount) < 0.01
     ? 1
     : totalAmount / specifiedTotal;
@@ -138,7 +152,7 @@ function calculateFixedSplits(
 
   for (let i = 0; i < memberIds.length; i++) {
     const memberId = memberIds[i]!;
-    const rawAmount = fixedAmounts[memberId] ?? 0;
+    const rawAmount = safeFixed[memberId]!;
     const scaledAmount = rawAmount * scaleFactor;
     const isLast = i === memberIds.length - 1;
     const amount = Math.round((isLast ? totalAmount - allocated : scaledAmount) * 100) / 100;

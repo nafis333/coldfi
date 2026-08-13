@@ -12,12 +12,15 @@ import {
   markAsPaid as engineMarkAsPaid,
   confirmReceipt as engineConfirmReceipt,
   rejectPayment as engineRejectPayment,
+  rejectProposal as engineRejectProposal,
   cancelProposal as engineCancelProposal,
   findDuplicateProposal as engineFindDuplicate,
   getValidTransitions as engineGetValidTransitions,
+  computeNetBalances,
   SettlementStatus,
   GroupLogEventType,
 } from '@coldfi/shared';
+import { toEngineExpenses, toEngineSettlements } from '../lib/groupSync';
 import { onLogout } from '../lib/resetStores';
 import { useLogStore } from './logStore';
 
@@ -56,6 +59,20 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
         const duplicate = engineFindDuplicate(groupData.settlements, data.fromUserId, data.toUserId);
         if (duplicate) {
           throw new Error('A pending settlement already exists between these members');
+        }
+
+        // Refuse proposals that would overpay the outstanding pair debt —
+        // approving an oversized settlement silently reverses balances.
+        const memberIds = [data.fromUserId, data.toUserId];
+        const engineExpenses = toEngineExpenses(groupData.expenses, groupId, currency);
+        const engineSettlements = toEngineSettlements(groupData.settlements);
+        const balance = computeNetBalances(engineExpenses, engineSettlements, memberIds)
+          .find((b) => b.userId === data.fromUserId);
+        const remainingDebt = balance?.owesTo?.[data.toUserId] ?? 0;
+        if (Math.round((data.amount - remainingDebt) * 100) / 100 > 0.02) {
+          throw new Error(
+            `Proposed settlement of ${data.amount.toFixed(2)} exceeds the outstanding debt of ${Math.round(remainingDebt * 100) / 100} between these members`
+          );
         }
 
         const proposal = enginePropose({
@@ -150,6 +167,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to mark settlement as paid' });
+      throw err;
     }
   },
 
@@ -203,6 +221,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to accept settlement' });
+      throw err;
     }
   },
 
@@ -230,7 +249,11 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
           throw new Error(`Cannot reject from current status (${s.status})`);
         }
 
-        const result = engineRejectPayment(s);
+        // Creditors may reject a proposed amount before the debtor marks it
+        // paid, as well as after payment (rejectPayment).
+        const result = s.status === SettlementStatus.PROPOSED
+          ? engineRejectProposal(s, currentUserId)
+          : engineRejectPayment(s);
         if (!result.success) {
           throw new Error(result.error || 'Failed to reject settlement');
         }
@@ -256,6 +279,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to reject settlement' });
+      throw err;
     }
   },
 
@@ -305,6 +329,7 @@ export const useGroupSettlementStore = create<GroupSettlementState>((set) => ({
       set({ isLoading: false });
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Failed to cancel settlement' });
+      throw err;
     }
   },
 

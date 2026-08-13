@@ -60,6 +60,8 @@ export interface GroupExpenseInput {
   splitParams?: Record<string, number>;
   category?: string;
   payerId?: string;
+  /** YYYY-MM-DD expense date; defaults to local today when omitted. */
+  date?: string;
 }
 
 export interface GroupExpenseData {
@@ -205,7 +207,10 @@ export async function modifySyncBlob(
         try {
           const decrypted = await decryptData(groupKey, syncData.encryptedBlob);
           const parsed: any = migrateGroupBlob(JSON.parse(decrypted));
+          // Keep every existing field (version, settings, …) — rebuilding the
+          // blob with only known keys would silently drop unknown data.
           groupData = {
+            ...parsed,
             expenses: parsed.expenses || [],
             settlements: parsed.settlements || [],
             categories: parsed.categories || [],

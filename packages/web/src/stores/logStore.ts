@@ -254,7 +254,7 @@ export const useLogStore = create<LogState>((set) => ({
       }
 
       const syncData = await res.json();
-      const vectorClock = syncData.vectorClock || {};
+      let vectorClock = syncData.vectorClock || {};
       let logs: LogEntry[] = [];
       let parsedBlob: Record<string, unknown> = {};
 
@@ -266,9 +266,7 @@ export const useLogStore = create<LogState>((set) => ({
         );
       }
 
-      const previousHash = logs.length > 0 ? logs[logs.length - 1]!.hash : '';
-
-      const engineEntry = createGroupLogEntry({
+const entrySeed = {
         id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         groupId,
         eventType: entryDef.eventType,
@@ -276,97 +274,81 @@ export const useLogStore = create<LogState>((set) => ({
         targetId: entryDef.targetId,
         metadata: { ...entryDef.metadata, action: entryDef.action, details: entryDef.details, actorName: entryDef.actorName, actionType: entryDef.actionType },
         timestamp: new Date().toISOString(),
-        previousLogHash: previousHash,
-      });
+      };
 
-      const legacyHash = await computeEntryHash({
-        id: engineEntry.id,
-        timestamp: engineEntry.timestamp,
-        actorName: entryDef.actorName,
-        action: entryDef.action,
-        actionType: entryDef.actionType,
-        details: entryDef.details,
-        previousHash,
-      });
+      let putOk = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const prevHashForAttempt = logs.length > 0 ? logs[logs.length - 1]!.hash : '';
 
-      logs.push({
-        id: engineEntry.id,
-        timestamp: engineEntry.timestamp,
-        actorName: entryDef.actorName,
-        action: entryDef.action,
-        actionType: entryDef.actionType,
-        details: entryDef.details,
-        hash: legacyHash,
-        previousHash,
-      });
+        const engineEntry = createGroupLogEntry({
+          ...entrySeed,
+          previousLogHash: prevHashForAttempt,
+        });
+        const meta = (engineEntry.metadata || {}) as Record<string, string>;
+        const actorName = meta.actorName || engineEntry.actorId;
+        const action = meta.action || String(engineEntry.eventType);
+        const actionType = (meta.actionType as LogEntry['actionType']) || 'expense';
+        const details = meta.details || '';
+        const legacyHash = await computeEntryHash({
+          id: engineEntry.id,
+          timestamp: engineEntry.timestamp,
+          actorName,
+          action,
+          actionType,
+          details,
+          previousHash: prevHashForAttempt,
+        });
 
-      const serialized = JSON.stringify({ ...parsedBlob, logs });
-      const encrypted = await encryptData(gk, serialized);
+        const entry: LogEntry = {
+          id: engineEntry.id,
+          timestamp: engineEntry.timestamp,
+          actorName,
+          action,
+          actionType,
+          details,
+          hash: legacyHash,
+          previousHash: prevHashForAttempt,
+        };
 
-      const putRes = await apiClient(`/api/group/${groupId}/sync`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encryptedBlob: encrypted, vectorClock }),
-      });
+        const attemptLogs = [...logs, entry];
+        const serialized = JSON.stringify({ ...parsedBlob, logs: attemptLogs });
+        const encrypted = await encryptData(gk, serialized);
 
-      if (putRes.status === 409) {
-        console.warn('[logStore] Conflict on log append, retrying once...');
+        const putRes = await apiClient(`/api/group/${groupId}/sync`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encryptedBlob: encrypted, vectorClock }),
+        });
+
+        if (putRes.status !== 409) {
+          if (!putRes.ok) {
+            console.error('[logStore] PUT failed:', putRes.status);
+            return;
+          }
+          logs = attemptLogs;
+          putOk = true;
+          break;
+        }
+
+        // Conflict — refetch the latest blob and relink the entry to its new
+        // tail before retrying (the mutation must be re-applied, not resent).
+        if (attempt === 2) {
+          console.error('[logStore] Log append still conflicting after retries');
+          return;
+        }
         const retryRes = await apiClient(`/api/group/${groupId}/sync`);
         if (!retryRes.ok) return;
         const retryData = await retryRes.json();
-        let retryLogs: LogEntry[] = [];
-        if (retryData.encryptedBlob) {
-          const d = await decryptData(gk, retryData.encryptedBlob);
-          retryLogs = (JSON.parse(d).logs || []).map((l: any) =>
-            l.hash && l.previousHash !== undefined ? l as LogEntry : fromEngineEntry(l, [])
-          );
-        }
-        const retryPrevHash = retryLogs.length > 0 ? retryLogs[retryLogs.length - 1]!.hash : '';
-        const retryEngineEntry = createGroupLogEntry({
-          ...engineEntry,
-          previousLogHash: retryPrevHash,
-        });
-        const mergedMeta = (engineEntry.metadata || {}) as Record<string, string>;
-        const mergedActorName = mergedMeta.actorName || engineEntry.actorId;
-        const mergedAction = mergedMeta.action || String(engineEntry.eventType);
-        const mergedActionType: LogEntry['actionType'] = mergedMeta.actionType as LogEntry['actionType'] || 'expense';
-        const retryLegacyHash = await computeEntryHash({
-          id: retryEngineEntry.id,
-          timestamp: retryEngineEntry.timestamp,
-          actorName: mergedActorName,
-          action: mergedAction,
-          actionType: mergedActionType,
-          details: mergedMeta.details || '',
-          previousHash: retryPrevHash,
-        });
-        const mergedEntry: LogEntry = {
-          id: retryEngineEntry.id,
-          timestamp: retryEngineEntry.timestamp,
-          actorName: mergedActorName,
-          action: mergedAction,
-          actionType: mergedActionType,
-          details: mergedMeta.details || '',
-          hash: retryLegacyHash,
-          previousHash: retryPrevHash,
-        };
-        const mergedLogs = [...retryLogs, mergedEntry];
-        const retryParsed = retryData.encryptedBlob ? JSON.parse(await decryptData(gk, retryData.encryptedBlob)) : {};
-        const retrySerialized = JSON.stringify({ ...retryParsed, logs: mergedLogs });
-        const retryEncrypted = await encryptData(gk, retrySerialized);
-        const retryPutRes = await apiClient(`/api/group/${groupId}/sync`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ encryptedBlob: retryEncrypted, vectorClock: retryData.vectorClock }),
-        });
-        if (!retryPutRes.ok) {
-          console.error('[logStore] Retry PUT failed:', retryPutRes.status);
-          return;
-        }
-        // The in-memory list must mirror the server chain: the retry re-linked
-        // the entry to the fresh tail, so append that entry — not the stale
-        // first-attempt one built from the old chain.
-        logs = mergedLogs;
+        parsedBlob = retryData.encryptedBlob
+          ? (JSON.parse(await decryptData(gk, retryData.encryptedBlob)) as Record<string, unknown>)
+          : {};
+        logs = ((parsedBlob.logs || []) as any[]).map((l: any) =>
+          l.hash && l.previousHash !== undefined ? l as LogEntry : fromEngineEntry(l, [])
+        );
+        vectorClock = retryData.vectorClock || {};
       }
+
+      if (!putOk) return;
 
       set((state) => {
         // Only mirror the append locally when the in-memory list belongs to

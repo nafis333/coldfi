@@ -70,7 +70,9 @@ export default function GroupInvoicesTab() {
 
   async function handleMarkPaid(settlementId: string) {
     setActionMsg(null);
-    await markSettlementAsPaid(groupId, settlementId);
+    try {
+      await markSettlementAsPaid(groupId, settlementId);
+    } catch { silentCatch('GroupInvoicesTab.markPaid', null); }
     const err = useGroupSettlementStore.getState().error;
     setActionMsg(err ? { text: err, isError: true } : { text: 'Marked as paid', isError: false });
     setTimeout(() => setActionMsg(null), 3000);
@@ -78,7 +80,9 @@ export default function GroupInvoicesTab() {
 
   async function handleAccept(settlementId: string) {
     setActionMsg(null);
-    await acceptSettlement(groupId, settlementId);
+    try {
+      await acceptSettlement(groupId, settlementId);
+    } catch { silentCatch('GroupInvoicesTab.accept', null); }
     const err = useGroupSettlementStore.getState().error;
     setActionMsg(err ? { text: err, isError: true } : { text: 'Settlement approved', isError: false });
     setTimeout(() => setActionMsg(null), 3000);
@@ -86,7 +90,9 @@ export default function GroupInvoicesTab() {
 
   async function handleReject(settlementId: string) {
     setActionMsg(null);
-    await rejectSettlement(groupId, settlementId);
+    try {
+      await rejectSettlement(groupId, settlementId);
+    } catch { silentCatch('GroupInvoicesTab.reject', null); }
     const err = useGroupSettlementStore.getState().error;
     setActionMsg(err ? { text: err, isError: true } : { text: 'Settlement rejected', isError: false });
     setTimeout(() => setActionMsg(null), 3000);
@@ -94,7 +100,9 @@ export default function GroupInvoicesTab() {
 
   async function handleCancel(settlementId: string) {
     setActionMsg(null);
-    await cancelSettlement(groupId, settlementId);
+    try {
+      await cancelSettlement(groupId, settlementId);
+    } catch { silentCatch('GroupInvoicesTab.cancel', null); }
     const err = useGroupSettlementStore.getState().error;
     setActionMsg(err ? { text: err, isError: true } : { text: 'Settlement cancelled', isError: false });
     setTimeout(() => setActionMsg(null), 3000);
@@ -239,6 +247,64 @@ export default function GroupInvoicesTab() {
 
   const currentBalance = activeBalances.find((b) => b.userId === currentUserId);
 
+  const oversizedSettlements = useMemo(() => {
+    const allMemberIds = group.members.map((m) => m.userId);
+    const engineExpenses = (group.expenses || []).map((e) => ({
+      id: e.id,
+      groupId,
+      amount: e.amount,
+      currency: defaultCurrency,
+      categoryId: e.categoryId || e.category || 'other',
+      description: e.description,
+      date: e.date || e.createdAt,
+      paidBy: e.paidBy || e.payerId || '',
+      paymentMethod: 'cash' as any,
+      splitMode: 'ratio' as any,
+      splits: e.splits.map((s) => ({
+        memberId: s.userId,
+        ratio: e.amount > 0 ? s.amount / e.amount : 0,
+        isPaid: false,
+        fixedAmount: s.amount,
+      })),
+      status: 'unsettled' as any,
+      isRecurring: false,
+      createdAt: e.createdAt,
+      updatedAt: e.createdAt,
+      createdBy: e.paidBy || e.payerId || '',
+    }));
+    const engineSettlements = (group.settlements || []).map((s: any) => ({
+      id: s.id,
+      groupId,
+      fromUserId: s.fromUserId,
+      toUserId: s.toUserId,
+      amount: s.amount,
+      currency: s.currency || null,
+      status: s.status as SettlementStatus,
+      relatedExpenseIds: s.relatedExpenseIds || [],
+      proposedAt: s.proposedAt || s.createdAt,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt || s.createdAt,
+    }));
+    const openStatuses = new Set([
+      SettlementStatus.PROPOSED,
+      SettlementStatus.MARKED_PAID,
+      SettlementStatus.APPROVED,
+    ]);
+    const flags: Array<{ id: string; amount: number; remaining: number }> = [];
+    for (const s of engineSettlements) {
+      if (!openStatuses.has(s.status)) continue;
+      // Compute the pair debt as if this settlement did not exist, so an
+      // over-sized approved settlement is flagged instead of cancelling itself.
+      const others = engineSettlements.filter((x) => x.id !== s.id);
+      const balances = computeNetBalances(engineExpenses as any, others as any, allMemberIds);
+      const remaining = balances.find((b) => b.userId === s.fromUserId)?.owesTo?.[s.toUserId] ?? 0;
+      if (s.amount > remaining + 0.02) {
+        flags.push({ id: s.id, amount: s.amount, remaining: Math.round(remaining * 100) / 100 });
+      }
+    }
+    return flags;
+  }, [group.expenses, group.settlements, group.members, groupId, defaultCurrency]);
+
   function handleSimplifyDebts() {
     const result = generateMinimalTransfers(activeBalances, defaultCurrency);
     setSimplifiedTransfers(result.transfers.length > 0 ? result.transfers : []);
@@ -373,6 +439,14 @@ export default function GroupInvoicesTab() {
         <div className="card p-4 text-center text-sm text-neutral-500">
           All balances are already settled.
           <button onClick={() => setSimplifiedTransfers(null)} className="ml-2 text-xs text-primary-600 hover:text-primary-700">Dismiss</button>
+        </div>
+      )}
+
+      {oversizedSettlements.length > 0 && (
+        <div className="rounded-xl border border-warning-300 dark:border-warning-700 bg-warning-50 dark:bg-warning-900/20 p-3">
+          <p className="text-xs font-medium text-warning-700 dark:text-warning-300">
+            {oversizedSettlements.length} open settlement{oversizedSettlements.length !== 1 ? 's' : ''} exceed{oversizedSettlements.length === 1 ? 's' : ''} the outstanding debt between those members — approving will reverse balances. Review the affected settlements.
+          </p>
         </div>
       )}
 

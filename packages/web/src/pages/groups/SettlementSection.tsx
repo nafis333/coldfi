@@ -112,6 +112,9 @@ function SettlementList({ settlements, members, currentUserId, defaultCurrency, 
                     <button onClick={() => onCancel(s.id)} className="btn-ghost text-xs px-2 py-1 text-danger-600 hover:text-danger-700">Cancel</button>
                   </>
                 )}
+                {s.status === SettlementStatus.PROPOSED && isCreditor && !isDebtor && (
+                  <button onClick={() => onReject(s.id)} className="btn-ghost text-xs px-2 py-1 text-danger-600 hover:text-danger-700">Reject</button>
+                )}
                 {s.status === SettlementStatus.MARKED_PAID && isCreditor && (
                   <>
                     <button onClick={() => onAccept(s.id)} className="btn-primary text-xs px-2.5 py-1">Accept</button>

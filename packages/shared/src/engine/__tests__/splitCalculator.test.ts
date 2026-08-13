@@ -200,6 +200,23 @@ describe('calculateSplits', () => {
     splits.forEach((r) => expect(r.amount).toBeCloseTo(20));
   });
 
+  // F6: Negative fixed amounts clamped to 0, still sums to total
+  it('should clamp negative fixed amounts to 0 and keep splits balanced (F6)', () => {
+    const { splits, warnings } = calculateSplits({
+      totalAmount: 100,
+      splitMode: SplitMode.FIXED,
+      memberIds: ['a', 'b'],
+      fixedAmounts: { a: 150, b: -50 },
+    });
+
+    const total = splits.reduce((s, r) => s + r.amount, 0);
+    expect(total).toBe(100);
+    expect(splits.find((r) => r.memberId === 'a')!.amount).toBe(100);
+    expect(splits.find((r) => r.memberId === 'b')!.amount).toBe(0);
+    expect(splits.some((r) => r.amount < 0)).toBe(false);
+    expect(warnings.some((w) => w.type === 'fixed_negative')).toBe(true);
+  });
+
   // I3: Unassigned items split equally
   it('should split unassigned items equally among all members (I3)', () => {
     const { splits } = calculateSplits({

@@ -95,6 +95,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       const now = new Date().toISOString();
       const localNow = new Date();
       const localDate = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
+      const expenseDate = data.date && /^\d{4}-\d{2}-\d{2}$/.test(data.date) ? data.date : localDate;
 
       let created = false;
       let lastError: Error | null = null;
@@ -152,7 +153,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
             itemized,
             categoryId: data.category || data.categoryId || '',
             paidBy: data.payerId || data.paidBy || '',
-            date: localDate,
+            date: expenseDate,
             displayId,
             createdAt: now,
             updatedAt: now,
