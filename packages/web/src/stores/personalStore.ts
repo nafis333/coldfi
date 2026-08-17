@@ -18,6 +18,29 @@ export type { RecurringBill, Frequency } from '../lib/personalSync';
 
 let personalVectorClock = Date.now();
 
+// Merge by id, keeping the newest version per record (server usually wins,
+// but a local edit to a shared id with a NEWER updatedAt must survive the
+// merge instead of being silently dropped).
+function mergeById<T extends { id: string; updatedAt?: string }>(fresh: T[] | undefined, local: T[] | undefined): T[] {
+  const byId = new Map<string, T>();
+  for (const item of fresh || []) {
+    byId.set(item.id, item);
+  }
+  for (const item of local || []) {
+    const existing = byId.get(item.id);
+    if (!existing) {
+      byId.set(item.id, item);
+      continue;
+    }
+    const existingTime = existing.updatedAt ? Date.parse(existing.updatedAt) : 0;
+    const localTime = item.updatedAt ? Date.parse(item.updatedAt) : 0;
+    if (localTime > existingTime) {
+      byId.set(item.id, item);
+    }
+  }
+  return Array.from(byId.values());
+}
+
 function setLastVectorClock(clock: number): void {
   personalVectorClock = Math.max(personalVectorClock, clock);
 }
@@ -154,19 +177,19 @@ export const usePersonalStore = create<PersonalState>((set, get) => ({
         const refreshRes = await apiClient('/api/personal/sync');
         if (refreshRes.ok) {
           const refreshData = await refreshRes.json();
-          vectorClock = (refreshData.vectorClock || 0) + 1;
+          vectorClock = Number(refreshData.vectorClock || 0) + 1;
           if (refreshData.encryptedBlob) {
             const freshPlaintext = await decryptData(pek, refreshData.encryptedBlob);
             const freshBlob = JSON.parse(freshPlaintext) as PersonalBlob;
             const merged: PersonalBlob = {
               ...blob,
               ...freshBlob,
-              expenses: [...(freshBlob.expenses || []), ...(blob.expenses || []).filter(e => !freshBlob.expenses?.some((fe: any) => fe.id === e.id))],
-              budgets: [...(freshBlob.budgets || []), ...(blob.budgets || []).filter(b => !freshBlob.budgets?.some((fb: any) => fb.id === b.id))],
-              categories: [...(freshBlob.categories || []), ...(blob.categories || []).filter(c => !freshBlob.categories?.some((fc: any) => fc.id === c.id))],
-              recurringBills: [...(freshBlob.recurringBills || []), ...(blob.recurringBills || []).filter(r => !freshBlob.recurringBills?.some((fr: any) => fr.id === r.id))],
-              incomeLogs: [...(freshBlob.incomeLogs || []), ...(blob.incomeLogs || []).filter(i => !freshBlob.incomeLogs?.some((fi: any) => fi.id === i.id))],
-              savingsTargets: [...(freshBlob.savingsTargets || []), ...(blob.savingsTargets || []).filter(s => !freshBlob.savingsTargets?.some((fs: any) => fs.id === s.id))],
+              expenses: mergeById(freshBlob.expenses, blob.expenses),
+              budgets: mergeById(freshBlob.budgets, blob.budgets),
+              categories: mergeById(freshBlob.categories, blob.categories),
+              recurringBills: mergeById(freshBlob.recurringBills, blob.recurringBills),
+              incomeLogs: mergeById(freshBlob.incomeLogs, blob.incomeLogs),
+              savingsTargets: mergeById(freshBlob.savingsTargets, blob.savingsTargets),
             };
             const mergedPlaintext = JSON.stringify(merged);
             encryptedBlob = await encryptData(pek, mergedPlaintext);

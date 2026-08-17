@@ -41,7 +41,10 @@ export default function GroupDetailPage() {
     if (!id || groupDataVersion === 0) return;
     if (groupDataVersion === lastFetchedVersionRef.current) return;
     lastFetchedVersionRef.current = groupDataVersion;
-    fetchGroupById(id);
+    // Debounce: socket events (group-synced, member-joined, …) arrive in
+    // bursts — coalesce them into one refetch instead of N full syncs.
+    const timer = setTimeout(() => fetchGroupById(id), 600);
+    return () => clearTimeout(timer);
   }, [id, groupDataVersion, fetchGroupById]);
 
   useEffect(() => {
@@ -80,7 +83,7 @@ export default function GroupDetailPage() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading && !currentGroup) {
     return (
       <div className="flex justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />

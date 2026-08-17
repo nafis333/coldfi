@@ -30,6 +30,8 @@ export default function CreateGroupModal({ onClose, onGroupCreated }: Props) {
       const data = await generateInvite(gid);
       setInviteCode(data.code);
     } catch (err) {
+      // Group creation may have already succeeded even when invite generation
+      // fails — don't pretend creation failed.
       setError(err instanceof Error ? err.message : 'Failed to create group');
     } finally {
       setLoading(false);
@@ -38,6 +40,11 @@ export default function CreateGroupModal({ onClose, onGroupCreated }: Props) {
 
   function copy(text: string) {
     navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {});
+  }
+
+  function finish() {
+    onClose();
+    if (onGroupCreated && groupId) onGroupCreated(groupId);
   }
 
   if (inviteCode) {
@@ -57,7 +64,28 @@ export default function CreateGroupModal({ onClose, onGroupCreated }: Props) {
               </div>
             </div>
           </div>
-          <button onClick={() => { onClose(); if (onGroupCreated && groupId) onGroupCreated(groupId); }} className="btn-primary w-full mt-4">Done</button>
+          <button onClick={finish} className="btn-primary w-full mt-4">Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (groupId) {
+    // Group was created but invite generation failed — keep it usable.
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+        <div className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-800 p-6 shadow-elevated" onClick={(e) => e.stopPropagation()}>
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Group Created!</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+            The group was created, but generating an invite code failed.
+          </p>
+          {error && <div className="rounded-lg border border-danger-200 dark:border-danger-700 bg-danger-50 dark:bg-danger-700/20 p-3 mb-4"><p className="text-sm text-danger-700 dark:text-danger-300">{error}</p></div>}
+          <div className="flex gap-3">
+            <button onClick={handleSubmit} disabled={loading} className="btn-secondary flex-1">
+              {loading ? 'Retrying...' : 'Retry Invite'}
+            </button>
+            <button onClick={finish} className="btn-primary flex-1">Go to Group</button>
+          </div>
         </div>
       </div>
     );

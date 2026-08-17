@@ -6,7 +6,7 @@ import { createRateLimiter } from '../middleware/rateLimiter';
 
 const encryptionKeyLimiter = createRateLimiter({
   windowSeconds: 60,
-  maxAttempts: 10,
+  maxAttempts: 60,
   keyPrefix: 'rl:encryption-key',
   keyFn: (req) => req.user?.userId || req.ip,
 });

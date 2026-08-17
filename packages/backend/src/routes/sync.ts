@@ -25,7 +25,7 @@ export async function syncRoutes(app: FastifyInstance) {
       const row = personalResult.rows[0];
       personal = {
         encryptedBlob: row.encrypted_blob,
-        vectorClock: row.vector_clock,
+        vectorClock: Number(row.vector_clock),
         updatedAt: row.updated_at,
       };
     }
@@ -53,7 +53,7 @@ export async function syncRoutes(app: FastifyInstance) {
       groupId: row.group_id,
       name: row.name,
       encryptedBlob: row.encrypted_blob,
-      vectorClock: row.vector_clock,
+      vectorClock: Number(row.vector_clock),
       updatedAt: row.updated_at,
     }));
 

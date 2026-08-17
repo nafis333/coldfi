@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersonalStore } from '../stores/personalStore';
 import { useGroupStore } from '../stores/groupStore';
 import { useAuthStore } from '../stores/authStore';
@@ -43,6 +43,14 @@ export default function ExpenseListPage() {
   const defaultCurrency = useAuthStore((s) => s.defaultCurrency || 'BDT');
 
   const [tab, setTab] = useState<Tab>('personal');
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const requested = searchParams.get('tab');
+    if (requested === 'groups' || requested === 'personal') {
+      setTab(requested);
+    }
+  }, [searchParams]);
 
   function handleDownloadPersonalReceipt(expense: { id: string; amount: number; currency?: string; categoryId: string; date: string; payee: string | null; note: string | null }) {
     const cat = categoryMap[expense.categoryId];

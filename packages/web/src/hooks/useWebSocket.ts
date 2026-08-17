@@ -85,6 +85,7 @@ export function useWebSocket() {
       useGroupStore.getState().incrementGroupDataVersion(data.groupId);
     });
     socket.on('group-deleted', (data: { groupId: string }) => {
+      useGroupStore.getState().removeGroupLocally(data.groupId);
       useGroupStore.getState().incrementGroupDataVersion(data.groupId);
     });
     socket.on('encryption-key-changed', (data: { groupId: string }) => {

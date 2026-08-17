@@ -1,5 +1,5 @@
-const CACHE_STATIC = 'coldfi-static-v2';
-const CACHE_API = 'coldfi-api-v1';
+const CACHE_STATIC = 'coldfi-static-v3';
+const CACHE_SHELL = 'coldfi-shell-v1';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -10,7 +10,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys
-          .filter((k) => k !== CACHE_STATIC && k !== CACHE_API)
+          .filter((k) => k !== CACHE_STATIC && k !== CACHE_SHELL)
           .map((k) => caches.delete(k))
       );
     }).then(() => clients.claim())
@@ -21,8 +21,11 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // API and socket traffic is user-specific and can contain tokens or
+  // encrypted blobs keyed by URL alone — never cache it. Let the browser
+  // handle it directly so caches can't leak data between users or serve
+  // stale responses after logout.
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) {
-    event.respondWith(networkFirst(request));
     return;
   }
 
@@ -59,7 +62,10 @@ async function networkFirst(request: Request): Promise<Response> {
   try {
     const response = await fetch(request);
     if (response.ok && response.type === 'basic') {
-      const cache = await caches.open(CACHE_API);
+      // Only navigation requests reach here (API/socket traffic is handled
+      // earlier without caching) — the app shell is public, so caching it
+      // cannot leak user data.
+      const cache = await caches.open(CACHE_SHELL);
       cache.put(request, response.clone());
     }
     return response;

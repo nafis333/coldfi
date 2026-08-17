@@ -24,7 +24,7 @@ export async function personalRoutes(app: FastifyInstance) {
     const row = result.rows[0];
     return reply.send({
       encryptedBlob: row.encrypted_blob,
-      vectorClock: row.vector_clock,
+      vectorClock: Number(row.vector_clock),
       updatedAt: row.updated_at,
     });
   });
@@ -51,7 +51,7 @@ export async function personalRoutes(app: FastifyInstance) {
       );
 
       if (current.rows.length > 0) {
-        const currentClock = current.rows[0].vector_clock;
+        const currentClock = Number(current.rows[0].vector_clock);
         if (vectorClock < currentClock) {
           return { conflict: true, currentClock, requestedClock: vectorClock };
         }
@@ -64,7 +64,7 @@ export async function personalRoutes(app: FastifyInstance) {
            RETURNING vector_clock`,
           [encryptedBlob, newClock, userId]
         );
-        return { conflict: false, newClock: updateResult.rows[0].vector_clock };
+        return { conflict: false, newClock: Number(updateResult.rows[0].vector_clock) };
       } else {
         const newClock = vectorClock + 1;
         const insertResult = await client.query(
@@ -83,7 +83,7 @@ export async function personalRoutes(app: FastifyInstance) {
             `SELECT vector_clock FROM personal_data WHERE user_id = $1 FOR UPDATE`,
             [userId]
           );
-          const currentClock = recheck.rows[0].vector_clock;
+          const currentClock = Number(recheck.rows[0].vector_clock);
           if (vectorClock < currentClock) {
             return { conflict: true, currentClock, requestedClock: vectorClock };
           }
@@ -94,10 +94,10 @@ export async function personalRoutes(app: FastifyInstance) {
              RETURNING vector_clock`,
             [encryptedBlob, currentClock + 1, userId]
           );
-          return { conflict: false, newClock: updateResult.rows[0].vector_clock };
+          return { conflict: false, newClock: Number(updateResult.rows[0].vector_clock) };
         }
 
-        return { conflict: false, newClock: insertResult.rows[0].vector_clock };
+        return { conflict: false, newClock: Number(insertResult.rows[0].vector_clock) };
       }
     });
 

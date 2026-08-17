@@ -20,6 +20,10 @@ export default function ReceiptUpload({ onReceiptChange, existingUri }: ReceiptU
       onReceiptChange(result);
     } catch (err) {
       const validationErr = err as ReceiptValidationError;
+      // A rejected replacement must not silently leave the old receipt
+      // attached — the user would submit thinking the new file was applied.
+      setReceipt(null);
+      onReceiptChange(null);
       setError(validationErr.message);
     }
   }, [onReceiptChange]);

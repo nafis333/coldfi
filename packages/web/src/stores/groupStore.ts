@@ -37,6 +37,17 @@ export { getGroupKey, cacheGroupKey } from '../lib/groupSync';
 
 let activeFetchGroupId: string | null = null;
 
+// Encryption keys are re-derivable server-side and cheap to cache; fetching
+// one per group per page visit trips the backend rate limit once users have
+// many groups. Dedupe in-flight fetches and remember results for 60s.
+const keyFetchState = new Map<string, { at: number; promise: Promise<string | null> }>();
+const KEY_FETCH_TTL_MS = 60_000;
+
+// Per-group balance cache so the groups list doesn't re-download + decrypt
+// every blob on each visit.
+const balanceCache = new Map<string, { value: number; at: number }>();
+const BALANCE_CACHE_TTL_MS = 30_000;
+
 export interface MemberSplit {
   userId: string;
   amount: number;
@@ -73,23 +84,42 @@ interface GroupState {
   removeGroupCategory: (groupId: string, categoryId: string) => Promise<void>;
   addMemberFromSocket: (groupId: string, member: GroupMember) => void;
   removeMemberFromSocket: (groupId: string, userId: string) => void;
+  removeGroupLocally: (groupId: string) => void;
   updateGroupFromSocket: (group: GroupSummary) => void;
   incrementGroupDataVersion: (groupId: string) => void;
   clearError: () => void;
 }
 
 export async function fetchGroupEncryptionKey(groupId: string): Promise<string | null> {
-  try {
-    const res = await apiClient(`/api/group/${groupId}/encryption-key`);
-    if (res.ok) {
-      const data = await res.json();
-      return data.encryptionKey || null;
-    }
-  } catch { /* encryption key not available */ }
-  return null;
+  const cached = keyFetchState.get(groupId);
+  if (cached && Date.now() - cached.at < KEY_FETCH_TTL_MS) return cached.promise;
+
+  const promise = (async () => {
+    try {
+      const res = await apiClient(`/api/group/${groupId}/encryption-key`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.encryptionKey || null;
+      }
+    } catch { /* encryption key not available */ }
+    return null;
+  })();
+
+  // Only cache successful (non-null) results — a transient failure must not
+  // poison the cache for the next 60s. The promise is still cached while
+  // in-flight so concurrent callers share one request.
+  keyFetchState.set(groupId, { at: Date.now(), promise });
+  const result = await promise;
+  if (!result) {
+    keyFetchState.delete(groupId);
+  }
+  return result;
 }
 
 async function computeGroupBalance(groupId: string, userId: string, defaultCurrency: string): Promise<number | null> {
+  const cached = balanceCache.get(groupId);
+  if (cached && Date.now() - cached.at < BALANCE_CACHE_TTL_MS) return cached.value;
+
   try {
     let gk = getGroupKey(groupId);
     if (!gk) {
@@ -122,7 +152,9 @@ async function computeGroupBalance(groupId: string, userId: string, defaultCurre
     const engineExpenses = toEngineExpenses(expenses, groupId, defaultCurrency);
     const engineSettlements = toEngineSettlements(settlements);
     const balances = computeNetBalances(engineExpenses, engineSettlements, memberIds);
-    return balances.find((b) => b.userId === userId)?.net ?? 0;
+    const value = balances.find((b) => b.userId === userId)?.net ?? 0;
+    balanceCache.set(groupId, { value, at: Date.now() });
+    return value;
   } catch {
     return null;
   }
@@ -199,6 +231,7 @@ export const useGroupStore = create<GroupState>((set) => ({
       let settlements: SettlementData[] = [];
       let expenses: GroupExpenseData[] = [];
       let groupCategories: GroupCategory[] = [];
+      let decryptFailed = false;
 
       if (syncRes.ok) {
         const syncData = await syncRes.json();
@@ -226,9 +259,16 @@ export const useGroupStore = create<GroupState>((set) => ({
                   settlements = parsed.settlements || [];
                   expenses = parsed.expenses || [];
                   groupCategories = parsed.categories || [];
+                } else {
+                  decryptFailed = true;
                 }
-              } catch { silentCatch('groupStore.blobDecrypt', err); }
+              } catch {
+                silentCatch('groupStore.blobDecrypt', err);
+                decryptFailed = true;
+              }
             }
+          } else {
+            decryptFailed = true;
           }
         }
       }
@@ -264,6 +304,7 @@ export const useGroupStore = create<GroupState>((set) => ({
           myBalance: balances.find((b) => b.userId === useAuthStore.getState().userId)?.net ?? data.myBalance ?? 0,
           balances,
         },
+        error: decryptFailed ? 'Could not decrypt group data. Try again in a moment.' : null,
         isLoading: false,
       });
     } catch (error) {
@@ -272,6 +313,11 @@ export const useGroupStore = create<GroupState>((set) => ({
           isLoading: false,
           error: error instanceof Error ? error.message : 'Failed to fetch group',
         });
+        if (error instanceof Error && /\b(403|404)\b/.test(error.message)) {
+          // Group deleted or membership revoked — drop it locally so the
+          // list and detail view stop showing a zombie group.
+          useGroupStore.getState().removeGroupLocally(id);
+        }
       }
     }
   },
@@ -519,10 +565,14 @@ export const useGroupStore = create<GroupState>((set) => ({
         body: JSON.stringify(settings),
       });
       if (!res.ok) throw new Error('Failed to update group settings');
+      balanceCache.delete(groupId);
       set((state) => ({
         currentGroup: state.currentGroup && state.currentGroup.id === groupId
           ? { ...state.currentGroup, ...settings }
           : state.currentGroup,
+        groups: state.groups.map((g) =>
+          g.id === groupId ? { ...g, ...settings } : g
+        ),
       }));
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to update group settings' });
@@ -646,6 +696,15 @@ export const useGroupStore = create<GroupState>((set) => ({
     }));
   },
 
+  removeGroupLocally: (groupId: string) => {
+    clearGroupKey(groupId);
+    balanceCache.delete(groupId);
+    set((state) => ({
+      groups: state.groups.filter((g) => g.id !== groupId),
+      currentGroup: state.currentGroup?.id === groupId ? null : state.currentGroup,
+    }));
+  },
+
   incrementGroupDataVersion: (groupId: string) => {
     set((state) => ({
       groupDataVersions: {
@@ -664,5 +723,9 @@ onLogout(() => {
     error: null,
     groupDataVersions: {},
   });
+  // Per-user caches must not survive logout: balances are user-specific and
+  // encryption keys are per-user-per-group.
+  keyFetchState.clear();
+  balanceCache.clear();
   clearGroupKeyCache();
 });

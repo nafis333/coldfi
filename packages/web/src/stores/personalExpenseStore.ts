@@ -64,11 +64,17 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       expenses: [newExpense, ...current.expenses],
     };
 
+    // Optimistically publish so a second mutation issued before this PUT
+    // resolves builds on the updated blob instead of the stale snapshot
+    // (otherwise last-write-wins on the server silently drops one expense).
+    usePersonalStore.setState({ personalBlob: updated, expenses: updated.expenses });
+
     try {
       const prevStatuses = usePersonalStore.getState().budgetStatuses;
       await savePersonalBlob(updated);
       await checkBudgetAlertsAfterSave(prevStatuses);
     } catch (err) {
+      usePersonalStore.setState({ personalBlob: current, expenses: current.expenses });
       set({ error: err instanceof Error ? err.message : 'Failed to add expense' });
       throw err;
     } finally {
@@ -92,11 +98,14 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       ),
     };
 
+    usePersonalStore.setState({ personalBlob: updated, expenses: updated.expenses });
+
     try {
       const prevStatuses = usePersonalStore.getState().budgetStatuses;
       await savePersonalBlob(updated);
       await checkBudgetAlertsAfterSave(prevStatuses);
     } catch (err) {
+      usePersonalStore.setState({ personalBlob: personalBlob, expenses: personalBlob.expenses });
       set({ error: err instanceof Error ? err.message : 'Failed to update expense' });
       throw err;
     } finally {
@@ -118,9 +127,12 @@ export const usePersonalExpenseStore = create<PersonalExpenseState>((set) => ({
       expenses: personalBlob.expenses.filter((e) => e.id !== id),
     };
 
+    usePersonalStore.setState({ personalBlob: updated, expenses: updated.expenses });
+
     try {
       await savePersonalBlob(updated);
     } catch (err) {
+      usePersonalStore.setState({ personalBlob: personalBlob, expenses: personalBlob.expenses });
       set({ error: err instanceof Error ? err.message : 'Failed to delete expense' });
       throw err;
     } finally {

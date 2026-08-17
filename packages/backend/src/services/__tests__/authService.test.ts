@@ -348,13 +348,13 @@ describe('logoutUser', () => {
     await expect(logoutUser('user-1', token)).resolves.toBeUndefined();
   });
 
-  it('should reject if token not found', async () => {
+  it('should be idempotent when token already revoked', async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [],
       rowCount: 0,
     } as any);
 
-    await expect(logoutUser('user-1', 'bad-token')).rejects.toThrow('not found or already revoked');
+    await expect(logoutUser('user-1', 'bad-token')).resolves.toBeUndefined();
   });
 });
 

@@ -41,13 +41,22 @@ export async function buildApp(): Promise<FastifyInstance> {
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
 
-  const origins = [
+  const configuredOrigins = [
     ...config.CORS_ORIGIN.split(','),
     'https://coldfi.vercel.app',
   ].map(o => o.trim()).filter(Boolean);
 
   await app.register(cors, {
-    origin: origins,
+    origin: (origin, cb) => {
+      // Allow configured origins plus Vercel preview deployments
+      // (https://<project>-<hash>.vercel.app) and any localhost dev port —
+      // an unlisted origin produces a silent 403 from @fastify/cors.
+      if (!origin) return cb(null, true);
+      if (configuredOrigins.includes(origin)) return cb(null, true);
+      if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return cb(null, true);
+      if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return cb(null, true);
+      return cb(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -99,8 +108,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     const requestId = request.requestId || 'unknown';
     const userId = request.user?.userId;
     const origin = request.headers.origin;
-    const allOrigins = [...config.CORS_ORIGIN.split(',').map(o => o.trim()), 'https://coldfi.vercel.app'];
-    if (origin && allOrigins.includes(origin)) {
+    const isAllowedOrigin = (o: string): boolean =>
+      configuredOrigins.includes(o) ||
+      /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(o) ||
+      /^http:\/\/localhost(:\d+)?$/.test(o);
+    if (origin && isAllowedOrigin(origin)) {
       reply.header('Access-Control-Allow-Origin', origin);
       reply.header('Access-Control-Allow-Credentials', 'true');
     }

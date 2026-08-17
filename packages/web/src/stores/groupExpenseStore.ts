@@ -49,7 +49,7 @@ export const useGroupExpenseStore = create<GroupExpenseState>((set) => ({
       const groupMembers = useGroupStore.getState().currentGroup?.members;
       if (!groupMembers) throw new Error('Group data not loaded');
 
-      const memberIds = groupMembers.map((m) => m.userId);
+      const memberIds = groupMembers.filter((m) => !m.leftAt).map((m) => m.userId);
 
       if (data.splitMode && data.splitParams) {
         const { calculateSplits: engineCalculateSplits } = await import('@coldfi/shared');

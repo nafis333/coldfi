@@ -55,18 +55,26 @@ export class ReminderService {
   }
 
   async getPendingReminders(limit: number = 100): Promise<Reminder[]> {
-    // Skip users who permanently disabled push or reminders — their rows would
-    // sit pending forever and (past the batch limit) starve everyone else's
-    // reminders. SKIP LOCKED makes batch claims safe if the worker is scaled.
+    // Atomically claim rows so overlapping jobs/instances can't double-send:
+    // the SELECT ... FOR UPDATE lock would be released at statement end on an
+    // autocommit query, so instead mark rows 'processing' in the same UPDATE.
+    // Rows stuck in 'processing' (worker crashed mid-send) are reclaimed after
+    // 10 minutes.
     const result = await this.pool.query(
-      `SELECT r.* FROM notification_reminders r
-       LEFT JOIN notification_preferences p ON p.user_id = r.user_id
-       WHERE r.status = 'pending' AND r.scheduled_at <= now()
-         AND (p.push_enabled IS NULL OR p.push_enabled = true)
-         AND (p.reminders IS NULL OR p.reminders = true)
-       ORDER BY r.scheduled_at ASC
-       LIMIT $1
-       FOR UPDATE SKIP LOCKED`,
+      `UPDATE notification_reminders r
+       SET status = 'processing', updated_at = now()
+       WHERE r.id IN (
+         SELECT c.id FROM notification_reminders c
+         LEFT JOIN notification_preferences p ON p.user_id = c.user_id
+         WHERE (c.status = 'pending' OR (c.status = 'processing' AND c.updated_at < now() - interval '10 minutes'))
+           AND c.scheduled_at <= now()
+           AND (p.push_enabled IS NULL OR p.push_enabled = true)
+           AND (p.reminders IS NULL OR p.reminders = true)
+         ORDER BY c.scheduled_at ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING *`,
       [limit]
     );
 
@@ -86,6 +94,15 @@ export class ReminderService {
     await this.pool.query(
       `UPDATE notification_reminders
        SET status = 'failed', updated_at = now()
+       WHERE id = $1`,
+      [reminderId]
+    );
+  }
+
+  async revertToPending(reminderId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE notification_reminders
+       SET status = 'pending', updated_at = now()
        WHERE id = $1`,
       [reminderId]
     );
@@ -122,6 +139,7 @@ export class ReminderService {
         await this.markFailed(reminder.id);
         return false;
       }
+      await this.revertToPending(reminder.id);
       return false;
     } catch (error) {
       logger.error(`Failed to process reminder ${reminder.id}`, { module: 'reminder', error: String(error) });

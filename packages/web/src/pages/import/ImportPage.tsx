@@ -36,6 +36,31 @@ function normalizeDate(raw: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+const BANGLA_DIGITS: Record<string, string> = { '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9' };
+
+function parseAmount(raw: unknown): number {
+  let s = String(raw ?? '').replace(/[০-৯]/g, (d) => BANGLA_DIGITS[d]!);
+  s = s.replace(/[^\d.,-]/g, '').trim();
+  if (!s) return NaN;
+
+  const lastDot = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+
+  if (lastDot !== -1 && lastComma !== -1) {
+    // Both separators present: the LAST one is the decimal separator.
+    const decimalIsDot = lastDot > lastComma;
+    s = s.replace(/[.,]/g, (ch) => (ch === (decimalIsDot ? '.' : ',')) ? ch : '');
+  } else if (lastComma !== -1 && /,\d{2}$/.test(s)) {
+    // European style: single comma followed by exactly 2 digits → decimal.
+    s = s.replace(/,/g, '.');
+  } else {
+    // "1,234" or "1.234" thousand separators → drop them.
+    s = s.replace(/[.,]/g, '');
+  }
+
+  return Number(s);
+}
+
 export default function ImportPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,8 +136,7 @@ export default function ImportPage() {
       let imported = 0;
       const errors: string[] = [];
       for (const row of parsedData) {
-        const rawAmount = String(row[mapping.amount] ?? '').replace(/[^\d.-]/g, '');
-        const amount = parseFloat(rawAmount);
+        const amount = parseAmount(row[mapping.amount]);
         if (isNaN(amount) || amount <= 0) {
           errors.push(`Row ${imported + errors.length + 1}: invalid amount`);
           continue;

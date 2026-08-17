@@ -147,15 +147,12 @@ export async function revokeAllUserTokens(userId: string): Promise<void> {
 export async function logoutUser(userId: string, refreshToken: string): Promise<void> {
   const tokenHash = hashToken(refreshToken);
 
-  const result = await query(
-    `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND token_hash = $2 AND revoked_at IS NULL
-     RETURNING id`,
+  // Idempotent: a stale cookie (already-revoked token, token rotation after
+  // refresh) must not turn logout into an error for the client.
+  await query(
+    `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND token_hash = $2 AND revoked_at IS NULL`,
     [userId, tokenHash]
   );
-
-  if (result.rows.length === 0) {
-    throw new AuthError('ERR_INVALID_TOKEN', 'Refresh token not found or already revoked');
-  }
 
   await query(
     `INSERT INTO user_activity_log (user_id, action, created_at)

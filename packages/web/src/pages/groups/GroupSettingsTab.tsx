@@ -38,6 +38,14 @@ export default function GroupSettingsTab() {
     }
   }, [currentGroup]);
 
+  const isAdmin = !!currentGroup?.members.find(
+    (m) => m.userId === useAuthStore.getState().userId && m.role === 'admin' && !m.leftAt
+  );
+
+  useEffect(() => {
+    if (isAdmin) loadInvites();
+  }, [groupId, isAdmin]);
+
   async function loadInvites() {
     setInvitesError('');
     try {
@@ -100,6 +108,13 @@ export default function GroupSettingsTab() {
 
   return (
     <div className="space-y-8">
+      {!isAdmin && (
+        <div className="card p-6 text-center">
+          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-300">
+            Only group admins can manage invites and group settings.
+          </p>
+        </div>
+      )}
       {msg && (
         <div className="rounded-lg bg-success-50 dark:bg-success-700/20 border border-success-200 dark:border-success-700 p-3">
           <p className="text-sm text-success-700 dark:text-success-300">{msg}</p>
@@ -112,6 +127,7 @@ export default function GroupSettingsTab() {
       )}
 
       {/* Invite Codes */}
+      {isAdmin && (
       <div className="card p-6">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">Invite Codes</h3>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
@@ -151,9 +167,10 @@ export default function GroupSettingsTab() {
           + Generate Invite Code
         </button>
       </div>
+      )}
 
       {/* Group Settings */}
-      {currentGroup?.members.find(m => m.userId === useAuthStore.getState().userId)?.role === 'admin' && (
+      {isAdmin && (
       <div className="card p-6">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Group Settings</h3>
         <form onSubmit={handleUpdateSettings} className="space-y-4 max-w-sm">
@@ -185,7 +202,7 @@ export default function GroupSettingsTab() {
       )}
 
       {/* Danger Zone */}
-      {currentGroup?.members.find(m => m.userId === useAuthStore.getState().userId)?.role === 'admin' && (
+      {isAdmin && (
         <div className="card p-6 border border-danger-200 dark:border-danger-700">
           <h3 className="text-lg font-semibold text-danger-600 dark:text-danger-400 mb-2">Danger Zone</h3>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">

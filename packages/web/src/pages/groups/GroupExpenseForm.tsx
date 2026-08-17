@@ -327,7 +327,7 @@ export default function GroupExpenseForm() {
     } finally {
       setSubmitting(false);
     }
-  }, [description, category, payerId, items, createGroupExpense, updateGroupExpense, groupId, navigate, members, isEditing, expenseId, activeMemberIds, submitting]);
+  }, [description, category, payerId, items, createGroupExpense, updateGroupExpense, groupId, navigate, members, isEditing, expenseId, activeMemberIds, submitting, expenseDate]);
 
   return (
     <div className="mx-auto max-w-3xl">

@@ -4,7 +4,7 @@ import { encryptData, decryptData } from '../lib/crypto';
 import { getGroupKey } from './groupStore';
 import { silentCatch } from '../lib/errorHandler';
 import { onLogout } from '../lib/resetStores';
-import { verifyLogChain, createGroupLogEntry, type GroupLogEntry as EngineLogEntry, GroupLogEventType } from '@coldfi/shared';
+import { createGroupLogEntry, computeLogHash, type GroupLogEntry as EngineLogEntry, GroupLogEventType } from '@coldfi/shared';
 
 interface LogEntry {
   id: string;
@@ -61,26 +61,6 @@ async function computeEntryHash(entry: Omit<LogEntry, 'hash' | 'isValid'>): Prom
     Object.keys({ previousHash: 1, timestamp: 1, actorName: 1, action: 1, actionType: 1, details: 1 }).sort()
   );
   return sha256(payload);
-}
-
-function toEngineEntry(entry: LogEntry): EngineLogEntry {
-  const eventMap: Record<string, GroupLogEventType> = {
-    expense: GroupLogEventType.EXPENSE_ADDED,
-    settlement: GroupLogEventType.SETTLEMENT_PROPOSED,
-    member: GroupLogEventType.MEMBER_JOINED,
-    settings: GroupLogEventType.ADMIN_ACTION,
-  };
-  return {
-    id: entry.id,
-    groupId: '',
-    eventType: eventMap[entry.actionType] || GroupLogEventType.ADMIN_ACTION,
-    actorId: '',
-    metadata: { action: entry.action, details: entry.details, actorName: entry.actorName },
-    timestamp: entry.timestamp,
-    previousLogHash: entry.previousHash,
-    hash: entry.hash,
-    targetId: undefined,
-  };
 }
 
 function fromEngineEntry(engine: EngineLogEntry, logs: LogEntry[]): LogEntry {
@@ -150,7 +130,7 @@ export const useLogStore = create<LogState>((set) => ({
     }
   },
 
-  verifyIntegrity: async (groupId: string) => {
+verifyIntegrity: async (groupId: string) => {
     try {
       const gk = getGroupKey(groupId);
       if (!gk) {
@@ -171,59 +151,59 @@ export const useLogStore = create<LogState>((set) => ({
 
       const decrypted = await decryptData(gk, syncData.encryptedBlob);
       const groupData = JSON.parse(decrypted);
-      const entries: LogEntry[] = (groupData.logs || []).map((l: any) =>
-        l.hash && l.previousHash !== undefined ? l as LogEntry : fromEngineEntry(l, [])
-      );
+      const rawLogs: any[] = groupData.logs || [];
 
-      // Try engine chain verification first
-      try {
-        const engineEntries: EngineLogEntry[] = entries.map(toEngineEntry);
-        const engineResult = verifyLogChain(engineEntries);
-        const alwaysHashErrors = engineResult.errors.filter((e) => !e.includes('hash mismatch'));
-        // Engine may report false hash mismatches due to algorithm difference;
-        // we still get chain structure validation
-        if (alwaysHashErrors.length === 0) {
-          // Chain structure is sound — now do per-entry hash checks with SHA-256
-          const brokenAt: number[] = [];
-          let previousHash = '';
-          for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i]!;
-            if (entry.previousHash !== previousHash) brokenAt.push(i);
-            const expectedHash = await computeEntryHash({
-              id: entry.id, timestamp: entry.timestamp, actorName: entry.actorName,
-              action: entry.action, actionType: entry.actionType, details: entry.details,
-              previousHash: entry.previousHash,
-            });
-            if (expectedHash !== entry.hash) brokenAt.push(i);
-            previousHash = entry.hash;
-          }
-          set((state) => {
-            const brokenIds = new Set(brokenAt.map((i) => entries[i]!.id));
-            return { logs: state.logs.map((log) => ({ ...log, isValid: !brokenIds.has(log.id) })) };
-          });
-          return { valid: brokenAt.length === 0, totalChecked: entries.length, brokenAt };
-        }
-      } catch (err) { silentCatch('logStore.verifyChain', err); }
-
-      // Fallback: pure inline verification
+      // Engine-format entries (SHA-512 over id/groupId/eventType/actorId/
+      // metadata/timestamp/previousLogHash) and legacy entries (SHA-256 over
+      // display fields) can coexist in a chain — verify each with its own
+      // algorithm instead of marking one format as broken.
       const brokenAt: number[] = [];
       let previousHash = '';
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i]!;
-        if (entry.previousHash !== previousHash) brokenAt.push(i);
-        const expectedHash = await computeEntryHash({
-          id: entry.id, timestamp: entry.timestamp, actorName: entry.actorName,
-          action: entry.action, actionType: entry.actionType, details: entry.details,
-          previousHash: entry.previousHash,
-        });
-        if (expectedHash !== entry.hash) brokenAt.push(i);
-        previousHash = entry.hash;
+      for (let i = 0; i < rawLogs.length; i++) {
+        const l = rawLogs[i]!;
+        const isEngine =
+          l.previousLogHash !== undefined ||
+          (typeof l.hash === 'string' && l.hash.length === 128 && l.previousHash === undefined);
+        const link = isEngine ? (l.previousLogHash || '') : (l.previousHash || '');
+
+        if (link !== previousHash) brokenAt.push(i);
+
+        let expectedHash: string;
+        if (isEngine) {
+          expectedHash = computeLogHash({
+            id: l.id,
+            groupId: l.groupId,
+            eventType: l.eventType,
+            actorId: l.actorId,
+            targetId: l.targetId,
+            metadata: l.metadata || {},
+            timestamp: l.timestamp,
+            previousLogHash: l.previousLogHash || '',
+          });
+        } else {
+          expectedHash = await computeEntryHash({
+            id: l.id,
+            timestamp: l.timestamp,
+            actorName: l.actorName,
+            action: l.action,
+            actionType: l.actionType,
+            details: l.details,
+            previousHash: link,
+          });
+        }
+
+        if (expectedHash !== l.hash) brokenAt.push(i);
+        previousHash = l.hash;
       }
+
       set((state) => {
-        const brokenIds = new Set(brokenAt.map((i) => entries[i]!.id));
+        // The user may have navigated to another group while verification ran;
+        // don't stamp isValid flags onto the wrong group's logs.
+        if (state.logsGroupId !== groupId) return {};
+        const brokenIds = new Set(brokenAt.map((i) => rawLogs[i]?.id));
         return { logs: state.logs.map((log) => ({ ...log, isValid: !brokenIds.has(log.id) })) };
       });
-      return { valid: brokenAt.length === 0, totalChecked: entries.length, brokenAt };
+      return { valid: brokenAt.length === 0, totalChecked: rawLogs.length, brokenAt };
     } catch (err) {
       silentCatch('logStore.verifyFallback', err);
       return { valid: false, totalChecked: 0, brokenAt: [] };

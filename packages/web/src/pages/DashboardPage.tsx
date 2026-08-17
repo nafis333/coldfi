@@ -107,7 +107,7 @@ export default function DashboardPage() {
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="section-title">Groups Overview</h3>
-            <Link to="/expenses" onClick={() => { const el = document.querySelector('[data-tab="groups"]'); if (el) (el as HTMLButtonElement).click(); }}
+            <Link to="/expenses?tab=groups"
               className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 transition-colors">
               View all &rarr;
             </Link>

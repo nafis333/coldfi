@@ -165,6 +165,18 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
       [user.id, JSON.stringify({ attempts: failedCount + 1 })]
     );
 
+    // Lock the account as soon as this failure reaches MAX_LOGIN_ATTEMPTS,
+    // not on the (MAX+1)th attempt.
+    if (failedCount + 1 >= config.MAX_LOGIN_ATTEMPTS) {
+      const lockUntil = new Date(Date.now() + config.LOGIN_WINDOW_MINUTES * 60000);
+      await query(
+        `UPDATE users SET locked_until = $1 WHERE id = $2`,
+        [lockUntil.toISOString(), user.id]
+      );
+      const remaining = Math.ceil((lockUntil.getTime() - Date.now()) / 60000);
+      throw new AuthError('ERR_USER_LOCKED', `Account locked. Try again in ${remaining} minutes`, 423);
+    }
+
     throw new AuthError('ERR_INVALID_CREDENTIALS', 'Invalid email or password');
   }
 
@@ -225,6 +237,9 @@ export async function googleLogin(
   if (!payload || !payload.sub || !payload.email) {
     throw new AuthError('ERR_INVALID_GOOGLE_TOKEN', 'Invalid Google token');
   }
+  if (payload.email_verified !== true) {
+    throw new AuthError('ERR_GOOGLE_EMAIL_UNVERIFIED', 'Google account email is not verified');
+  }
 
   const googleId = payload.sub;
   const email = payload.email.toLowerCase();
@@ -283,6 +298,7 @@ export async function googleLogin(
 
   if (existingByGoogle.rows.length > 0) {
     const user = existingByGoogle.rows[0];
+    await assertUserNotRestricted(user.id);
     if (user.two_factor_enabled) {
       const tempToken = crypto.randomUUID();
       await setTempToken('2fa-login', tempToken, { userId: user.id }, 300);
@@ -314,27 +330,64 @@ export async function googleLogin(
   const recoveryCode = generateRecoveryCode();
   const recoveryCodeHash = hashRecoveryCode(recoveryCode);
 
-  await transaction(async (client) => {
-    await client.query(
-      `INSERT INTO users (id, email, display_name, password_hash, auth_key_hash, personal_salt, encrypted_pek, server_encrypted_pek, recovery_code_hash, role, google_id, personal_data_enc, personal_vc, default_currency, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())`,
-      [userId, email, displayName || null, authKeyHash, authKeyHash, personalSaltBytes, pekBase64, serverEncryptedPek, recoveryCodeHash, role, googleId, Buffer.from(''), '[]', 'BDT']
-    );
-
-    await client.query(
-      `INSERT INTO user_activity_log (user_id, action, ip_address, created_at)
-       VALUES ($1, 'register', NULL, NOW())`,
-      [userId]
-    );
-
-    if (isOwner) {
+  let registrationSucceeded = false;
+  try {
+    await transaction(async (client) => {
       await client.query(
-        `INSERT INTO user_activity_log (user_id, action, metadata, created_at)
-         VALUES ($1, 'admin_granted', $2, NOW())`,
-        [userId, JSON.stringify({ reason: 'preset admin email', email })]
+        `INSERT INTO users (id, email, display_name, password_hash, auth_key_hash, personal_salt, encrypted_pek, server_encrypted_pek, recovery_code_hash, role, google_id, personal_data_enc, personal_vc, default_currency, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())`,
+        [userId, email, displayName || null, authKeyHash, authKeyHash, personalSaltBytes, pekBase64, serverEncryptedPek, recoveryCodeHash, role, googleId, Buffer.from(''), '[]', 'BDT']
       );
+
+      await client.query(
+        `INSERT INTO user_activity_log (user_id, action, ip_address, created_at)
+         VALUES ($1, 'register', NULL, NOW())`,
+        [userId]
+      );
+
+      if (isOwner) {
+        await client.query(
+          `INSERT INTO user_activity_log (user_id, action, metadata, created_at)
+           VALUES ($1, 'admin_granted', $2, NOW())`,
+          [userId, JSON.stringify({ reason: 'preset admin email', email })]
+        );
+      }
+    });
+    registrationSucceeded = true;
+  } catch (error: any) {
+    if (error?.code !== '23505') {
+      throw error;
     }
-  });
+    // Concurrent Google sign-in with the same email created the user between
+    // our SELECT and INSERT. Fall through to the existing-user path instead
+    // of surfacing a 500 to the client.
+  }
+
+  if (!registrationSucceeded) {
+    const racedUser = await query(
+      `SELECT id, two_factor_enabled, personal_salt, encrypted_pek, role, google_id FROM users WHERE email = $1`,
+      [email]
+    );
+    if (racedUser.rows.length > 0) {
+      const user = racedUser.rows[0];
+      await assertUserNotRestricted(user.id);
+      if (user.two_factor_enabled) {
+        const tempToken = crypto.randomUUID();
+        await setTempToken('2fa-login', tempToken, { userId: user.id }, 300);
+        return {
+          userId: user.id,
+          personalSalt: user.personal_salt,
+          encryptedPek: user.encrypted_pek || '',
+          role: user.role || 'user',
+          requires2FA: true,
+          tempToken,
+          googleNewUser: false,
+        };
+      }
+      const tokens = await generateTokens(user.id);
+      return { ...tokens, googleNewUser: false };
+    }
+  }
 
   const tokens = await generateTokens(userId);
   return { ...tokens, googleNewUser: true, personalSalt: personalSaltBytes, encryptedPek: pekBase64, recoveryCode };

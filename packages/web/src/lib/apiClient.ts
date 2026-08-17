@@ -11,10 +11,12 @@ export function resetSessionExpired(): void {
 }
 
 // Render free-tier instances sleep after ~15 min idle and cold-boot in 30-60s,
-// during which fetch() fails with a network TypeError. Retry idempotent
-// requests with backoff so a cold start is transparent instead of surfacing
-// as "Failed to fetch". POST is excluded — a retried POST could double-execute.
-const RETRYABLE_METHODS = new Set(['GET', 'PUT', 'PATCH', 'DELETE']);
+// during which fetch() fails with a network TypeError. Retry idempotent GETs
+// with a short backoff so a cold start is transparent instead of surfacing
+// as "Failed to fetch". Mutations are NOT retried — a retried POST/PUT/PATCH
+// could double-execute; callers implement their own conflict-aware retries.
+const RETRYABLE_METHODS = new Set(['GET', 'HEAD']);
+const RETRY_DELAYS_MS = [2000, 5000];
 
 async function fetchWithRetry(fullUrl: string, init: RequestInit): Promise<Response> {
   const method = (init.method || 'GET').toUpperCase();
@@ -23,13 +25,13 @@ async function fetchWithRetry(fullUrl: string, init: RequestInit): Promise<Respo
   }
 
   let lastErr: unknown;
-  for (let attempt = 0; attempt <= 2; attempt++) {
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     try {
       return await fetch(fullUrl, init);
     } catch (err) {
       lastErr = err;
-      if (attempt === 2) break;
-      await new Promise((resolve) => setTimeout(resolve, 15000 * (attempt + 1)));
+      if (attempt >= RETRY_DELAYS_MS.length) break;
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
     }
   }
   throw lastErr;
@@ -79,7 +81,18 @@ export async function apiClient(url: string, options: RequestInit = {}): Promise
     if (newToken) {
       refreshPromise = null;
       headers.set('Authorization', `Bearer ${newToken}`);
-      return fetch(fullUrl, { ...options, headers, credentials: 'include' });
+      const retried = await fetch(fullUrl, { ...options, headers, credentials: 'include' });
+      if (retried.status !== 401) {
+        return retried;
+      }
+      // The retried request was still rejected even with a fresh token —
+      // treat it as a dead session instead of a transient failure.
+      sessionExpired = true;
+      const { logout } = useAuthStore.getState();
+      await logout();
+      const err = new Error('Session expired');
+      triggerCriticalError(err, 'Authentication session expired');
+      throw err;
     }
 
     refreshPromise = null;

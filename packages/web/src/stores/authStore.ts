@@ -237,6 +237,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
       broadcastLogin(userId);
+      resetSessionExpired();
       return recoveryCode ? String(recoveryCode) : null;
     } catch (error) {
         const msg = error instanceof Error ? error.message : 'Google login failed';
@@ -298,6 +299,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
       broadcastLogin(userId);
+      resetSessionExpired();
     } catch (error) {
         const msg = error instanceof Error ? error.message : '2FA verification failed';
         if (isNetworkError(msg)) {
@@ -353,6 +355,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         pekMissing: false,
       });
 
+      resetSessionExpired();
       return recoveryCode as string | undefined;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Registration failed';
